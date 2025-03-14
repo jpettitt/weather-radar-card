@@ -159,49 +159,49 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
               var tileURL = '${this._config.data_source !== undefined ? this._config.data_source : 'RainViewer-Original'}';
               switch (tileURL) {
                 case "RainViewer-Original":
-                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/1/1_0.png';
+                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/1/1_1.png';
                   document.getElementById("img-color-bar").src = "/local/community/weather-radar-card/radar-colour-bar-original.png";
                   var framePeriod = 300000;
                   var frameLag = 60000;
                   break;
                 case "RainViewer-UniversalBlue":
-                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/2/1_0.png';
+                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/2/1_1.png';
                   document.getElementById("img-color-bar").src = "/local/community/weather-radar-card/radar-colour-bar-universalblue.png";
                   var framePeriod = 300000;
                   var frameLag = 60000;
                   break;
                 case "RainViewer-TITAN":
-                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/3/1_0.png';
+                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/3/1_1.png';
                   document.getElementById("img-color-bar").src = "/local/community/weather-radar-card/radar-colour-bar-titan.png";
                   var framePeriod = 300000;
                   var frameLag = 60000;
                   break;
                 case "RainViewer-TWC":
-                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/4/1_0.png';
+                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/4/1_1.png';
                   document.getElementById("img-color-bar").src = "/local/community/weather-radar-card/radar-colour-bar-twc.png";
                   var framePeriod = 300000;
                   var frameLag = 60000;
                   break;
                 case "RainViewer-Meteored":
-                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/5/1_0.png';
+                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/5/1_1.png';
                   document.getElementById("img-color-bar").src = "/local/community/weather-radar-card/radar-colour-bar-meteored.png";
                   var framePeriod = 300000;
                   var frameLag = 60000;
                   break;
                 case "RainViewer-NEXRAD":
-                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/6/1_0.png';
+                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/6/1_1.png';
                   document.getElementById("img-color-bar").src = "/local/community/weather-radar-card/radar-colour-bar-nexrad.png";
                   var framePeriod = 300000;
                   var frameLag = 60000;
                   break;
                 case "RainViewer-Rainbow":
-                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/7/1_0.png';
+                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/7/1_1.png';
                   document.getElementById("img-color-bar").src = "/local/community/weather-radar-card/radar-colour-bar-rainbow.png";
                   var framePeriod = 300000;
                   var frameLag = 60000;
                   break;
                 case "RainViewer-DarkSky":
-                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/8/1_0.png';
+                  var tileURL = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/8/1_1.png';
                   document.getElementById("img-color-bar").src = "/local/community/weather-radar-card/radar-colour-bar-darksky.png";
                   var framePeriod = 300000;
                   var frameLag = 60000;
