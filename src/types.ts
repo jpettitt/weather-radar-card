@@ -75,6 +75,7 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   show_snow?: boolean;
   show_progress_bar?: boolean;
   show_color_bar?: boolean;
+  show_loading_spinner?: boolean;
   // Wildfire overlay (US-only — see docs/wildfire-feature-design.md)
   show_wildfires?: boolean;
   wildfire_min_acres?: number;

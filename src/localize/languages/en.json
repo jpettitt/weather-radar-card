@@ -4,6 +4,9 @@
   },
   "ui": {
     "rate_limited": "Rate limited — waiting for quota to reset",
+    "loading_radar_tiles": "Loading radar tiles",
+    "now": "(now)",
+    "now_tooltip": "Now",
     "region_warning": {
       "wildfires_us_only": "Wildfire data is US-only. Your Home Assistant location is outside the US — no fires will show.",
       "noaa_us_only": "NOAA radar is US-only. Your Home Assistant location is outside the US — radar may not load.",
@@ -102,6 +105,7 @@
       "show_snow": "Show Snow",
       "show_color_bar": "Show Colour Bar",
       "show_progress_bar": "Show Progress Bar",
+      "show_loading_spinner": "Show Loading Spinner",
       "show_wildfires": "Show Wildfires (US only)",
       "show_alerts": "Show NWS Alerts (US only)",
       "alerts_min_severity": "Alerts: minimum severity",

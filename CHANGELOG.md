@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Loading spinner** — a small rotating indicator now sits in the centre of the bottom bar (between the timestamp and attribution) while radar tiles are being fetched. Visible during the initial load, after pan/zoom reload, and the periodic 5-minute refresh; hidden when only cached frames are cycling. Honours `prefers-reduced-motion` (the dot stays visible but does not spin). Contributed by [@genericJE](https://github.com/genericJE) (#124).
+- **`show_loading_spinner` config option** — toggles the loading spinner described above. Defaults to `true`; set to `false` to suppress it on cards where the brief load is imperceptible and the indicator would only add noise.
+- **"Now" marker on the progress bar** — the segment whose timestamp is closest to wall clock now gets a small amber stripe at the top, a `title="Now"` tooltip, and the displayed timestamp gains a `(now)` suffix when playback reaches that frame. Mostly useful with DWD forecast frames where "now" sits in the middle of the timeline rather than at the end. The stripe colour follows HA's `--warning-color` theme variable (falling back to `#ff9800`), so custom themes pick it up automatically. Contributed by [@genericJE](https://github.com/genericJE) (#125).
+
+### Fixed
+
+- **Dark / satellite map scale rendered a faint duplicate label** behind the main "50 km" text. Leaflet's default `.leaflet-control-scale-line` carries a `text-shadow: 1px 1px #fff` for readability on light basemaps; on the dark / satellite styles that shadow rendered as a ghost. The `.map-dark` override now sets `text-shadow: none`. Contributed by [@genericJE](https://github.com/genericJE) (#123).
+
 ## [3.5.0-alpha2] - 2026-05-03
 
 > Animation polish on top of `3.5.0-alpha`.
@@ -60,17 +70,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 128 → 223 unit tests (95 added). New coverage: geo helpers (centroid, haversine, bbox), string helpers (escapeHtml XSS injection patterns, slugify, truncate), NWS alert categories (regression guard for the empty-array bug), NWS alert colour table, region-warning composition, alert-layer helpers (featureKey, decisionsEqual including zone-arrival diff, severity-sort, luminance, formatDateTime, localStorage zone cache round-trip + TTL eviction + corrupt JSON + quota-exceeded handling). Pure-helper extraction (`src/geo-utils.ts`, `src/string-utils.ts`) deduplicates code that was previously identical between the wildfire and alerts layers.
 
-## [3.4.0-beta] - 2026-05-03
+## [3.4.0] - 2026-05-04
+
+> Stable cut of the 3.4 line. Two new radar sources, a rebuilt crossfade engine, and a clean editor experience for the animation timing knobs. Pre-releases `3.4.0-beta` (DWD + crossfade fix) and `3.4.0-beta2` (smooth_overlap + setConfig polish) consolidated here.
 
 ### Added
 
-- **DWD radar source** — `data_source: DWD` uses Deutscher Wetterdienst's `Niederschlagsradar` WMS at `maps.dwd.de`. 5-minute frame steps (vs. RainViewer's public 10-minute tier), ~3 days of history, +2 hours of forecast available via the `Radar_*-product_*` layers. Coverage is the German radar network footprint (Germany + immediate neighbours).
+- **DWD radar source** — `data_source: DWD` uses Deutscher Wetterdienst's `Niederschlagsradar` WMS at `maps.dwd.de`. 5-minute frame steps (vs. RainViewer's public 10-minute tier), ~3 days of history, +2 hours of forecast available via the `Radar_*-product_*` layers. Coverage is the German radar network footprint (Germany + immediate neighbours). Contributed by [@genericJE](https://github.com/genericJE) (#114).
 - **`dwd_layer` config option** — DWD-only WMS layer name override. Default `Niederschlagsradar` (mm/h). Set to `Radar_wn-product_1x1km_ger` for reflectivity (dBZ) with 2-hour nowcast frames included.
 - **`dwd_time_override` config option** — DWD-only ISO timestamp to anchor frames at a fixed point in time instead of "now". Useful for verifying the overlay renders when current weather is dry.
 - **`dwd_forecast_hours` config option** — DWD-only. Includes this many hours of nowcast forecast in the playback range as if they were "current". When set to a positive value the layer auto-switches from `Niederschlagsradar` to `Radar_wn-product_1x1km_ger` (which carries the +2h nowcast frames) unless `dwd_layer` explicitly overrides it. Matches the DWD WarnWetter app's default behaviour.
 - **DWD-coloured colour bar** — `data_source: DWD` shows a horizontal strip using DWD's `Niederschlagsradar` palette (15 bands sampled from DWD's official legend), replacing the misleading universal-blue scale used as a fallback before. Same UI shape as the existing NOAA / RainViewer bars; honours `show_color_bar: false`.
 - **DWD coverage check** — `data_source: DWD` emits a one-shot `console.warn` when HA's configured location falls outside the bounding box of Germany and its immediate neighbours, so the inevitable no-data grey wash isn't mistaken for a broken card.
-- **`smooth_animation` config option** — when `true`, the crossfade fully spans the inter-frame interval so the radar appears to flow continuously instead of stepping. Overrides `transition_time`.
+- **`smooth_animation` config option** — when `true`, the crossfade auto-calibrates so the full cycle equals `frame_delay`; the radar appears to flow continuously instead of stepping. Overrides `transition_time`. Contributed by [@genericJE](https://github.com/genericJE) (#113).
+- **`smooth_overlap` config knob (0–1)** — tunable crossfade overlap when `smooth_animation: true`. `0` = sequential (no brightness dip; cushion held), `0.5` = 50% overlap, `1` = fully simultaneous (default; brief mid-transition dip). Fade duration auto-calibrates so the full cycle still equals `frame_delay` regardless of overlap. Exposed in the editor as a 0–1 slider.
+- **Editor mutual gating for animation timing** — `transition_time` is disabled when Smooth Animation is on (the smooth path computes its own fade); `smooth_overlap` is disabled when Smooth Animation is off. Both fields stay visible so the relationship is obvious.
 
 ### Changed
 
@@ -79,8 +93,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Crossfade no longer pulses against light basemaps.** The previous symmetric crossfade animated the outgoing layer 1→0 while the incoming layer animated 0→1. At the midpoint both layers sat at opacity 0.5 and alpha-composed to ~0.75 visibility — letting 25% of the basemap show through at every transition. Replaced with a three-layer z-stack: the new current frame gets a higher z-index, snaps to opacity 0, then animates to the configured `radar_opacity` with `ease-in-out`; the immediately-previous frame stays at full opacity underneath (so transparent pixels of the incoming frame don't briefly expose the basemap); the frame BEFORE that simultaneously fades from full opacity to 0 (so old data dissolves smoothly instead of snapping out). Older frames stay hidden throughout. At the loop boundary — when the player wraps from the last frame back to the first after the restart pause — transitions snap instead of fading, since the natural pause makes a smooth fade across the loop read as "time ran backwards".
+- **Crossfade no longer pulses against light basemaps** (#113). The previous symmetric crossfade animated the outgoing layer 1→0 while the incoming layer animated 0→1. At the midpoint both layers sat at opacity 0.5 and alpha-composed to ~0.75 visibility — letting 25% of the basemap show through at every transition. Replaced with a two-slot model: the new current frame gets a higher z-index, snaps to `0`, then fades to `radar_opacity` with `ease-in-out`; the immediately-previous frame (the cushion) stays at full opacity through the fade-in window via CSS `transition-delay`, then begins its own fade-out so old data dissolves smoothly instead of snapping out. Older frames stay hidden throughout. At the loop boundary — when the player wraps from the last frame back to the first after the restart pause — transitions snap instead of fading, since the natural pause makes a smooth fade across the loop read as "time ran backwards". `_settleVisibility()` is called on every pause to leave a known clean state in the layer DOM.
+- **Trail on first cycle after editing animation settings.** Changing animation settings used to leave stale CSS-transition state on the radar layers, producing a visible trail on the first cycle after the change. `setConfig` now does a full teardown + reinit on any structural config change. Exception: when the user pans/zooms the live map in editor mode, the back-propagated `center_latitude` / `center_longitude` / `zoom_level` keys are diffed and skipped — a teardown there would interrupt the user's active interaction. Direct YAML edits to those keys still move the map (via `setView`), guarded against re-firing as a back-prop bounce.
 - **Internal options no longer leak into WMS GetMap URLs.** `FetchWmsTileLayer` was passing its full options object to Leaflet's `L.TileLayer.WMS.initialize`, which appends any unrecognised option as a query parameter — so requests carried `&rateLimiter=[object%20Object]&on429=...&animationOwnsOpacity=true` tail-end, which were ignored by the server but bloated the URL and confused log inspection. Now strips those internal fields before delegating, then re-attaches them to `this.options` for the rest of the layer code. Affects both NOAA and DWD WMS layers.
+
+### Documentation
+
+- README config table includes `smooth_overlap`; the Animation section now describes the actual two-slot model with `smooth_animation` / `smooth_overlap` semantics, the loop-boundary snap, and the pause-settle behaviour.
+- `animation.md` rewritten to match the v3.4.0 architecture (two-slot crossfade, `_crossfadeTiming()` table, `_settleVisibility`, dynamic tile size).
+
+### Localization
+
+11 language files updated for the new editor strings.
 
 ## [3.3.0] - 2026-04-30
 

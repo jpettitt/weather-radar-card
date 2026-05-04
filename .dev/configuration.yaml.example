@@ -1,0 +1,21 @@
+# Minimal HA config for the weather-radar-card local testbed.
+# Copy this file to .dev/ha-config/configuration.yaml on first run, then
+# `docker compose up`. The .dev/ha-config/ directory is gitignored so HA's
+# database, secrets, and runtime state stay out of the repo.
+
+default_config:
+
+# Auto-load the card from the bind-mounted dist/ — no need to add it as a
+# Lovelace resource through the UI on each fresh start.
+frontend:
+  extra_module_url:
+    - /local/community/weather-radar-card/weather-radar-card.js
+
+# Set country to enable the US-only overlays (wildfires, NWS alerts) for
+# end-to-end testing. Set to your own country code for region-warning checks.
+homeassistant:
+  country: US
+
+# Demo platform populates fake entities (sun, weather, person, etc.) so the
+# editor's entity-pickers and marker tracking have something to bind to.
+demo:

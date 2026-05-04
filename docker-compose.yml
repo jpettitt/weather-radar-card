@@ -1,0 +1,19 @@
+# Local Home Assistant testbed for weather-radar-card development.
+#
+# Mounts ./dist read-only into HA's www directory, so each `npm run build`
+# is immediately available to the running HA — hard-refresh the browser
+# (Cmd-Shift-R) and you're testing the new bundle. No file copying.
+#
+# First-time setup: see CONTRIBUTING.md → "Local HA testbed (Docker)".
+
+services:
+  ha:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: wrc-ha
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./.dev/ha-config:/config
+      - ./dist:/config/www/community/weather-radar-card:ro
+      - /etc/localtime:/etc/localtime:ro

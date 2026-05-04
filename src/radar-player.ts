@@ -4,6 +4,25 @@ import { WeatherRadarCardConfig } from './types';
 import { RateLimiter } from './rate-limiter';
 import { FetchTileLayer, FetchWmsTileLayer, layerSettled } from './fetch-tile-layer';
 import { RadarToolbar } from './radar-toolbar';
+import { localize } from './localize/localize';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Pick the frame whose `time` (epoch seconds) is closest to `nowSec`.
+ * Pure function — factored out so the now-marker logic is unit-testable
+ * without standing up a full RadarPlayer. Ties resolve to the lower index.
+ */
+export function nearestFrameIndex(frames: { time: number }[], nowSec: number): number {
+  if (frames.length === 0) return -1;
+  let best = 0;
+  let bestDiff = Math.abs(frames[0].time - nowSec);
+  for (let i = 1; i < frames.length; i++) {
+    const d = Math.abs(frames[i].time - nowSec);
+    if (d < bestDiff) { bestDiff = d; best = i; }
+  }
+  return best;
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +68,7 @@ export class RadarPlayer {
   private _radarImage: (FetchTileLayer | FetchWmsTileLayer)[] = [];
   private _radarTime: string[] = [];
   private _radarPaths: RadarFrame[] = [];
+  private _nowFrameIndex = -1;
   private _loadedSlots: number[] = [];
   private _frameStatuses: FrameStatus[] = [];
   private _radarReady = false;
@@ -159,6 +179,8 @@ export class RadarPlayer {
     this._worker = null;
     this._workerCallbacks.clear();
     if (this._workerBlobUrl) { URL.revokeObjectURL(this._workerBlobUrl); this._workerBlobUrl = null; }
+    this._frameStatuses = [];
+    this._updateLoadingSpinner();
   }
 
   // ── Navigation / visibility pause ────────────────────────────────────────
@@ -310,6 +332,9 @@ export class RadarPlayer {
   private _showSlot(slot: number, opts?: { snap?: boolean }): void {
     const n = this._loadedSlots.length;
     if (n === 0 || slot < 0 || slot >= n) return;
+    // Recompute each tick so the marker doesn't drift between 5-min refreshes.
+    this._computeNowFrameIndex();
+    this._applyNowMarker();
     const timing = opts?.snap
       ? { fadeMs: 0, delayMs: 0 }
       : this._crossfadeTiming();
@@ -388,8 +413,7 @@ export class RadarPlayer {
 
     const fi = this._loadedSlots[slot];
     if (fi !== undefined) {
-      const ts = this._shadowRoot.getElementById('timestamp');
-      if (ts) ts.textContent = this._radarTime[fi] ?? '';
+      this._setTimestamp(fi);
       this._highlightSegment(fi);
     }
   }
@@ -407,6 +431,7 @@ export class RadarPlayer {
       seg.style.cssText = `flex:1;height:100%;background-color:${this._segColor('empty', false)}`;
       bar.appendChild(seg);
     }
+    this._updateLoadingSpinner();
   }
 
   private _segColor(status: FrameStatus, isCurrent: boolean): string {
@@ -425,6 +450,39 @@ export class RadarPlayer {
     this._frameStatuses[fi] = status;
     const seg = this._shadowRoot.getElementById(`seg-${fi}`);
     if (seg) seg.style.backgroundColor = this._segColor(status, false);
+    this._updateLoadingSpinner();
+  }
+
+  private _updateLoadingSpinner(): void {
+    const spinner = this._shadowRoot.getElementById('loading-spinner');
+    if (!spinner) return;
+    const enabled = this._cfg.show_loading_spinner !== false;
+    const isLoading = enabled && this._frameStatuses.some(s => s === 'loading');
+    spinner.style.display = isLoading ? '' : 'none';
+  }
+
+  /** Pick the frame whose timestamp is closest to wall-clock now. */
+  private _computeNowFrameIndex(): void {
+    this._nowFrameIndex = nearestFrameIndex(this._radarPaths, Date.now() / 1000);
+  }
+
+  private _applyNowMarker(): void {
+    for (let i = 0; i < this._configFrameCount; i++) {
+      const seg = this._shadowRoot.getElementById(`seg-${i}`);
+      if (!seg) continue;
+      const isNow = i === this._nowFrameIndex;
+      seg.title = isNow ? localize('ui.now_tooltip') : '';
+      // boxShadow (not backgroundColor) so _segColor doesn't clobber it on each tick.
+      seg.style.boxShadow = isNow ? 'inset 0 2px 0 0 var(--warning-color, #ff9800)' : '';
+    }
+  }
+
+  /** Update the timestamp text — appends a localized "(now)" suffix when the displayed frame is the now-frame. */
+  private _setTimestamp(fi: number): void {
+    const ts = this._shadowRoot.getElementById('timestamp');
+    if (!ts) return;
+    const base = this._radarTime[fi] ?? '';
+    ts.textContent = fi === this._nowFrameIndex ? `${base} ${localize('ui.now')}` : base;
   }
 
   private _highlightSegment(fi: number): void {
@@ -637,8 +695,10 @@ export class RadarPlayer {
     this._radarPaths = pastFrames;
     const frameCount = pastFrames.length;
     this._configFrameCount = frameCount;
+    this._computeNowFrameIndex();
 
     this._buildSegments();
+    this._applyNowMarker();
 
     let newestShown = false;
 
@@ -667,8 +727,7 @@ export class RadarPlayer {
           // Show newest frame as a static preview before the loop starts
           newestShown = true;
           if (el) el.style.opacity = this._activeOpacity;
-          const ts = this._shadowRoot.getElementById('timestamp');
-          if (ts) ts.textContent = this._radarTime[fi];
+          this._setTimestamp(fi);
           this._highlightSegment(fi);
         }
 
@@ -731,14 +790,19 @@ export class RadarPlayer {
     const newTime = this._getTimeString(latestFrame.time * 1000);
 
     this._radarImage[0]?.remove();
+    // _radarPaths shifts alongside the others because nearestFrameIndex() reads .time off it.
     for (let i = 0; i < frameCount - 1; i++) {
       this._radarImage[i] = this._radarImage[i + 1];
       this._radarTime[i] = this._radarTime[i + 1];
+      this._radarPaths[i] = this._radarPaths[i + 1];
       this._frameStatuses[i] = this._frameStatuses[i + 1];
     }
     this._radarImage[frameCount - 1] = newLayer;
     this._radarTime[frameCount - 1] = newTime;
+    this._radarPaths[frameCount - 1] = latestFrame;
     this._loadedSlots = this._loadedSlots.map(fi => fi - 1).filter(fi => fi >= 0);
+    this._computeNowFrameIndex();
+    this._applyNowMarker();
 
     for (let i = 0; i < frameCount - 1; i++) {
       const seg = this._shadowRoot.getElementById(`seg-${i}`);

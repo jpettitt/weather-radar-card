@@ -1,9 +1,0 @@
-resources:
-  - url: http://10.0.1.20:5000/weather-radar-card.js
-    type: module
-views:
-  - cards:
-      - type: custom:weather-radar-card
-        name: Weather Radar Card Development
-        entity: sun.sun
-        test_gui: true

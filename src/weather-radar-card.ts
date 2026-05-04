@@ -297,6 +297,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
           <div id="timestampid" style="height:32px;float:left;position:absolute">
             <p id="timestamp" style="margin:0;padding:4px 8px;font-size:12px;white-space:nowrap"></p>
           </div>
+          <div id="loading-spinner" class="loading-spinner" style="display:none" role="status" aria-live="polite" aria-label=${localize('ui.loading_radar_tiles')}>
+            <div class="loading-spinner-arc" aria-hidden="true"></div>
+          </div>
           <div id="attribution" style="font-size:10px;text-align:right;padding:4px 8px"></div>
         </div>
       </ha-card>
@@ -903,8 +906,34 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         color: var(--primary-text-color);
       }
       #bottom-container a { color: var(--primary-color); }
+      /* Cap the timestamp at half-width minus the spinner radius so a long
+         timestamp on a narrow card (panel mode, ~200px) cannot crowd the
+         centred spinner. Truncates with an ellipsis past that point. */
+      #timestampid { max-width: calc(50% - 16px); }
+      #timestamp { overflow: hidden; text-overflow: ellipsis; }
       .map-dark .leaflet-control-scale-line {
         color: #bbb; border-color: #bbb; background: rgba(0,0,0,0.5);
+        text-shadow: none;
+      }
+      .loading-spinner {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 20px; height: 20px;
+        display: flex; align-items: center; justify-content: center;
+        pointer-events: none;
+      }
+      .loading-spinner-arc {
+        width: 16px; height: 16px; box-sizing: border-box;
+        border: 2px solid var(--divider-color, rgba(0,0,0,0.15));
+        border-top-color: var(--primary-text-color);
+        border-radius: 50%;
+        animation: wrc-spinner-rotate 0.8s linear infinite;
+      }
+      @keyframes wrc-spinner-rotate {
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .loading-spinner-arc { animation: none; }
       }
     `,
   ];

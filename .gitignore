@@ -27,6 +27,11 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# Local HA testbed runtime state (docker-compose mount target). Only
+# .dev/configuration.yaml.example is tracked; everything HA writes lives
+# under .dev/ha-config/ and is local-machine state.
+.dev/ha-config/
+
 # Logs
 logs
 *.log

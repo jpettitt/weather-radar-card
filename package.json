@@ -67,6 +67,11 @@
     "lint": "eslint src/*.ts",
     "rollup": "rollup -c",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ha:init": "mkdir -p .dev/ha-config && cp -n .dev/configuration.yaml.example .dev/ha-config/configuration.yaml || true",
+    "ha:up": "npm run ha:init && docker compose up -d && echo 'HA starting at http://localhost:8123 (first boot may take a minute)'",
+    "ha:down": "docker compose down",
+    "ha:logs": "docker compose logs -f ha",
+    "ha:reset": "docker compose down && rm -rf .dev/ha-config && echo 'HA config wiped. Run npm run ha:up for a fresh instance.'"
   }
 }

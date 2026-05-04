@@ -37,14 +37,38 @@ Thank you for your interest in contributing to Weather Radar Card! This document
 
 ### Testing Your Changes
 
-1. Copy the built file to your Home Assistant instance:
-   ```bash
-   cp dist/weather-radar-card.js /path/to/homeassistant/config/www/
-   ```
+#### Option 1 — local HA testbed in Docker (recommended)
 
-2. Hard refresh your browser (Cmd+Shift+R / Ctrl+Shift+F5)
+A `docker-compose.yml` at the repo root spins up a disposable Home Assistant instance with `dist/` bind-mounted into its `www/community/weather-radar-card/` directory. Each `npm run build` is immediately picked up by HA — hard-refresh and you're testing the new bundle. No file copying.
 
-3. Check the browser console (F12) for any errors
+Requires Docker Desktop (or Podman with the Docker compatibility shim).
+
+```bash
+npm run ha:up      # first run also creates .dev/ha-config from the example
+# → HA boots at http://localhost:8123 (~1 min on first start)
+# → onboard a throwaway user, then open the default dashboard
+# → the card auto-loads via frontend.extra_module_url; just add a card of
+#   type: custom:weather-radar-card to test it
+```
+
+After editing source and running `npm run build`, hard-refresh the browser (Cmd-Shift-R / Ctrl-Shift-F5) — HA serves the rebuilt bundle without restart.
+
+| Command              | What it does                                            |
+| -------------------- | ------------------------------------------------------- |
+| `npm run ha:up`      | Start HA (creates `.dev/ha-config/` if missing)         |
+| `npm run ha:down`    | Stop the container, keep config                         |
+| `npm run ha:logs`    | Tail HA logs                                            |
+| `npm run ha:reset`   | Stop and wipe `.dev/ha-config/` for a fresh HA instance |
+
+`.dev/ha-config/` is gitignored. The starter config (`.dev/configuration.yaml.example`) sets `homeassistant.country: US` and enables `demo:` so the entity-pickers, region-warning, and US-only overlays (wildfires, NWS alerts) all have something to bind to.
+
+#### Option 2 — copy to an existing HA instance
+
+```bash
+cp dist/weather-radar-card.js /path/to/homeassistant/config/www/
+```
+
+Then hard-refresh your browser (Cmd-Shift-R / Ctrl-Shift-F5) and check the browser console (F12) for errors.
 
 ## Code Style
 
