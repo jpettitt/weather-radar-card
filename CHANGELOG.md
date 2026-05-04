@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Loading spinner** — a small rotating indicator now sits in the centre of the bottom bar (between the timestamp and attribution) while radar tiles are being fetched. Visible during the initial load, after pan/zoom reload, and the periodic 5-minute refresh; hidden when only cached frames are cycling. Honours `prefers-reduced-motion` (the dot stays visible but does not spin).
+- **`show_loading_spinner` config option** — toggles the loading spinner described above. Defaults to `true`; set to `false` to suppress it on cards where the brief load is imperceptible and the indicator would only add noise.
+
 ## [3.4.0] - 2026-05-04
 
 > Stable cut of the 3.4 line. Two new radar sources, a rebuilt crossfade engine, and a clean editor experience for the animation timing knobs. Pre-releases `3.4.0-beta` (DWD + crossfade fix) and `3.4.0-beta2` (smooth_overlap + setConfig polish) consolidated here.

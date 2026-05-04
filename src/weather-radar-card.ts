@@ -871,6 +871,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       @keyframes wrc-spinner-rotate {
         to { transform: rotate(360deg); }
       }
+      @media (prefers-reduced-motion: reduce) {
+        .loading-spinner-arc { animation: none; }
+      }
     `,
   ];
 }
