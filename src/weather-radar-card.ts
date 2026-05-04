@@ -273,8 +273,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
           <div id="timestampid" style="height:32px;float:left;position:absolute">
             <p id="timestamp" style="margin:0;padding:4px 8px;font-size:12px;white-space:nowrap"></p>
           </div>
-          <div id="loading-spinner" class="loading-spinner" style="display:none" aria-hidden="true">
-            <div class="loading-spinner-arc"></div>
+          <div id="loading-spinner" class="loading-spinner" style="display:none" role="status" aria-live="polite" aria-label=${localize('ui.loading_radar_tiles')}>
+            <div class="loading-spinner-arc" aria-hidden="true"></div>
           </div>
           <div id="attribution" style="font-size:10px;text-align:right;padding:4px 8px"></div>
         </div>
@@ -843,6 +843,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         color: var(--primary-text-color);
       }
       #bottom-container a { color: var(--primary-color); }
+      /* Cap the timestamp at half-width minus the spinner radius so a long
+         timestamp on a narrow card (panel mode, ~200px) cannot crowd the
+         centred spinner. Truncates with an ellipsis past that point. */
+      #timestampid { max-width: calc(50% - 16px); }
+      #timestamp { overflow: hidden; text-overflow: ellipsis; }
       .map-dark .leaflet-control-scale-line {
         color: #bbb; border-color: #bbb; background: rgba(0,0,0,0.5);
         text-shadow: none;

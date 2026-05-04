@@ -4,7 +4,8 @@
   },
   "ui": {
     "rate_limited": "Rate limited — waiting for quota to reset",
-    "save_map_center": "Save as map center"
+    "save_map_center": "Save as map center",
+    "loading_radar_tiles": "Loading radar tiles"
   },
   "editor": {
     "section": {
