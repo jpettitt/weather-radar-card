@@ -159,6 +159,8 @@ export class RadarPlayer {
     this._worker = null;
     this._workerCallbacks.clear();
     if (this._workerBlobUrl) { URL.revokeObjectURL(this._workerBlobUrl); this._workerBlobUrl = null; }
+    this._frameStatuses = [];
+    this._updateLoadingSpinner();
   }
 
   // ── Navigation / visibility pause ────────────────────────────────────────
@@ -407,6 +409,7 @@ export class RadarPlayer {
       seg.style.cssText = `flex:1;height:100%;background-color:${this._segColor('empty', false)}`;
       bar.appendChild(seg);
     }
+    this._updateLoadingSpinner();
   }
 
   private _segColor(status: FrameStatus, isCurrent: boolean): string {
@@ -425,6 +428,14 @@ export class RadarPlayer {
     this._frameStatuses[fi] = status;
     const seg = this._shadowRoot.getElementById(`seg-${fi}`);
     if (seg) seg.style.backgroundColor = this._segColor(status, false);
+    this._updateLoadingSpinner();
+  }
+
+  private _updateLoadingSpinner(): void {
+    const spinner = this._shadowRoot.getElementById('loading-spinner');
+    if (!spinner) return;
+    const isLoading = this._frameStatuses.some(s => s === 'loading');
+    spinner.style.display = isLoading ? '' : 'none';
   }
 
   private _highlightSegment(fi: number): void {

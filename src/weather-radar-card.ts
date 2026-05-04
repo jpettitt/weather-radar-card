@@ -273,6 +273,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
           <div id="timestampid" style="height:32px;float:left;position:absolute">
             <p id="timestamp" style="margin:0;padding:4px 8px;font-size:12px;white-space:nowrap"></p>
           </div>
+          <div id="loading-spinner" class="loading-spinner" style="display:none" aria-hidden="true">
+            <div class="loading-spinner-arc"></div>
+          </div>
           <div id="attribution" style="font-size:10px;text-align:right;padding:4px 8px"></div>
         </div>
       </ha-card>
@@ -850,6 +853,23 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         border: none; border-radius: 4px; padding: 6px 16px; cursor: pointer;
         font: 12px/1.5 'Helvetica Neue', Arial, sans-serif;
         white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      }
+      .loading-spinner {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 20px; height: 20px;
+        display: flex; align-items: center; justify-content: center;
+        pointer-events: none;
+      }
+      .loading-spinner-arc {
+        width: 16px; height: 16px; box-sizing: border-box;
+        border: 2px solid var(--divider-color, rgba(0,0,0,0.15));
+        border-top-color: var(--primary-text-color);
+        border-radius: 50%;
+        animation: wrc-spinner-rotate 0.8s linear infinite;
+      }
+      @keyframes wrc-spinner-rotate {
+        to { transform: rotate(360deg); }
       }
     `,
   ];
