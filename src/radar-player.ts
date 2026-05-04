@@ -332,8 +332,7 @@ export class RadarPlayer {
   private _showSlot(slot: number, opts?: { snap?: boolean }): void {
     const n = this._loadedSlots.length;
     if (n === 0 || slot < 0 || slot >= n) return;
-    // Refresh the now-marker on every frame display so the "(now)" suffix
-    // and amber stripe don't drift between the 5-min periodic refreshes.
+    // Recompute each tick so the marker doesn't drift between 5-min refreshes.
     this._computeNowFrameIndex();
     this._applyNowMarker();
     const timing = opts?.snap
@@ -467,20 +466,13 @@ export class RadarPlayer {
     this._nowFrameIndex = nearestFrameIndex(this._radarPaths, Date.now() / 1000);
   }
 
-  /**
-   * Mark the now-segment with an amber top stripe + tooltip; clear from others.
-   * The stripe is applied via `style.boxShadow` rather than `backgroundColor`
-   * so it composes cleanly with `_segColor()` (which writes the segment's
-   * background based on load status / playback-current). If you ever switch
-   * the now-marker to a background colour, _highlightSegment will start
-   * clobbering it on every frame tick.
-   */
   private _applyNowMarker(): void {
     for (let i = 0; i < this._configFrameCount; i++) {
       const seg = this._shadowRoot.getElementById(`seg-${i}`);
       if (!seg) continue;
       const isNow = i === this._nowFrameIndex;
       seg.title = isNow ? localize('ui.now_tooltip') : '';
+      // boxShadow (not backgroundColor) so _segColor doesn't clobber it on each tick.
       seg.style.boxShadow = isNow ? 'inset 0 2px 0 0 var(--warning-color, #ff9800)' : '';
     }
   }
@@ -774,10 +766,7 @@ export class RadarPlayer {
     const newTime = this._getTimeString(latestFrame.time * 1000);
 
     this._radarImage[0]?.remove();
-    // _radarPaths is shifted alongside _radarImage / _radarTime / _frameStatuses
-    // because nearestFrameIndex() reads .time off it for the now-marker — if the
-    // array stayed pinned to the previous _initRadar generation, the marker
-    // would drift one slot per refresh.
+    // _radarPaths shifts alongside the others because nearestFrameIndex() reads .time off it.
     for (let i = 0; i < frameCount - 1; i++) {
       this._radarImage[i] = this._radarImage[i + 1];
       this._radarTime[i] = this._radarTime[i + 1];
