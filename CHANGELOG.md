@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Loading spinner** — a small rotating indicator now sits in the centre of the bottom bar (between the timestamp and attribution) while radar tiles are being fetched. Visible during the initial load, after pan/zoom reload, and the periodic 5-minute refresh; hidden when only cached frames are cycling. Honours `prefers-reduced-motion` (the dot stays visible but does not spin).
 - **`show_loading_spinner` config option** — toggles the loading spinner described above. Defaults to `true`; set to `false` to suppress it on cards where the brief load is imperceptible and the indicator would only add noise.
+- **"Now" marker on the progress bar** — the segment whose timestamp is closest to wall clock now gets a small amber stripe at the top, a `title="Now"` tooltip, and the displayed timestamp gains a `(now)` suffix when playback reaches that frame. Mostly useful with DWD forecast frames where "now" sits in the middle of the timeline rather than at the end. The stripe colour follows HA's `--warning-color` theme variable (falling back to `#ff9800`), so custom themes pick it up automatically.
 
 ## [3.4.0] - 2026-05-04
 
