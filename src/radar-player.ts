@@ -4,6 +4,25 @@ import { WeatherRadarCardConfig } from './types';
 import { RateLimiter } from './rate-limiter';
 import { FetchTileLayer, FetchWmsTileLayer, layerSettled } from './fetch-tile-layer';
 import { RadarToolbar } from './radar-toolbar';
+import { localize } from './localize/localize';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Pick the frame whose `time` (epoch seconds) is closest to `nowSec`.
+ * Pure function — factored out so the now-marker logic is unit-testable
+ * without standing up a full RadarPlayer. Ties resolve to the lower index.
+ */
+export function nearestFrameIndex(frames: { time: number }[], nowSec: number): number {
+  if (frames.length === 0) return -1;
+  let best = 0;
+  let bestDiff = Math.abs(frames[0].time - nowSec);
+  for (let i = 1; i < frames.length; i++) {
+    const d = Math.abs(frames[i].time - nowSec);
+    if (d < bestDiff) { bestDiff = d; best = i; }
+  }
+  return best;
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -313,6 +332,10 @@ export class RadarPlayer {
   private _showSlot(slot: number, opts?: { snap?: boolean }): void {
     const n = this._loadedSlots.length;
     if (n === 0 || slot < 0 || slot >= n) return;
+    // Refresh the now-marker on every frame display so the "(now)" suffix
+    // and amber stripe don't drift between the 5-min periodic refreshes.
+    this._computeNowFrameIndex();
+    this._applyNowMarker();
     const timing = opts?.snap
       ? { fadeMs: 0, delayMs: 0 }
       : this._crossfadeTiming();
@@ -441,34 +464,33 @@ export class RadarPlayer {
 
   /** Pick the frame whose timestamp is closest to wall-clock now. */
   private _computeNowFrameIndex(): void {
-    if (this._radarPaths.length === 0) { this._nowFrameIndex = -1; return; }
-    const nowSec = Date.now() / 1000;
-    let best = 0;
-    let bestDiff = Math.abs(this._radarPaths[0].time - nowSec);
-    for (let i = 1; i < this._radarPaths.length; i++) {
-      const d = Math.abs(this._radarPaths[i].time - nowSec);
-      if (d < bestDiff) { bestDiff = d; best = i; }
-    }
-    this._nowFrameIndex = best;
+    this._nowFrameIndex = nearestFrameIndex(this._radarPaths, Date.now() / 1000);
   }
 
-  /** Mark the now-segment with an amber top stripe + tooltip; clear from others. */
+  /**
+   * Mark the now-segment with an amber top stripe + tooltip; clear from others.
+   * The stripe is applied via `style.boxShadow` rather than `backgroundColor`
+   * so it composes cleanly with `_segColor()` (which writes the segment's
+   * background based on load status / playback-current). If you ever switch
+   * the now-marker to a background colour, _highlightSegment will start
+   * clobbering it on every frame tick.
+   */
   private _applyNowMarker(): void {
     for (let i = 0; i < this._configFrameCount; i++) {
       const seg = this._shadowRoot.getElementById(`seg-${i}`);
       if (!seg) continue;
       const isNow = i === this._nowFrameIndex;
-      seg.title = isNow ? 'Now' : '';
+      seg.title = isNow ? localize('ui.now_tooltip') : '';
       seg.style.boxShadow = isNow ? 'inset 0 2px 0 0 var(--warning-color, #ff9800)' : '';
     }
   }
 
-  /** Update the timestamp text — appends "(now)" when the displayed frame is the now-frame. */
+  /** Update the timestamp text — appends a localized "(now)" suffix when the displayed frame is the now-frame. */
   private _setTimestamp(fi: number): void {
     const ts = this._shadowRoot.getElementById('timestamp');
     if (!ts) return;
     const base = this._radarTime[fi] ?? '';
-    ts.textContent = fi === this._nowFrameIndex ? `${base} (now)` : base;
+    ts.textContent = fi === this._nowFrameIndex ? `${base} ${localize('ui.now')}` : base;
   }
 
   private _highlightSegment(fi: number): void {
@@ -752,6 +774,10 @@ export class RadarPlayer {
     const newTime = this._getTimeString(latestFrame.time * 1000);
 
     this._radarImage[0]?.remove();
+    // _radarPaths is shifted alongside _radarImage / _radarTime / _frameStatuses
+    // because nearestFrameIndex() reads .time off it for the now-marker — if the
+    // array stayed pinned to the previous _initRadar generation, the marker
+    // would drift one slot per refresh.
     for (let i = 0; i < frameCount - 1; i++) {
       this._radarImage[i] = this._radarImage[i + 1];
       this._radarTime[i] = this._radarTime[i + 1];
