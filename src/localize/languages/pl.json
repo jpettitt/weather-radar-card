@@ -86,7 +86,9 @@
       "animated_transitions": "Animowane przejścia",
       "transition_time": "Czas przejścia (ms)",
       "transition_time_helper": "Domyślnie: 40 % opóźnienia klatki — maks: opóźnienie klatki",
-      "smooth_animation": "Płynna animacja (ciągłe przenikanie)"
+      "smooth_animation": "Płynna animacja (ciągłe przenikanie)",
+      "smooth_overlap": "Nakładanie przenikania",
+      "smooth_overlap_helper": "Tylko tryb płynny. 0 = sekwencyjnie (bez spadku jasności, klatka utrzymana). 1 = równocześnie (krótki spadek w połowie przejścia). Domyślnie: 1"
     },
     "appearance": {
       "height": "Wysokość",

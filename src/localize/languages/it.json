@@ -86,7 +86,9 @@
       "animated_transitions": "Transizioni animate",
       "transition_time": "Durata transizione (ms)",
       "transition_time_helper": "Predefinito: 40 % del ritardo tra fotogrammi — max: ritardo tra fotogrammi",
-      "smooth_animation": "Animazione fluida (dissolvenza continua)"
+      "smooth_animation": "Animazione fluida (dissolvenza continua)",
+      "smooth_overlap": "Sovrapposizione dissolvenza",
+      "smooth_overlap_helper": "Solo in modalità fluida. 0 = sequenziale (nessun calo di luminosità, fotogramma mantenuto). 1 = simultaneo (breve calo a metà transizione). Predefinito: 1"
     },
     "appearance": {
       "height": "Altezza",

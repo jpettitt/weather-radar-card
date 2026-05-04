@@ -38,6 +38,15 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   transition_time?: number;
   radar_opacity?: number;
   smooth_animation?: boolean;
+  /**
+   * Smooth-mode crossfade overlap fraction. 0 = sequential (cushion
+   * fade-out starts when fade-in ends, no dip but cushion is held).
+   * 1 = simultaneous (both fade through the entire frame_delay window
+   * at the same time, brief alpha dip mid-transition). Default 1.
+   * Only takes effect when `smooth_animation: true`. YAML-only; for
+   * tuning the look of the crossfade.
+   */
+  smooth_overlap?: number;
   center_longitude?: CoordinateConfig;
   center_latitude?: CoordinateConfig;
   zoom_level?: number;

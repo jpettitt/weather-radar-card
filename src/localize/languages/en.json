@@ -87,7 +87,9 @@
       "animated_transitions": "Animated Transitions",
       "transition_time": "Transition Time (ms)",
       "transition_time_helper": "Default: 40% of frame delay — max: frame delay",
-      "smooth_animation": "Smooth Animation (continuous cross-fade)"
+      "smooth_animation": "Smooth Animation (continuous cross-fade)",
+      "smooth_overlap": "Cross-fade Overlap",
+      "smooth_overlap_helper": "Smooth-mode only. 0 = sequential (no brightness dip, cushion held). 1 = simultaneous (brief mid-transition dip). Default: 1"
     },
     "appearance": {
       "height": "Height",

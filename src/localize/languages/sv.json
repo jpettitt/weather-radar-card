@@ -86,7 +86,9 @@
       "animated_transitions": "Animerade övergångar",
       "transition_time": "Övergångstid (ms)",
       "transition_time_helper": "Standard: 40 % av bildrutefördröjning — max: bildrutefördröjning",
-      "smooth_animation": "Mjuk animation (kontinuerlig övergång)"
+      "smooth_animation": "Mjuk animation (kontinuerlig övergång)",
+      "smooth_overlap": "Övergångsöverlapp",
+      "smooth_overlap_helper": "Endast mjukt läge. 0 = sekventiellt (ingen ljusstyrkesänkning, bildruta hålls). 1 = samtidigt (kort sänkning mitt i övergången). Standard: 1"
     },
     "appearance": {
       "height": "Höjd",

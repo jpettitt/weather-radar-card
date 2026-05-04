@@ -86,7 +86,9 @@
       "animated_transitions": "Animované prechody",
       "transition_time": "Čas prechodu (ms)",
       "transition_time_helper": "Predvolené: 40 % oneskorenia snímky — max: oneskorenie snímky",
-      "smooth_animation": "Plynulá animácia (plynulý prechod)"
+      "smooth_animation": "Plynulá animácia (plynulý prechod)",
+      "smooth_overlap": "Prekrytie prechodu",
+      "smooth_overlap_helper": "Iba v plynulom režime. 0 = sekvenčne (bez poklesu jasu, snímka udržaná). 1 = súčasne (krátky pokles v strede prechodu). Predvolené: 1"
     },
     "appearance": {
       "height": "Výška",

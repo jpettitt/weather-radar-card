@@ -63,17 +63,13 @@ export class RadarPlayer {
   // Monotonic — each new current slot gets a higher z so it covers the previous one.
   private _zCounter = 0;
 
-  // Crossfade chain — at any moment we keep up to three layers in flight:
-  //   - the current slot (fading IN at the top of the z-stack)
-  //   - _prev1Slot   (the most-recent previous, sits fully visible
-  //                   underneath the incoming one so transparent pixels
-  //                   in the new frame don't expose the basemap)
-  //   - _prev2Slot   (the one before that — fades OUT during this same
-  //                   transition, so old data dissolves smoothly rather
-  //                   than snapping to 0)
-  // Older slots stay at opacity 0 (set when they aged out of _prev2Slot).
+  // Slot index of the currently-shown frame. On each _showSlot tick
+  // this is captured into a local `prev1` variable BEFORE being updated
+  // to the new slot — that local is then scheduled for a delayed
+  // fade-out (starts when the new slot finishes fading in). Older slots
+  // (prev1 from earlier ticks) trust their own delayed-fade-out setup
+  // from when they were the prev1 — we don't touch them again here.
   private _prev1Slot = -1;
-  private _prev2Slot = -1;
 
   // Web worker timer (used only for the periodic 5-min radar update)
   private _worker: Worker | null = null;
@@ -103,10 +99,42 @@ export class RadarPlayer {
   private get _cfg(): WeatherRadarCardConfig { return this._getConfig(); }
   private get _timeout(): number { return this._cfg.frame_delay ?? 500; }
   private get _restartDelay(): number { return this._cfg.restart_delay ?? 1000; }
-  private get _fadeMs(): number {
-    if (this._cfg.animated_transitions === false) return 0;
-    if (this._cfg.smooth_animation) return this._timeout;
-    return this._cfg.transition_time ?? Math.floor(this._timeout * 0.4);
+  // Crossfade timing per tick. Returns:
+  //   fadeMs   — duration of each layer's fade (in or out)
+  //   delayMs  — delay before the cushion's fade-out starts, measured
+  //              from the new layer's fade-in start
+  //
+  // Two modes:
+  //
+  // Regular (smooth_animation: false): sequential. Fade-out starts AT
+  // fade-in completion (delayMs == fadeMs). Cushion holds at full
+  // opacity throughout fade-in, then fades. Cycle is 2 × fadeMs
+  // followed by single-layer idle until the next tick. No alpha-dip,
+  // but the cushion is visibly "held" before it starts fading.
+  //
+  // Smooth (smooth_animation: true): tunable overlap via the
+  // `smooth_overlap` config. The cushion's fade-out starts partway
+  // through the new layer's fade-in:
+  //   smooth_overlap = 0   → sequential (delay == fade), cycle 2×fade
+  //   smooth_overlap = 0.5 → 50% overlap, cycle 1.5×fade
+  //   smooth_overlap = 1   → simultaneous (delay == 0), cycle == fade
+  //                          (default — true crossfade)
+  // Fade duration is auto-calibrated so the full cycle equals
+  // frame_delay regardless of overlap setting:
+  //   cycle = (1 - overlap) × fade + fade = (2 - overlap) × fade
+  //   fade  = frame_delay / (2 - overlap)
+  //
+  // Animations off: returns zeros — caller treats as snap mode.
+  private _crossfadeTiming(): { fadeMs: number; delayMs: number } {
+    if (this._cfg.animated_transitions === false) return { fadeMs: 0, delayMs: 0 };
+    if (this._cfg.smooth_animation) {
+      const overlap = Math.max(0, Math.min(1, this._cfg.smooth_overlap ?? 1));
+      const fade = Math.floor(this._timeout / (2 - overlap));
+      const delay = Math.floor(fade * (1 - overlap));
+      return { fadeMs: fade, delayMs: delay };
+    }
+    const fade = this._cfg.transition_time ?? Math.floor(this._timeout * 0.4);
+    return { fadeMs: fade, delayMs: fade };
   }
   private get _activeOpacity(): string {
     const v = this._cfg.radar_opacity;
@@ -217,6 +245,28 @@ export class RadarPlayer {
 
   private _stopLoop(): void {
     this._loopGen++;
+    // Force a clean single-layer-visible state. The cushion-cleanup
+    // transitionend listener registered by _showSlot may not fire (or
+    // may fire after the user has paused), so we snap here too: the
+    // current slot at active opacity, every other slot at 0.
+    this._settleVisibility();
+  }
+
+  // Snap to a clean state where only _prev1Slot (the most-recently-
+  // shown frame) is visible at the user's radar_opacity. Used when
+  // pausing the loop so the user doesn't see the cushion `prev1` of
+  // the previous tick still at opacity 1 underneath the current.
+  private _settleVisibility(): void {
+    const current = this._prev1Slot;
+    const active = this._activeOpacity;
+    for (let s = 0; s < this._loadedSlots.length; s++) {
+      const fi = this._loadedSlots[s];
+      const layer = this._radarImage[fi];
+      const el = layer && (layer as any).getContainer?.() as HTMLElement | undefined;
+      if (!el) continue;
+      el.style.transition = 'none';
+      el.style.opacity = (s === current) ? active : '0';
+    }
   }
 
   /** Start (or restart) the frame loop, optionally jumping to a specific slot. */
@@ -260,24 +310,41 @@ export class RadarPlayer {
   private _showSlot(slot: number, opts?: { snap?: boolean }): void {
     const n = this._loadedSlots.length;
     if (n === 0 || slot < 0 || slot >= n) return;
-    const fade = opts?.snap ? 0 : this._fadeMs;
+    const timing = opts?.snap
+      ? { fadeMs: 0, delayMs: 0 }
+      : this._crossfadeTiming();
+    const fade = timing.fadeMs;
+    const fadeOutDelay = timing.delayMs;
     const transition = fade > 0 ? `opacity ${fade}ms ease-in-out` : 'none';
     const active = this._activeOpacity;
 
-    // Three-layer chain (see _prev1Slot / _prev2Slot field comments). Each
-    // call shifts the chain by one — the just-arrived `slot` becomes the
-    // new top, the prior `_prev1Slot` slides into the "fully visible
-    // underneath" role, and the prior `_prev2Slot` is the one that's
-    // already faded out (or about to). At the same time, the layer that
-    // WAS fully visible last call (`_prev1Slot`) must now begin fading
-    // OUT, since on the next call it'll have no special slot in the chain.
+    // Two-slot animation model:
+    //   - `slot` (new): snaps to opacity 0 at the new highest z-index,
+    //     then fades 0 → active over `fade` ms.
+    //   - `prev1` (the previous current, captured below): kicks off a
+    //     DELAYED fade-out — `transition-delay: fade` ms means it stays
+    //     at active for `fade` ms (covering transparent pixels of the
+    //     new layer during its fade-in), then fades 1 → 0 over `fade` ms.
+    //   - Older slots: trusted to be already at 0 (or finishing their
+    //     own delayed fade-out from a previous tick, which we don't
+    //     interrupt — letting it complete keeps motion smooth even when
+    //     transition_time approaches frame_delay).
     //
-    // For snap mode we skip the chain logic and just hard-set every
-    // layer's opacity — the old chain becomes meaningless after a jump.
+    // Cycle behaviour:
+    //   - During the first `fade` ms of a tick: new fading in, prev1
+    //     held at active. Two visible layers (no alpha dip — z-stack).
+    //   - During the next `fade` ms: new fully on top, prev1 fading out.
+    //     Two visible layers (one fading).
+    //   - From `2*fade` ms until the next tick: only the new is visible.
+    //     Single layer for `frame_delay - 2*fade` ms.
+    //
+    // When fade is 0 (animations off / snap mode), there's no transition
+    // to delay, so the chain logic collapses: snap new to active, snap
+    // all others to 0. Single layer always visible.
     this._zCounter++;
     const newZ = 100 + this._zCounter;
-    const prev1 = this._prev1Slot;   // currently-fully-visible
-    const prev2 = this._prev2Slot;   // currently-fading-out (or already 0)
+    const prev1 = this._prev1Slot;
+    const useChain = fade > 0;
 
     for (let s = 0; s < n; s++) {
       const fi = this._loadedSlots[s];
@@ -286,40 +353,37 @@ export class RadarPlayer {
       if (!el) continue;
 
       if (s === slot) {
-        // The newest frame: snap to 0 at high z, then transition in.
+        // New: snap to 0 at the new highest z, then fade (or snap) in.
         el.style.zIndex = String(newZ);
         el.style.transition = 'none';
         el.style.opacity = '0';
-        // Reflow before changing back, or the browser coalesces both
-        // writes and skips the transition.
+        // Forced reflow before re-assigning — without this the browser
+        // coalesces the two opacity writes and skips the transition.
         // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         void el.offsetHeight;
         el.style.transition = transition;
         el.style.opacity = active;
-      } else if (!opts?.snap && s === prev1) {
-        // Was the newest last call; now the "fully in" middle of the
-        // sandwich. Stays at active opacity for this entire transition.
-        // (Nothing to animate — just make sure transition is none so
-        // a stray previous transition doesn't bleed in.)
-        el.style.transition = 'none';
-        el.style.opacity = active;
-      } else if (!opts?.snap && s === prev2) {
-        // Was the "fully in" last call; now fades OUT during this call's
-        // fade duration so old data dissolves smoothly instead of
-        // snapping. Browser handles the active→0 transition.
-        el.style.transition = transition;
+      } else if (useChain && s === prev1) {
+        // Just-promoted previous current: delayed fade-out. The
+        // `transition-delay` (the second time value) holds the layer
+        // at active opacity until the delay elapses, then begins the
+        // fade-out. In regular mode delay == fade duration so the
+        // fade-out starts AT fade-in completion (sequential). In smooth
+        // mode delay is 75% of fade duration — the fade-out starts
+        // before fade-in finishes, creating a brief overlap window
+        // where the brightness composite stays close to constant.
+        el.style.transition = `opacity ${fade}ms ease-in-out ${fadeOutDelay}ms`;
         el.style.opacity = '0';
-      } else {
-        // Anything older — hidden, no animation.
+      } else if (!useChain) {
+        // Snap mode / fade=0: every non-current slot snaps to 0
+        // immediately so we never see two layers at opacity 1.
         el.style.transition = 'none';
         el.style.opacity = '0';
       }
+      // useChain && older: don't touch. Their delayed fade-out from a
+      // previous tick is either still finishing or already at 0.
     }
 
-    // Shift the chain. After a snap the chain is broken (no smooth
-    // continuity from before the snap), so reset prev2 — there's no
-    // legitimate "two ago" to fade out on the next call.
-    this._prev2Slot = opts?.snap ? -1 : prev1;
     this._prev1Slot = slot;
 
     const fi = this._loadedSlots[slot];
@@ -411,7 +475,6 @@ export class RadarPlayer {
     // Reset crossfade state — stale prev/z counters would point at slots
     // that no longer exist after a teardown + re-init.
     this._prev1Slot = -1;
-    this._prev2Slot = -1;
     this._zCounter = 0;
   }
 

@@ -86,7 +86,9 @@
       "animated_transitions": "Animerte overganger",
       "transition_time": "Overgangstid (ms)",
       "transition_time_helper": "Standard: 40 % av bildeforsinkelse — maks: bildeforsinkelse",
-      "smooth_animation": "Jevn animasjon (kontinuerlig overgang)"
+      "smooth_animation": "Jevn animasjon (kontinuerlig overgang)",
+      "smooth_overlap": "Overgangsoverlapping",
+      "smooth_overlap_helper": "Kun jevn modus. 0 = sekvensiell (ingen lysstyrkesvikt, bilde holdt). 1 = samtidig (kort svikt midt i overgangen). Standard: 1"
     },
     "appearance": {
       "height": "Høyde",

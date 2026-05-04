@@ -323,6 +323,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             .configValue=${'transition_time'}
             @input=${this._valueChangedNumber}
             helper=${localize('editor.animation.transition_time_helper')}
+            ?disabled=${config.smooth_animation === true}
           ></ha-textfield>
           <label>
             <ha-switch
@@ -332,6 +333,16 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             ></ha-switch>
             <span>${localize('editor.animation.smooth_animation')}</span>
           </label>
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ number: { min: 0, max: 1, step: 0.05, mode: 'slider' } }}
+            .value=${config.smooth_overlap ?? 1}
+            .label=${localize('editor.animation.smooth_overlap')}
+            .helper=${localize('editor.animation.smooth_overlap_helper')}
+            .configValue=${'smooth_overlap'}
+            .disabled=${config.smooth_animation !== true}
+            @value-changed=${this._handleSelectorChanged}
+          ></ha-selector>
         ` : ''}
 
         <!-- APPEARANCE -->

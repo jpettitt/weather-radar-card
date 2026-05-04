@@ -87,7 +87,8 @@ All options can be configured using the GUI editor — there is no need to edit 
 | restart_delay        | number          | **Optional** | Extra milliseconds to hold the last frame before looping                                                                                                                                                                                                     | `1000`                                |
 | animated_transitions | boolean         | **Optional** | Enable crossfade transitions between frames                                                                                                                                                                                                                  | `true`                                |
 | transition_time      | number          | **Optional** | Crossfade duration in ms. Default is 40% of frame_delay                                                                                                                                                                                                      | auto                                  |
-| smooth_animation     | boolean         | **Optional** | When `true`, the crossfade fully spans the inter-frame interval — the radar appears to flow continuously instead of stepping. Overrides `transition_time`.                                                                                                   | `false`                               |
+| smooth_animation     | boolean         | **Optional** | When `true`, the crossfade auto-calibrates so the full cycle equals `frame_delay` — the radar appears to flow continuously instead of stepping. Overrides `transition_time`.                                                                                 | `false`                               |
+| smooth_overlap       | number          | **Optional** | Cross-fade overlap fraction when `smooth_animation: true`. `0` = sequential (no brightness dip; previous frame held at full opacity, then fades out). `1` = fully simultaneous (brief mid-transition brightness dip). Tune for your basemap.                 | `1`                                   |
 | radar_opacity        | number          | **Optional** | Opacity of the active radar frame (0.1–1.0). Lower values let more of the basemap show through                                                                                                                                                               | `1.0`                                 |
 | show_snow            | boolean         | **Optional** | Include snow in the precipitation display (RainViewer only)                                                                                                                                                                                                  | `false`                               |
 | show_color_bar       | boolean         | **Optional** | Show the radar colour scale bar (per-source palette: RainViewer universal-blue, NWS reflectivity for NOAA, DWD precipitation gradient for DWD)                                                                                                               | `true`                                |
@@ -153,15 +154,33 @@ The frame timestamp uses the browser's locale via `Intl.DateTimeFormat`, so 12 h
 
 **Crossfade (animated_transitions: true):**
 
-The new frame is placed on top of the previous one with a higher z-index, snaps to opacity `0`, then fades up to `1` over `transition_time` milliseconds with `ease-in-out`. The previous frame stays at opacity `1` underneath — once the new one reaches full opacity it fully covers the previous frame. This avoids the alpha-compositing dip that a symmetric outgoing-1→0 / incoming-0→1 crossfade would produce: at mid-fade two layers each at opacity `0.5` only compose to ~`0.75` visibility, leaving 25% of the basemap showing through and producing a visible "pulse" against light basemaps.
+A two-slot crossfade. The new frame is placed on top of the previous one with a higher z-index, snaps to opacity `0`, then fades up to `radar_opacity` over `transition_time` ms with `ease-in-out`. The previous frame (the "cushion") stays at full opacity for `transition_time` ms — covering any transparent pixels in the new frame's tiles during the fade-in — then begins its own fade out over the next `transition_time` ms via CSS `transition-delay`. Older frames are left untouched (already at `0`). This avoids the alpha-compositing dip that a symmetric outgoing-1→0 / incoming-0→1 crossfade would produce: at mid-fade two layers each at opacity `0.5` only compose to ~`0.75` visibility, leaving 25% of the basemap showing through and producing a visible "pulse" against light basemaps.
 
-**Continuous animation (smooth_animation: true):**
+**Smooth animation (smooth_animation: true):**
 
-Sets the crossfade duration to the full inter-frame interval (`frame_delay`), so each transition is still in progress when the next begins — the radar appears to flow continuously instead of stepping. Overrides `transition_time`.
+Auto-calibrates the fade duration so the full crossfade cycle (fade-in + fade-out, possibly overlapping) equals `frame_delay`. Each transition is still in progress when the next begins, so the radar appears to flow continuously instead of stepping. Overrides `transition_time`.
+
+The relative timing of the two fades is controlled by `smooth_overlap` (`0`–`1`):
+
+| Value         | Behaviour                                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `0`           | Sequential — previous frame held at full opacity until the new frame is fully in, then fades out. No brightness dip.   |
+| `0.5`         | 50% overlap — fade-out begins halfway through fade-in.                                                                 |
+| `1` (default) | Fully simultaneous — both fades run together. Brief mid-transition brightness dip but the smoothest motion.            |
+
+Tune for your basemap: lighter bases benefit from lower `smooth_overlap` to avoid pulsing.
+
+**Loop boundary snap:**
+
+When the loop wraps from the last frame back to the first after `restart_delay`, the transition is a hard cut rather than a fade. The pause has already broken perceived continuity, so a smooth crossfade across the loop reads as "time ran backwards". A snap reads as "the loop restarted".
 
 **Hard cut (animated_transitions: false):**
 
-Opacity changes are instant — no transition property is applied.
+Opacity changes are instant — no transition property is applied. Each frame snaps in / out.
+
+**Pause settles state:**
+
+When playback pauses (manual stop, navigation, off-screen, tab hidden), the layer stack is settled to a single visible layer at `radar_opacity` with all other slots forced to `0`. This prevents stale CSS transitions from leaving a "trail" if the user later changes animation settings.
 
 **Automatic pause:**
 

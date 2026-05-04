@@ -87,7 +87,9 @@
       "animated_transitions": "Animierte Übergänge",
       "transition_time": "Übergangsdauer (ms)",
       "transition_time_helper": "Standard: 40 % der Bildverzögerung — max: Bildverzögerung",
-      "smooth_animation": "Sanfte Animation (kontinuierliche Überblendung)"
+      "smooth_animation": "Sanfte Animation (kontinuierliche Überblendung)",
+      "smooth_overlap": "Überblendungsüberlappung",
+      "smooth_overlap_helper": "Nur im Sanftmodus. 0 = sequentiell (kein Helligkeitsabfall, Bild gehalten). 1 = gleichzeitig (kurzer Helligkeitsabfall in der Mitte). Standard: 1"
     },
     "appearance": {
       "height": "Höhe",

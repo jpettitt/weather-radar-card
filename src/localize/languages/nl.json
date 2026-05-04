@@ -86,7 +86,9 @@
       "animated_transitions": "Geanimeerde overgangen",
       "transition_time": "Overgangstijd (ms)",
       "transition_time_helper": "Standaard: 40 % van frame-vertraging — max: frame-vertraging",
-      "smooth_animation": "Vloeiende animatie (doorlopende overgang)"
+      "smooth_animation": "Vloeiende animatie (doorlopende overgang)",
+      "smooth_overlap": "Overgangsoverlap",
+      "smooth_overlap_helper": "Alleen vloeiende modus. 0 = opeenvolgend (geen helderheidsdaling, frame vastgehouden). 1 = gelijktijdig (korte daling halverwege overgang). Standaard: 1"
     },
     "appearance": {
       "height": "Hoogte",

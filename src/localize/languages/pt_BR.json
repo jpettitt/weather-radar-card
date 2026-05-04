@@ -86,7 +86,9 @@
       "animated_transitions": "Transições animadas",
       "transition_time": "Duração da transição (ms)",
       "transition_time_helper": "Padrão: 40 % do atraso entre quadros — máx: atraso entre quadros",
-      "smooth_animation": "Animação suave (transição contínua)"
+      "smooth_animation": "Animação suave (transição contínua)",
+      "smooth_overlap": "Sobreposição da transição",
+      "smooth_overlap_helper": "Apenas no modo suave. 0 = sequencial (sem queda de brilho, quadro mantido). 1 = simultâneo (breve queda no meio da transição). Padrão: 1"
     },
     "appearance": {
       "height": "Altura",

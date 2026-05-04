@@ -86,7 +86,9 @@
       "animated_transitions": "Transitions animées",
       "transition_time": "Durée de transition (ms)",
       "transition_time_helper": "Par défaut : 40 % du délai entre images — max : délai entre images",
-      "smooth_animation": "Animation fluide (fondu continu)"
+      "smooth_animation": "Animation fluide (fondu continu)",
+      "smooth_overlap": "Chevauchement du fondu",
+      "smooth_overlap_helper": "Mode fluide uniquement. 0 = séquentiel (pas de baisse de luminosité, image maintenue). 1 = simultané (brève baisse en milieu de transition). Par défaut : 1"
     },
     "appearance": {
       "height": "Hauteur",

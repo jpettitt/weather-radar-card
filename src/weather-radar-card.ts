@@ -124,8 +124,58 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (config.height && config.square_map) {
       console.warn("Weather Radar Card: Both 'height' and 'square_map' configured. height takes priority.");
     }
+    const oldConfig = this._config;
     this._config = this._migrateConfig(config);
-    if (this._map) this._teardown();
+    // Any structural change → full reset. Stale CSS-transition state on
+    // radar layers from the previous animation regime is the cleanest to
+    // wipe by destroying the map and rebuilding. The exception is the
+    // back-propagated map view (center_latitude / center_longitude /
+    // zoom_level): the user is mid-pan/zoom and a teardown would interrupt
+    // them. Ignore those keys for the diff.
+    if (this._map && oldConfig && this._isOnlyViewBackpropChange(oldConfig, this._config)) {
+      // Direct YAML edits of lat/lon/zoom still need to move the map. Skip
+      // when the live view already matches (the back-prop case), otherwise
+      // setView would re-fire moveend and bounce another config update.
+      this._syncMapViewIfNeeded();
+      return;
+    }
+    if (this._map) {
+      this._teardown();
+      this._initMap();
+    }
+  }
+
+  private _syncMapViewIfNeeded(): void {
+    if (!this._map || !this._config) return;
+    const isMobile = isMobileDevice();
+    const haLat = this.hass?.config?.latitude ?? 0;
+    const haLon = this.hass?.config?.longitude ?? 0;
+    const target = resolveCoordinatePair(
+      getCoordinateConfig(this._config.center_latitude, undefined, isMobile),
+      getCoordinateConfig(this._config.center_longitude, undefined, isMobile),
+      haLat, haLon, this.hass,
+    );
+    const targetZoom = this._config.zoom_level ?? 7;
+    const current = this._map.getCenter();
+    const r4 = (n: number): number => Math.round(n * 10000) / 10000;
+    if (r4(current.lat) === r4(target.lat)
+      && r4(current.lng) === r4(target.lon)
+      && this._map.getZoom() === targetZoom) return;
+    this._map.setView([target.lat, target.lon], targetZoom);
+  }
+
+  private _isOnlyViewBackpropChange(a: WeatherRadarCardConfig, b: WeatherRadarCardConfig): boolean {
+    const VIEW_KEYS = new Set(['center_latitude', 'center_longitude', 'zoom_level']);
+    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
+    let changed = false;
+    for (const k of keys) {
+      const av = JSON.stringify((a as Record<string, unknown>)[k]);
+      const bv = JSON.stringify((b as Record<string, unknown>)[k]);
+      if (av === bv) continue;
+      if (!VIEW_KEYS.has(k)) return false;
+      changed = true;
+    }
+    return changed;
   }
 
   private _migrateConfig(config: WeatherRadarCardConfig): WeatherRadarCardConfig {
@@ -170,9 +220,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._pendingCenter = null;
     }
     if (!this._map && this._config) {
-      this._initMap();
-    } else if (changedProps.has('_config') && this._map) {
-      this._teardown();
       this._initMap();
     } else if (changedProps.has('hass') && this._map) {
       // HA dark-mode flip can change the effective map style — rebuild if so.
