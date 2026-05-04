@@ -63,6 +63,14 @@
       "zoom_level": "Úroveň priblíženia",
       "zoom_default": "Predvolené (5)"
     },
+    "time_range": {
+      "past": "Minulosť",
+      "forecast": "Predpoveď",
+      "forecast_off": "Vypnuté",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} snímok v intervaloch {interval} min",
+      "helper_stride": "≈ {n} snímok, 1 za {stride} min (krok YAML)"
+    },
     "location": {
       "centre_latitude": "Zemepisná šírka stredu",
       "centre_longitude": "Zemepisná dĺžka stredu",

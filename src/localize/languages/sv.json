@@ -63,6 +63,14 @@
       "zoom_level": "Zoomnivå",
       "zoom_default": "Standard (5)"
     },
+    "time_range": {
+      "past": "Förflutet",
+      "forecast": "Prognos",
+      "forecast_off": "Av",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} bilder med {interval}-min intervall",
+      "helper_stride": "≈ {n} bilder, 1 per {stride} min (YAML-steg)"
+    },
     "location": {
       "centre_latitude": "Centrums latitud",
       "centre_longitude": "Centrums longitud",

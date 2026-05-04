@@ -63,6 +63,14 @@
       "zoom_level": "Nível de zoom",
       "zoom_default": "Padrão (5)"
     },
+    "time_range": {
+      "past": "Passado",
+      "forecast": "Previsão",
+      "forecast_off": "Desligado",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} quadros em intervalos de {interval} min",
+      "helper_stride": "≈ {n} quadros a 1 por {stride} min (passo YAML)"
+    },
     "location": {
       "centre_latitude": "Latitude do centro",
       "centre_longitude": "Longitude do centro",

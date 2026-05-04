@@ -18,6 +18,14 @@ export interface SourceCaps {
   intervalMin: number;
   /** Hard upper limit on past_minutes that the API can serve. */
   maxPastMin: number;
+  /**
+   * UX-only cap for the editor's preset dropdown — typically lower
+   * than maxPastMin to avoid the perf cost of huge ranges (DWD's
+   * 84h × 12 frames/h is the canonical example). YAML configs can
+   * still reach maxPastMin; the editor surfaces those as a
+   * "(YAML)" entry at the bottom of the dropdown.
+   */
+  editorMaxPastMin: number;
   /** Hard upper limit on forecast_minutes (0 = source has no forecast). */
   maxForecastMin: number;
   /** Default past_minutes when nothing is configured. */
@@ -30,6 +38,7 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
   RainViewer: {
     intervalMin: 10,
     maxPastMin: 120,        // RainViewer free tier returns at most 13 frames × 10 min
+    editorMaxPastMin: 120,  // = API max (no perf concern at 13 frames)
     maxForecastMin: 0,
     defaultPastMin: 60,
     defaultForecastMin: 0,
@@ -37,6 +46,7 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
   NOAA: {
     intervalMin: 5,
     maxPastMin: 240,        // mapservices.weather.noaa.gov serves the past four hours
+    editorMaxPastMin: 240,  // = API max
     maxForecastMin: 0,
     defaultPastMin: 60,
     defaultForecastMin: 0,
@@ -44,6 +54,7 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
   DWD: {
     intervalMin: 5,
     maxPastMin: 5040,       // GetCapabilities advertises ~84h of history
+    editorMaxPastMin: 720,  // 12h — beyond this, frame counts hurt; YAML escape hatch
     maxForecastMin: 120,    // Radar_wn-product_*_ger carries +2h nowcast
     defaultPastMin: 120,    // matches the DWD WarnWetter app
     defaultForecastMin: 120,

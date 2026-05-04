@@ -6,7 +6,19 @@ import { WeatherRadarCardConfig, CoordinateConfig, Marker } from './types';
 import { migrateConfig } from './marker-utils';
 import { localize } from './localize/localize';
 import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-categories';
+import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
 import { customElement, property, state } from 'lit/decorators.js';
+
+// Curated past-time presets in minutes. Editor filters to ≤ source's
+// editorMaxPastMin. 20/40 give finer-grained control at the small end
+// where users care most; the upper end skips toward larger steps.
+const PAST_PRESETS_MIN = [20, 40, 60, 120, 240, 360, 720, 1440, 2880, 4320, 5040];
+
+function formatDuration(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = min / 60;
+  return Number.isInteger(h) ? `${h} h` : `${h.toFixed(1)} h`;
+}
 
 // Subset of HA's device_class → default icon mapping.
 // Sourced from the HA frontend (entity_components/*) — only the classes likely
@@ -146,6 +158,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           .configValue=${'data_source'}
           @value-changed=${this._handleSelectorChanged}
         ></ha-selector>
+        ${this._renderTimeRangeFields(config)}
         <div class="side-by-side">
           <ha-selector
             .hass=${this.hass}
@@ -317,13 +330,6 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
         <!-- ANIMATION -->
         <h3 class="section-header">${localize('editor.section.animation')}</h3>
         <div class="side-by-side">
-          <ha-textfield
-            label=${localize('editor.animation.frame_count')}
-            .value=${config.frame_count ? config.frame_count : ''}
-            .configValue=${'frame_count'}
-            @input=${this._valueChangedNumber}
-            helper=${localize('editor.animation.default_5')}
-          ></ha-textfield>
           <ha-textfield
             label=${localize('editor.animation.frame_delay')}
             .value=${config.frame_delay ? config.frame_delay : ''}
@@ -810,6 +816,96 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     this._helpers = await (window as any).loadCardHelpers();
   }
 
+  // Render the past + (optional) forecast time-range dropdowns plus a
+  // helper line showing derived frame count. Only the past row is
+  // unconditional; the forecast row is omitted entirely (not greyed)
+  // for sources where maxForecastMin === 0, so RainViewer / NOAA users
+  // never see a row that doesn't apply.
+  private _renderTimeRangeFields(config: WeatherRadarCardConfig): TemplateResult {
+    const caps = getSourceCaps(config.data_source);
+    const range = getEffectiveTimeRange(config);
+
+    const pastOptions = this._buildPastOptions(config.past_minutes, caps.editorMaxPastMin);
+    const pastValue = String(config.past_minutes ?? caps.defaultPastMin);
+
+    const forecastOptions = caps.maxForecastMin > 0
+      ? this._buildForecastOptions(config.forecast_minutes, caps.maxForecastMin)
+      : null;
+    const forecastValue = caps.maxForecastMin > 0
+      ? String(config.forecast_minutes ?? caps.defaultForecastMin)
+      : '';
+
+    // Helper text: "≈ N frames at X-min intervals", flagged when a
+    // YAML-only stride override is in effect so the user knows the
+    // editor isn't the source of truth for that knob.
+    const isStrideOverride = range.strideMin !== caps.intervalMin;
+    const helper = isStrideOverride
+      ? localize('editor.time_range.helper_stride')
+        .replace('{n}', String(range.frameCount))
+        .replace('{stride}', String(range.strideMin))
+      : localize('editor.time_range.helper')
+        .replace('{n}', String(range.frameCount))
+        .replace('{interval}', String(caps.intervalMin));
+
+    return html`
+      <div class="side-by-side">
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ select: { options: pastOptions } }}
+          .value=${pastValue}
+          .label=${localize('editor.time_range.past')}
+          .configValue=${'past_minutes'}
+          @value-changed=${this._handleSelectorNumberChanged}
+        ></ha-selector>
+        ${forecastOptions ? html`
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ select: { options: forecastOptions } }}
+            .value=${forecastValue}
+            .label=${localize('editor.time_range.forecast')}
+            .configValue=${'forecast_minutes'}
+            @value-changed=${this._handleSelectorNumberChanged}
+          ></ha-selector>
+        ` : ''}
+      </div>
+      <div class="time-range-helper">${helper}</div>
+    `;
+  }
+
+  // Builds the past-time dropdown options from PAST_PRESETS_MIN,
+  // filtered to ≤ editor cap. If the configured raw value isn't
+  // in the preset list (either > cap or just an off-grid YAML value),
+  // appends it as a "(YAML)" entry at the bottom so the user sees their
+  // actual current value rather than a wrong display.
+  private _buildPastOptions(rawValue: number | undefined, editorCap: number): { value: string; label: string }[] {
+    const opts = PAST_PRESETS_MIN
+      .filter(m => m <= editorCap)
+      .map(m => ({ value: String(m), label: formatDuration(m) }));
+    if (rawValue !== undefined && !PAST_PRESETS_MIN.includes(rawValue)) {
+      opts.push({
+        value: String(rawValue),
+        label: `${formatDuration(rawValue)} ${localize('editor.time_range.yaml_suffix')}`,
+      });
+    }
+    return opts;
+  }
+
+  // Forecast presets: Off + each whole hour up to the source's max.
+  // (Currently only DWD: 0 / 60 / 120.)
+  private _buildForecastOptions(rawValue: number | undefined, maxMin: number): { value: string; label: string }[] {
+    const opts: { value: string; label: string }[] = [
+      { value: '0', label: localize('editor.time_range.forecast_off') },
+    ];
+    for (let m = 60; m <= maxMin; m += 60) opts.push({ value: String(m), label: formatDuration(m) });
+    if (rawValue !== undefined && rawValue !== 0 && !opts.some(o => Number(o.value) === rawValue)) {
+      opts.push({
+        value: String(rawValue),
+        label: `${formatDuration(rawValue)} ${localize('editor.time_range.yaml_suffix')}`,
+      });
+    }
+    return opts;
+  }
+
   private _handleSelectorChanged(ev: CustomEvent): void {
     const configValue = (ev.target as any).configValue;
     const value = ev.detail.value;
@@ -1007,6 +1103,11 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       font-size: 0.85em;
       color: var(--secondary-text-color);
       margin: 0 0 12px 0;
+    }
+    .time-range-helper {
+      font-size: 0.8em;
+      color: var(--secondary-text-color);
+      margin: -8px 0 16px 0;
     }
     .subsection {
       margin-left: 16px;

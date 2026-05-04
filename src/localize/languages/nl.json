@@ -63,6 +63,14 @@
       "zoom_level": "Zoomniveau",
       "zoom_default": "Standaard (5)"
     },
+    "time_range": {
+      "past": "Verleden",
+      "forecast": "Voorspelling",
+      "forecast_off": "Uit",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} frames met {interval}-min interval",
+      "helper_stride": "≈ {n} frames, 1 per {stride} min (YAML-stap)"
+    },
     "location": {
       "centre_latitude": "Middenbreedtegraad",
       "centre_longitude": "Middenlengtegraad",

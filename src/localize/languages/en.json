@@ -56,7 +56,7 @@
       "radar_source": "Radar Source",
       "source_rainviewer": "RainViewer (Global)",
       "source_noaa": "NOAA/NWS (US Only — Experimental)",
-      "source_dwd": "DWD (Germany — 5 min, +2h forecast)",
+      "source_dwd": "DWD (Germany — 5 min resolution)",
       "map_style": "Map Style",
       "style_auto": "Auto (follows OS dark/light mode)",
       "style_light": "CARTO Light (English only)",
@@ -66,6 +66,14 @@
       "style_osm": "OpenStreetMap (Localized)",
       "zoom_level": "Zoom Level",
       "zoom_default": "Default (5)"
+    },
+    "time_range": {
+      "past": "Past Time",
+      "forecast": "Forecast Time",
+      "forecast_off": "Off",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} frames at {interval}-min intervals",
+      "helper_stride": "≈ {n} frames at 1-frame-per-{stride}-min (YAML stride)"
     },
     "location": {
       "centre_latitude": "Centre Latitude",

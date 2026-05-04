@@ -63,6 +63,14 @@
       "zoom_level": "Poziom powiększenia",
       "zoom_default": "Domyślnie (5)"
     },
+    "time_range": {
+      "past": "Przeszłość",
+      "forecast": "Prognoza",
+      "forecast_off": "Wyłącz",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} klatek co {interval} min",
+      "helper_stride": "≈ {n} klatek, 1 na {stride} min (krok YAML)"
+    },
     "location": {
       "centre_latitude": "Szerokość geograficzna środka",
       "centre_longitude": "Długość geograficzna środka",
