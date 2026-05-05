@@ -115,7 +115,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // ./rate-limiters so the sliding-window count survives card teardown
   // (config edit) AND is shared across multiple card instances on the
   // dashboard. See that file for rate choices.
-  private _dwdCoverageWarned = false;
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -477,16 +476,10 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._darkModeQuery.addEventListener('change', this._darkModeHandler);
     }
 
-    // Warn once if the HA location is outside DWD's coverage (Germany + ~50–150 km buffer).
-    if (cfg.data_source === 'DWD' && !this._dwdCoverageWarned && (haLat !== 0 || haLon !== 0)) {
-      const inside = haLat >= 46 && haLat <= 56 && haLon >= 5 && haLon <= 16;
-      if (!inside) {
-        console.warn(
-          `[weather-radar-card] DWD selected but HA location (${haLat.toFixed(2)}, ${haLon.toFixed(2)}) is outside DWD coverage; the map will show only no-data.`,
-        );
-      }
-      this._dwdCoverageWarned = true;
-    }
+    // DWD-outside-coverage warning is surfaced as a status banner via
+    // getRegionWarnings() in render() — a single visible UI cue users will
+    // actually see, replacing the earlier one-shot console.warn that only
+    // helped developers.
 
     this._player = new RadarPlayer({
       map: this._map,

@@ -113,3 +113,40 @@ describe('getRegionWarnings — country variants', () => {
     },
   );
 });
+
+describe('getRegionWarnings — DWD coverage', () => {
+  it.each(['DE', 'NL', 'BE', 'LU', 'FR', 'CH', 'AT', 'CZ', 'PL', 'DK'])(
+    'shows no DWD banner inside coverage country %s',
+    (country) => {
+      expect(getRegionWarnings(hassFor(country), cfg({ data_source: 'DWD' })))
+        .toEqual([]);
+    },
+  );
+
+  it.each(['US', 'GB', 'ES', 'IT', 'AU', 'JP'])(
+    'shows the DWD banner outside coverage country %s',
+    (country) => {
+      const [msg, ...rest] = getRegionWarnings(hassFor(country), cfg({ data_source: 'DWD' }));
+      expect(rest).toEqual([]);
+      expect(msg).toMatch(/DWD/);
+    },
+  );
+
+  it('DWD selection is case-insensitive', () => {
+    expect(getRegionWarnings(hassFor('GB'), cfg({ data_source: 'dwd' }))).toHaveLength(1);
+    expect(getRegionWarnings(hassFor('GB'), cfg({ data_source: 'DwD' }))).toHaveLength(1);
+  });
+
+  it('US-only banner and DWD banner stack independently when both apply', () => {
+    // Hypothetical: alerts on (US-only) + DWD selected, country GB. Both
+    // are enabled so both banners surface — they describe different
+    // regions and shouldn't be combined into one sentence.
+    const result = getRegionWarnings(
+      hassFor('GB'),
+      cfg({ show_alerts: true, data_source: 'DWD' }),
+    );
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatch(/NWS/);
+    expect(result[1]).toMatch(/DWD/);
+  });
+});

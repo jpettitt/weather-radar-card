@@ -12,10 +12,14 @@ import { localize } from './localize/localize';
 // 3166-1 alpha-2 code) and don't try to handle territories or coastal/marine
 // edge cases. False positives (e.g. a user in PR seeing the US-only message)
 // are preferable to false negatives that would silently fail to load data.
-//
-// TODO: once PR #114 (DWD) merges, add a warning when data_source === 'DWD'
-// and country isn't DE or an immediate neighbour (NL, BE, FR, CH, AT, CZ, PL).
-// See docs/nws-alerts-feature-design.md / docs/wildfire-feature-design.md for context.
+
+// DWD's radar network covers Germany plus a buffer that overlaps immediate
+// neighbours. Treat any of these as "in coverage" so users in border regions
+// who legitimately see DWD data don't get a noisy banner.
+const DWD_COVERAGE_COUNTRIES = new Set([
+  'DE', 'NL', 'BE', 'LU', 'FR', 'CH', 'AT', 'CZ', 'PL', 'DK',
+]);
+
 export function getRegionWarnings(
   hass: HomeAssistant | undefined,
   cfg: WeatherRadarCardConfig,
@@ -62,6 +66,16 @@ export function getRegionWarnings(
       const template = localize('ui.region_warning.combined');
       messages.push(template.replace('{features}', joined));
     }
+  }
+
+  // DWD is a separate region (Germany + immediate neighbours). Stand-alone
+  // banner — collapsing it into the US block would read as "X and DWD radar
+  // are US-only", which is wrong. The warning fires for any country outside
+  // DWD_COVERAGE_COUNTRIES so users in e.g. ES or GB selecting DWD see a
+  // visible explanation rather than a silently grey map.
+  if ((cfg.data_source ?? '').toUpperCase() === 'DWD'
+      && !DWD_COVERAGE_COUNTRIES.has(country)) {
+    messages.push(localize('ui.region_warning.dwd_de_only'));
   }
 
   return messages;
