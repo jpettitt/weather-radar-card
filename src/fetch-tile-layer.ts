@@ -90,6 +90,30 @@ function createFetchTile(
   return tile;
 }
 
+// _updateOpacity body shared by FetchTileLayer and FetchWmsTileLayer when
+// animationOwnsOpacity is set. Forces each loaded tile to opacity 1 (skipping
+// Leaflet's 200ms fade) and marks them active. Without active, _pruneTiles
+// treats current-but-not-active tiles as still loading and retains their
+// ancestor levels indefinitely.
+function applyOwnedOpacity(layer: FetchTileLayer | FetchWmsTileLayer): void {
+  const tiles = (layer as any)._tiles as Record<string, { el: HTMLElement; loaded?: number; active?: boolean }> | undefined;
+  if (tiles) {
+    for (const key in tiles) {
+      const tile = tiles[key];
+      if (!tile?.el) continue;
+      tile.el.style.opacity = '1';
+      if (tile.loaded) tile.active = true;
+    }
+  }
+  // .leaflet-fade-anim starts tile-container divs at opacity:0; force to 1.
+  const container = (layer as any)._container as HTMLElement | undefined;
+  if (container) {
+    container.querySelectorAll<HTMLElement>('.leaflet-tile-container').forEach(
+      (el) => { el.style.opacity = '1'; },
+    );
+  }
+}
+
 export class FetchTileLayer extends L.TileLayer {
   _tilePending = 0;
   _tileFailed = 0;
@@ -106,30 +130,12 @@ export class FetchTileLayer extends L.TileLayer {
     return createFetchTile.call(this, coords as Coords, done);
   }
 
-  // Leaflet's _updateOpacity (a) writes container.style.opacity, fighting our CSS
-  // animation, and (b) fades individual tile <img> elements from 0→1 over 200ms.
-  // When animationOwnsOpacity is set we skip (a) but still do (b) — otherwise
-  // every tile stays at opacity:0 permanently.
   _updateOpacity(): void {
     if (!(this.options as FetchTileOptions).animationOwnsOpacity) {
       (L.TileLayer.prototype as any)._updateOpacity?.call(this);
       return;
     }
-    // Set each tile img to fully visible (bypass the 200ms fade-in).
-    const tiles = (this as any)._tiles as Record<string, { el: HTMLElement }> | undefined;
-    if (tiles) {
-      for (const key in tiles) {
-        const tile = tiles[key];
-        if (tile?.el) tile.el.style.opacity = '1';
-      }
-    }
-    // Also ensure tile-container divs are visible (CSS starts them at opacity:0).
-    const container = (this as any)._container as HTMLElement | undefined;
-    if (container) {
-      container.querySelectorAll<HTMLElement>('.leaflet-tile-container').forEach(
-        (el) => { el.style.opacity = '1'; },
-      );
-    }
+    applyOwnedOpacity(this);
   }
 }
 
@@ -163,19 +169,7 @@ export class FetchWmsTileLayer extends L.TileLayer.WMS {
       (L.TileLayer.WMS.prototype as any)._updateOpacity?.call(this);
       return;
     }
-    const tiles = (this as any)._tiles as Record<string, { el: HTMLElement }> | undefined;
-    if (tiles) {
-      for (const key in tiles) {
-        const tile = tiles[key];
-        if (tile?.el) tile.el.style.opacity = '1';
-      }
-    }
-    const container = (this as any)._container as HTMLElement | undefined;
-    if (container) {
-      container.querySelectorAll<HTMLElement>('.leaflet-tile-container').forEach(
-        (el) => { el.style.opacity = '1'; },
-      );
-    }
+    applyOwnedOpacity(this);
   }
 }
 
