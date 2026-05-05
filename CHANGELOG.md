@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Time-range editor (replaces `frame_count`)
 
-- **`past_minutes` / `forecast_minutes` config** — source-agnostic time-range fields that work across all radar sources. The editor renders them as preset dropdowns (`20 min, 40 min, 1 h, 2 h, 4 h, 6 h, 12 h, 24 h, 48 h, 72 h, 84 h`) filtered by per-source caps. RainViewer caps at 2 h; NOAA caps at 2 h (the API advertises 4 h but frames > 2 h come back empty in practice); DWD caps the editor at 12 h (the API serves 84 h via YAML).
+- **`past_minutes` / `forecast_minutes` config** — source-agnostic time-range fields that work across all radar sources. The editor renders them as preset dropdowns filtered by per-source caps: RainViewer and NOAA show `20 / 40 / 60 / 120 min` (cap 2 h — NOAA's API advertises 4 h but frames > 2 h come back empty in practice); DWD shows up to 12 h (`20 min – 12 h`). YAML can reach the API cap (DWD: 84 h, paired with `frame_stride_minutes` to keep the frame count sane).
 - **Forecast Duration field** appears only on sources with a forecast (currently DWD: `Off / 1 h / 2 h`). Hidden in the DOM for RainViewer / NOAA.
 - **`frame_stride_minutes`** — YAML-only escape hatch for users who want very large past windows on DWD without the implied frame count.
 - **`SOURCE_CAPS` table** in `src/source-caps.ts` is the single source of truth for per-source `intervalMin` / `maxPastMin` / `editorMaxPastMin` / `maxForecastMin` / defaults. Adding a new radar source = adding a row.
@@ -61,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - New `docs/wildfire-feature-design.md` and `docs/nws-alerts-feature-design.md` design docs; planning notes moved to `docs/`.
-- README config table includes `past_minutes`, `forecast_minutes`, `show_loading_spinner`, `show_wildfires`, `show_alerts` and the per-overlay knobs.
+- 495-line README split into a slim landing page plus focused docs under `docs/` (Configuration, Data Sources, Hazard Overlays, Markers, Examples, Animation architecture). Options table moved to [`docs/configuration.md`](docs/configuration.md) and now includes `past_minutes`, `forecast_minutes`, `show_loading_spinner`, `show_wildfires`, `show_alerts`, the DWD-only fields, and all per-overlay knobs.
+- `docs/animation.md` rewritten to match the current two-slot + delayed-fade-out model (`_crossfadeTiming()` table, `_settleVisibility()`, dynamic tile size, time-range derivation).
 
 ### Localization
 
@@ -322,8 +323,12 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.3.0...HEAD
-[3.3.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.2...v3.3.0
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.5.0-alpha2...HEAD
+[3.5.0-beta1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.5.0-alpha2...v3.5.0-beta1
+[3.4.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.3.0...v3.4.0
+[3.3.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.2.0-beta...v3.3.0
+[3.2.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.3-beta...v3.2.0-beta
+[3.1.3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.2...v3.1.3-beta
 [3.1.2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.0.2...v3.1.0

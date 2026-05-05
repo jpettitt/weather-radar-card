@@ -59,6 +59,9 @@ Download the files from the [latest release](https://github.com/Makin-Things/wea
             └── home-circle-light.svg
             └── pause.png
             └── play.png
+            └── preview.jpg
+            └── radar-colour-bar-dwd.png
+            └── radar-colour-bar-nws.png
             └── radar-colour-bar-universalblue.png
             └── recenter.png
             └── skip-back.png
