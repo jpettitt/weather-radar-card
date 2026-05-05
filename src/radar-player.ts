@@ -190,15 +190,30 @@ export class RadarPlayer {
   onNavPaused(): void {
     this.navPaused = true;
     this._stopLoop();
-    for (let i = 0; i < this._configFrameCount; i++) this._setSegment(i, 'empty');
-    this._showRateLimitBanner(false);
   }
 
   async onNavSettled(frameCount: number): Promise<void> {
     this.navPaused = false;
-    this._clearLayers();
-    this._configFrameCount = frameCount;
-    await this._initRadar();
+
+    // Full re-init only when state needs rebuilding: initial load not yet
+    // complete, or frame_count changed. Pan, zoom, and programmatic view
+    // changes leave layers attached — Leaflet fetches only the tiles
+    // entering the new viewport.
+    if (!this._radarReady || this._configFrameCount !== frameCount) {
+      this._clearLayers();
+      this._configFrameCount = frameCount;
+      await this._initRadar();
+      return;
+    }
+
+    // _scheduleUpdate's timer keeps running through the pause; if it fired
+    // while navPaused was true it set _doRadarUpdate. Pick that up now.
+    if (this._doRadarUpdate) {
+      this._doRadarUpdate = false;
+      void this._updateRadar();
+    } else if (this.run) {
+      this._startLoop(this._currentSlot);
+    }
   }
 
   onVisibilityHidden(): void {
