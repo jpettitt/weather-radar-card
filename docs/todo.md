@@ -88,21 +88,6 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
-- **HACS icon** ([#126](https://github.com/Makin-Things/weather-radar-card/issues/126)).
-  HACS displays a generic puzzle icon next to the card in its dashboard;
-  no custom icon. Reported by @genericJE. Resolution path: design a
-  256×256 transparent PNG (radar sweep + raindrop concept, or stylised
-  scope rings — whatever reads at the ~40 px size HACS actually
-  renders), then submit a PR to
-  [home-assistant/brands](https://github.com/home-assistant/brands)
-  adding `custom_integrations/weather-radar-card/{icon,icon@2x}.png`.
-  No `hacs.json` change needed; HACS picks it up automatically once
-  brands merges. Optional: also drop a higher-res `logo.png` in this
-  repo for any future tool that falls back to it.
-
-  Touches: art only. No code, no test, no docs (beyond a CHANGELOG line
-  noting "Custom HACS icon"). Worth landing for 3.5 stable.
-
 - **Flip README documentation-index links from `nws-alerts` back to `master` at 3.5 release.**
   All `https://github.com/Makin-Things/weather-radar-card/blob/<branch>/...`
   URLs in `README.md` currently point at `blob/nws-alerts/` because the
@@ -117,6 +102,21 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   master so that no in-flight HACS render of the nws-alerts beta
   README ever loads broken links and so master's README never points
   at a feature branch.
+
+### Investigated, won't pursue
+
+- **Custom HACS icon** ([#126](https://github.com/Makin-Things/weather-radar-card/issues/126)).
+  HACS doesn't render custom icons for Lovelace plugins — verified
+  empirically by checking the HACS frontend tab: zero plugins in the
+  default store carry one, and the
+  [home-assistant/brands](https://github.com/home-assistant/brands) repo
+  path that works for HACS *integrations* (`custom_integrations/<slug>/icon.png`)
+  isn't wired up for the *plugins* category. Submitting to brands would
+  be a no-op until / unless HACS adds the support upstream.
+  Practical workaround that other authors use: prefix the card name in
+  `customCards` with an emoji (e.g. `📡 Weather Radar Card`) — no
+  external PR, guaranteed to render. We've held off on that to keep the
+  card name canonical; revisit if the issue gets attention.
 
 ### Shipped
 
