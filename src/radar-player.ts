@@ -106,6 +106,12 @@ export class RadarPlayer {
   // Toolbar reference (set externally after toolbar is created)
   toolbar: RadarToolbar | null = null;
 
+  // Highest native tile zoom requested in this session. Bumped on zoom-in
+  // via _onZoomEnd, never lowered. Passed as minNativeZoom on each layer
+  // so zoom-out reuses cached high-res tiles instead of fetching at the
+  // lower native zoom.
+  private _pinnedNativeZoom = 0;
+
   constructor(opts: RadarPlayerOptions) {
     this._map = opts.map;
     this._shadowRoot = opts.shadowRoot;
@@ -114,7 +120,29 @@ export class RadarPlayer {
     this._noaaLimiter = opts.noaaLimiter;
     this._dwdLimiter = opts.dwdLimiter;
     this._startWorker();
+    this._pinnedNativeZoom = Math.min(
+      this._map.getZoom(),
+      this._sourceMaxNativeZoom(),
+    );
+    this._map.on('zoomend', this._onZoomEnd);
   }
+
+  private _sourceMaxNativeZoom(): number {
+    // Must match the maxNativeZoom set per source in _createLayer.
+    return (this._cfg.data_source ?? 'RainViewer') === 'DWD' ? 8 : 7;
+  }
+
+  private _onZoomEnd = (): void => {
+    if (!this._map) return;
+    const newPin = Math.min(this._map.getZoom(), this._sourceMaxNativeZoom());
+    if (newPin <= this._pinnedNativeZoom) return;
+    this._pinnedNativeZoom = newPin;
+    // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
+    // option on existing layers is enough, no redraw needed.
+    for (const layer of this._radarImage) {
+      if (layer) (layer.options as any).minNativeZoom = newPin;
+    }
+  };
 
   // ── Config helpers ───────────────────────────────────────────────────────
 
@@ -176,6 +204,7 @@ export class RadarPlayer {
   clear(): void {
     this._stopLoop();
     this._clearLayers();
+    this._map?.off('zoomend', this._onZoomEnd);
     if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
     this._worker?.terminate();
     this._worker = null;
@@ -678,6 +707,7 @@ export class RadarPlayer {
         // mean fewer requests for the same coverage on large maps.
         tileSize,
         zoomOffset,
+        minNativeZoom: this._pinnedNativeZoom,
         // NOAA's 4 km MRMS native; cap to keep upscaled appearance.
         maxNativeZoom: 7 + Math.max(0, -zoomOffset),
         rateLimiter: this._noaaLimiter,
@@ -708,6 +738,7 @@ export class RadarPlayer {
         // count proportionally — see _radarTileSize() for the picker.
         tileSize,
         zoomOffset,
+        minNativeZoom: this._pinnedNativeZoom,
         // DWD's 1 km grid supports zoom 8; bump for larger tiles.
         maxNativeZoom: 8 + Math.max(0, -zoomOffset),
         rateLimiter: this._dwdLimiter,
@@ -723,6 +754,7 @@ export class RadarPlayer {
       detectRetina: false,
       tileSize,
       zoomOffset,
+      minNativeZoom: this._pinnedNativeZoom,
       // RainViewer publishes tiles up to native zoom 7 at 256px;
       // higher native zoom available with bigger tiles.
       maxNativeZoom: 7 + Math.max(0, -zoomOffset),
