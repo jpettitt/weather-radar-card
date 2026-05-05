@@ -88,29 +88,20 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
-- **Time-based playback range instead of frame count.** Today the user
-  configures `frame_count` (number of frames) and `frame_delay` (ms per
-  frame), and the resulting playback duration is implicit:
-  `frame_count × source-specific frame interval`. For RainViewer the
-  frame interval is 10 min, for NOAA 5 min, for DWD 5 min — so "I want
-  the last hour of radar" becomes 6 / 12 / 12 frames depending on the
-  source. Not intuitive, breaks when the user switches sources.
+- **HACS icon** ([#126](https://github.com/Makin-Things/weather-radar-card/issues/126)).
+  HACS displays a generic puzzle icon next to the card in its dashboard;
+  no custom icon. Reported by @genericJE. Resolution path: design a
+  256×256 transparent PNG (radar sweep + raindrop concept, or stylised
+  scope rings — whatever reads at the ~40 px size HACS actually
+  renders), then submit a PR to
+  [home-assistant/brands](https://github.com/home-assistant/brands)
+  adding `custom_integrations/weather-radar-card/{icon,icon@2x}.png`.
+  No `hacs.json` change needed; HACS picks it up automatically once
+  brands merges. Optional: also drop a higher-res `logo.png` in this
+  repo for any future tool that falls back to it.
 
-  Replace `frame_count` with `history_minutes` (default e.g. 60). The
-  card computes the right frame count for the active source's interval.
-  For sources that publish a forecast (currently DWD via
-  `dwd_forecast_hours`, future NWS HRRR / others), also expose
-  `forecast_minutes` — the playback range becomes `[now - history,
-  now + forecast]`. Editor shows two text fields ("History (min)",
-  "Forecast (min)" — the second only when the active source supports
-  forecast); legacy `frame_count` keeps working with a one-release
-  deprecation warning.
-
-  Touches: `WeatherRadarCardConfig`, `RadarPlayer._fetchPaths` for each
-  source, the editor's Animation section, the README config table,
-  migration in `setConfig` (frame_count → history_minutes at the source's
-  default interval). Per-source interval becomes a constant lookup
-  (`SOURCE_FRAME_INTERVAL_MS[ds]`) so the math is consistent.
+  Touches: art only. No code, no test, no docs (beyond a CHANGELOG line
+  noting "Custom HACS icon"). Worth landing for 3.5 stable.
 
 ### Shipped
 
@@ -122,7 +113,18 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - Dynamic map style (Auto) ✅
 - Marker clustering ✅
 - Multi-marker support ✅
-- Wildfire perimeter overlay ✅ — 3.4.0 work, in nws-alerts branch chain
-- NWS watches & warnings overlay ✅ — 3.4.0 work, in nws-alerts branch
-- DWD radar source ✅ — 3.4.0-beta
-- Crossfade alpha-dip fix + smooth_animation ✅ — 3.4.0-beta
+- DWD radar source ✅ — 3.4.0
+- Crossfade alpha-dip fix + smooth_animation ✅ — 3.4.0
+- `smooth_overlap` tunable crossfade overlap + editor mutual gating ✅ — 3.4.0-beta2 / 3.5.0-beta1
+- Wildfire perimeter overlay (US-only) ✅ — 3.5.0-beta1
+- NWS watches & warnings overlay (US-only) ✅ — 3.5.0-beta1
+- Hazard Overlays editor subpage ✅ — 3.5.0-beta1
+- Region-warning utility for non-US installs ✅ — 3.5.0-beta1
+- Time-based playback range (`past_minutes` / `forecast_minutes` / `frame_stride_minutes`) replacing `frame_count` — source-agnostic via SOURCE_CAPS table; auto-migrates legacy configs ✅ — 3.5.0-beta1
+- WYSIWYG map editing (back-prop pan/zoom into editor Lat/Long fields) ✅ — 3.5.0-beta1
+- Build timestamp in console signon (cache-bust verification aid) ✅ — 3.5.0-beta1
+- Loading spinner + `show_loading_spinner` config (contributed by @genericJE, [#124](https://github.com/Makin-Things/weather-radar-card/pull/124)) ✅ — 3.5.0-beta1
+- Now marker on the progress bar (contributed by @genericJE, [#125](https://github.com/Makin-Things/weather-radar-card/pull/125)) ✅ — 3.5.0-beta1
+- Dark / satellite map scale text-shadow fix (contributed by @genericJE, [#123](https://github.com/Makin-Things/weather-radar-card/pull/123)) ✅ — 3.5.0-beta1
+- `npm run build` regenerates `.js.gz` so HA can't serve a stale gzipped bundle ✅ — 3.5.0-beta1
+- Local Docker HA testbed (`npm run ha:up`) replacing the abandoned `.devcontainer/` ✅ — post-3.4.0
