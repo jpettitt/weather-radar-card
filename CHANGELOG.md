@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.5.0-beta1] - 2026-05-04
+## [3.5.0] - 2026-05-05
 
-> First beta cut of the 3.5 line. Two big new US-only overlays (wildfires, NWS watches & warnings), a source-agnostic time-range editor that retires `frame_count`, animation polish, and three quality-of-life contributions from [@genericJE](https://github.com/genericJE). Consolidates the `3.5.0-alpha` and `3.5.0-alpha2` prereleases.
+> Stable cut of the 3.5 line. Two big new US-only overlays (wildfires, NWS watches & warnings), a source-agnostic time-range editor that retires `frame_count`, a DWD-outside-coverage banner, animation polish, three quality-of-life contributions from [@genericJE](https://github.com/genericJE), and a full docs sweep. Consolidates the `3.5.0-alpha`, `3.5.0-alpha2`, and `3.5.0-beta1` prereleases.
 >
-> **US-only data** in the new overlays — see the strong life-safety disclaimers in the README.
+> **US-only data** in the new overlays — see the strong life-safety disclaimers in [docs/overlays.md](docs/overlays.md).
 
 ### Added
 
@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wildfire perimeter overlay** — `show_wildfires: true` overlays active US wildfire perimeters from NIFC's [WFIGS Current Interagency Fire Perimeters](https://data-nifc.opendata.arcgis.com/datasets/nifc::wfigs-current-interagency-fire-perimeters/about) feed. Active fires draw red, fully-contained ones grey. Small incidents render as a fire icon at the centroid; larger ones as a polygon outline. Click any fire for a popup with name, acreage, containment %, discovery date, and a link to NIFC's InciWeb (gated against InciWeb's RSS index so we don't link to 404s). Adaptive 5/30-minute refresh. Filter knobs: `wildfire_min_acres` (default 10), `wildfire_radius_km`, plus colour / fill / refresh overrides.
 - **NWS watches & warnings overlay** — `show_alerts: true` overlays active US National Weather Service watches and warnings from `api.weather.gov/alerts/active`. Alerts render as translucent polygons coloured per [NWS's standard warning palette](https://www.weather.gov/help-map). Both polygon-bearing and zone-based alerts render: zone shapes are fetched on-demand from `api.weather.gov/zones/...` and cached in localStorage (TTL 30 days, versioned key prefix `wrc-zone-v1:`) so they're zero-network on subsequent sessions. Click any alert for a popup with event, headline, severity / certainty / urgency, effective and expiry windows, full description (preserves NWS's line breaks), and a link to weather.gov.
 - **Hazard Overlays editor subpage** — new top-level "Markers and Overlays" section in the editor groups two nav rows: **Markers** (the existing list) and **Hazard Overlays** (new). The Hazard Overlays subpage exposes the wildfire and alerts toggles, their per-overlay knobs (min_acres, radius_km, min_severity), and a 2-column grid of NWS alert-category checkboxes (Tornado, Thunderstorm, Flood, Winter, Tropical, Fire Weather, Heat, Wind, Marine, Other; marine off by default).
-- **Region-warning utility** — surfaces a banner when any US-only feature (wildfires, alerts, NOAA radar) is enabled with `hass.config.country !== 'US'`. Multiple US-only features collapse into a single combined banner instead of stacking.
+- **Region-warning utility** — surfaces a banner when any US-only feature (wildfires, alerts, NOAA radar) is enabled with `hass.config.country !== 'US'`. Multiple US-only features collapse into a single combined banner instead of stacking. Adds a separate banner for **DWD selected outside its coverage** (Germany + immediate neighbours: NL, BE, LU, FR, CH, AT, CZ, PL, DK), replacing the developer-facing one-shot `console.warn` from 3.4.0 with a visible UI cue.
 
 #### Time-range editor (replaces `frame_count`)
 
@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Popup `[wildfire]` race during zone resolution.** `_zoneFetches` could be left with stale entries on localStorage cache hits because the function returned synchronously before the caller registered it. Refactored so `_fetchZone` self-registers as its first action.
 - **Popup accent colour uses WCAG-style relative luminance** — replaces a hardcoded list of "light" hex values, so any future palette additions get the right text colour automatically.
 - **Dark / satellite map scale rendered a faint duplicate label** behind the main "50 km" text. Leaflet's default `.leaflet-control-scale-line` carries a `text-shadow: 1px 1px #fff` for readability on light basemaps; on the dark / satellite styles that shadow rendered as a ghost. The `.map-dark` override now sets `text-shadow: none`. Contributed by [@genericJE](https://github.com/genericJE) (#123).
+- **Popup "See README" links scrolled to the top of the README** instead of the relevant safety-disclaimer section. The README split that landed during 3.5 removed the `#wildfires` and `#nws-watches--warnings` headings the popup links anchored against; both wildfire and NWS-alert popup links now target the matching headings in `docs/overlays.md`.
+- **Editor toggle markup standardisation regression.** The Loading Spinner row was the lone holdout — text-then-switch with no `<span>`, instead of the canonical `[switch][text]` pattern used everywhere else. Realigned.
+- **Markercluster `_bounds`-undefined race in the resize path** ([#110](https://github.com/Makin-Things/weather-radar-card/issues/110) re-emergence). The 3.1.3 fix capped cluster zoom at 11 to avoid the same race during `_zoomEnd`; the resize path (`invalidateSize` → `markercluster._zoomEnd`) hits the same trap when a `ResizeObserver` callback fires before the cluster group's first bounds computation completes. Defer to next animation frame and wrap `invalidateSize()` in a `try/catch` to recover on the rare remaining edge case.
 
 ### Documentation
 
@@ -66,11 +69,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Localization
 
-11 language files updated for all new editor strings (time range, hazard overlays, alert categories, severity levels, region warnings, popup labels, loading spinner, now marker). Coverage 92–99% per language; brand acronyms (NWS, NOAA, NIFC, README) and the "Acres" US unit intentionally retained in source form.
+11 language files now at **100% key parity**. Pre-release pass added the 5 keys missing from the 10 non-English files (`editor.display.show_loading_spinner`, `editor.map.source_dwd`, `ui.loading_radar_tiles`, `ui.now`, `ui.now_tooltip`), the new `ui.region_warning.dwd_de_only` for the DWD coverage banner, and dropped the stale `editor.animation.frame_count` / `editor.animation.default_5` keys from all 11 files (replaced by the time-range editor in 3.5). Brand acronyms (NWS, NOAA, NIFC, README) and the "Acres" US unit intentionally retained in source form.
 
 ### Tests
 
-128 → 250 unit tests (122 added). New coverage: geo helpers (centroid, haversine, bbox), string helpers (escapeHtml XSS injection patterns, slugify, truncate), NWS alert categories, NWS alert colour table, region-warning composition, alert-layer helpers (featureKey, decisionsEqual including zone-arrival diff, severity-sort, luminance, formatDateTime, localStorage zone cache round-trip + TTL eviction + corrupt JSON + quota-exceeded handling), `getEffectiveTimeRange` (defaults, clamps, stride snapping, edge cases), `migrateConfig` time-range migration, `nearestFrameIndex` for the now marker. Pure-helper extraction (`src/geo-utils.ts`, `src/string-utils.ts`, `src/source-caps.ts`) deduplicates code that was previously identical between layers.
+128 → **268** unit tests (140 added). New coverage: geo helpers (centroid, haversine, bbox), string helpers (escapeHtml XSS injection patterns, slugify, truncate), NWS alert categories, NWS alert colour table, region-warning composition (now including DWD coverage countries, non-coverage countries, case-insensitive matching, US-only + DWD stacking), alert-layer helpers (featureKey, decisionsEqual including zone-arrival diff, severity-sort, luminance, formatDateTime, localStorage zone cache round-trip + TTL eviction + corrupt JSON + quota-exceeded handling), `getEffectiveTimeRange` (defaults, clamps, stride snapping, edge cases), `migrateConfig` time-range migration, `nearestFrameIndex` for the now marker. Pure-helper extraction (`src/geo-utils.ts`, `src/string-utils.ts`, `src/source-caps.ts`) deduplicates code that was previously identical between layers.
 
 ## [3.4.0] - 2026-05-04
 
@@ -323,8 +326,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.5.0-alpha2...HEAD
-[3.5.0-beta1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.5.0-alpha2...v3.5.0-beta1
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.5.0...HEAD
+[3.5.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.2.0-beta...v3.3.0
 [3.2.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.3-beta...v3.2.0-beta

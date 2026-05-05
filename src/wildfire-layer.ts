@@ -14,10 +14,8 @@ import { escapeHtml, slugify } from './string-utils';
 // Anchor link to the Wildfires section of docs/overlays.md on GitHub.
 // Rendered after the popup's safety disclaimer so users can reach the
 // full caveat with one click. The hash matches GitHub's auto-generated
-// anchor for the "## Wildfires" heading. Branch-pinned to nws-alerts
-// while the docs are still on a feature branch — flip to master at
-// release per docs/todo.md.
-const DOCS_WILDFIRES_URL = 'https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/overlays.md#wildfires';
+// anchor for the "## Wildfires" heading.
+const DOCS_WILDFIRES_URL = 'https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md#wildfires';
 
 const NIFC_URL =
   'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/'

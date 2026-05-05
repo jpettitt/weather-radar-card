@@ -15,29 +15,29 @@ This card displays animated weather radar loops within Home Assistant. It suppor
 
 ## What's new in 3.5
 
-- **Hazard overlays (US-only)** — active wildfire perimeters from [NIFC's WFIGS feed](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/overlays.md#wildfires), and active NWS watches & warnings from [api.weather.gov](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/overlays.md#nws-watches--warnings). Both with strong life-safety disclaimers — informational only.
-- **Source-agnostic time range** — `past_minutes` / `forecast_minutes` (and a YAML-only `frame_stride_minutes`) replace `frame_count`. Editor surfaces preset dropdowns filtered by per-source caps; the forecast row hides on sources without a forecast. Existing `frame_count` configs auto-migrate. See [Configuration](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/configuration.md).
+- **Hazard overlays (US-only)** — active wildfire perimeters from [NIFC's WFIGS feed](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md#wildfires), and active NWS watches & warnings from [api.weather.gov](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md#nws-watches--warnings). Both with strong life-safety disclaimers — informational only.
+- **Source-agnostic time range** — `past_minutes` / `forecast_minutes` (and a YAML-only `frame_stride_minutes`) replace `frame_count`. Editor surfaces preset dropdowns filtered by per-source caps; the forecast row hides on sources without a forecast. Existing `frame_count` configs auto-migrate. See [Configuration](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/configuration.md).
 - **Sections-grid support** — `getGridOptions()` plus a flex layout that fills any cell, with a responsive bottom row that hides the date prefix on narrow cards.
 - **`smooth_overlap`** crossfade knob (0–1) — tune the brightness-dip vs cushion trade-off for your basemap.
 - **Loading spinner** + **"Now" marker** + **dark-map scale fix** — three contributions from [@genericJE](https://github.com/genericJE).
 - **Card-picker preview** — a static preview image now shows in HA's card-add picker (a live render would just show an empty map when there's no current rain in the user's area).
 
-For the full release history see [CHANGELOG](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/CHANGELOG.md).
+For the full release history see [CHANGELOG](https://github.com/Makin-Things/weather-radar-card/blob/master/CHANGELOG.md).
 
 ## Documentation
 
 | Topic | What's there |
 | --- | --- |
-| [Configuration](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/configuration.md) | Full options table, Map Style choices, Animation knobs, Double-tap action, sections-grid behaviour |
-| [Data Sources](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/data-sources.md) | RainViewer / NOAA / DWD specifics, per-source caps, NOAA & DWD notes, DWD forecast leading-edge note |
-| [Hazard Overlays](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/overlays.md) | US wildfire perimeters and NWS watches & warnings — usage, knobs, **safety disclaimers** |
-| [Markers](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/markers.md) | The `markers[]` schema, track-resolution rules, default home marker, migration from the legacy single-marker fields |
-| [Examples](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/examples.md) | Sample YAMLs for common setups (basic, dense DWD loop, NOAA, OSM, mobile-only, person tracking, hazard overlays) |
-| [Animation architecture](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/animation.md) | Internal: layer z-stack, two-slot crossfade, opacity ownership, dynamic tile size, pause behaviour, invariants |
-| [Wildfire feature design](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/wildfire-feature-design.md) | Internal: NIFC WFIGS feed, render decisions, InciWeb gating, refresh cadence |
-| [NWS alerts feature design](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/nws-alerts-feature-design.md) | Internal: api.weather.gov polling, zone resolution + caching, severity sort, popup chrome |
-| [Backlog / TODO](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/todo.md) | Open and shipped features |
-| [Contributing](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/CONTRIBUTING.md) | Local dev setup including the Docker HA testbed (`npm run ha:up`) |
+| [Configuration](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/configuration.md) | Full options table, Map Style choices, Animation knobs, Double-tap action, sections-grid behaviour |
+| [Data Sources](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/data-sources.md) | RainViewer / NOAA / DWD specifics, per-source caps, NOAA & DWD notes, DWD forecast leading-edge note |
+| [Hazard Overlays](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md) | US wildfire perimeters and NWS watches & warnings — usage, knobs, **safety disclaimers** |
+| [Markers](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/markers.md) | The `markers[]` schema, track-resolution rules, default home marker, migration from the legacy single-marker fields |
+| [Examples](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/examples.md) | Sample YAMLs for common setups (basic, dense DWD loop, NOAA, OSM, mobile-only, person tracking, hazard overlays) |
+| [Animation architecture](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/animation.md) | Internal: layer z-stack, two-slot crossfade, opacity ownership, dynamic tile size, pause behaviour, invariants |
+| [Wildfire feature design](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/wildfire-feature-design.md) | Internal: NIFC WFIGS feed, render decisions, InciWeb gating, refresh cadence |
+| [NWS alerts feature design](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/nws-alerts-feature-design.md) | Internal: api.weather.gov polling, zone resolution + caching, severity sort, popup chrome |
+| [Backlog / TODO](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/todo.md) | Open and shipped features |
+| [Contributing](https://github.com/Makin-Things/weather-radar-card/blob/master/CONTRIBUTING.md) | Local dev setup including the Docker HA testbed (`npm run ha:up`) |
 
 ## Install
 
@@ -84,11 +84,11 @@ resources:
 type: 'custom:weather-radar-card'
 ```
 
-That's it. The card defaults to RainViewer, your HA instance's location, and a `zone.home` marker. From there, the GUI editor exposes every knob — see [Configuration](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/configuration.md) for the full reference and [Examples](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/examples.md) for common starting points.
+That's it. The card defaults to RainViewer, your HA instance's location, and a `zone.home` marker. From there, the GUI editor exposes every knob — see [Configuration](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/configuration.md) for the full reference and [Examples](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/examples.md) for common starting points.
 
 ## Changelog
 
-See [CHANGELOG.md](https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/CHANGELOG.md) for the complete history of changes.
+See [CHANGELOG.md](https://github.com/Makin-Things/weather-radar-card/blob/master/CHANGELOG.md) for the complete history of changes.
 
 [license-shield]: https://img.shields.io/github/license/makin-things/weather-radar-card.svg?style=for-the-badge
 [releases-shield]: https://img.shields.io/github/release/makin-things/weather-radar-card.svg?style=for-the-badge

@@ -34,9 +34,7 @@ const ZONE_LS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // on GitHub. Surfaced after the popup's life-safety disclaimer so users
 // can read the full caveat with one click. The hash matches GitHub's
 // auto-generated anchor for the "## NWS Watches & Warnings" heading.
-// Branch-pinned to nws-alerts while the docs are still on a feature
-// branch — flip to master at release per docs/todo.md.
-const DOCS_ALERTS_URL = 'https://github.com/Makin-Things/weather-radar-card/blob/nws-alerts/docs/overlays.md#nws-watches--warnings';
+const DOCS_ALERTS_URL = 'https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md#nws-watches--warnings';
 
 type Severity = 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
 const SEVERITY_RANK: Record<Severity, number> = {

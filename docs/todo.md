@@ -103,21 +103,6 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   `src/lightning-layer.ts`, editor row in the Hazard Overlays
   subpage, 11-language i18n keys.
 
-- **Flip README documentation-index links from `nws-alerts` back to `master` at 3.5 release.**
-  All `https://github.com/Makin-Things/weather-radar-card/blob/<branch>/...`
-  URLs in `README.md` currently point at `blob/nws-alerts/` because the
-  `docs/` files don't yet exist on master (master is still 3.4.0). When
-  3.5 stable is merged into master, run:
-
-  ```bash
-  sed -i '' 's|blob/nws-alerts/|blob/master/|g' README.md
-  ```
-
-  …and commit. Do this in the same PR / commit that promotes 3.5 to
-  master so that no in-flight HACS render of the nws-alerts beta
-  README ever loads broken links and so master's README never points
-  at a feature branch.
-
 ### Investigated, won't pursue
 
 - **Custom HACS icon** ([#126](https://github.com/Makin-Things/weather-radar-card/issues/126)).
@@ -145,16 +130,21 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - Multi-marker support ✅
 - DWD radar source ✅ — 3.4.0
 - Crossfade alpha-dip fix + smooth_animation ✅ — 3.4.0
-- `smooth_overlap` tunable crossfade overlap + editor mutual gating ✅ — 3.4.0-beta2 / 3.5.0-beta1
-- Wildfire perimeter overlay (US-only) ✅ — 3.5.0-beta1
-- NWS watches & warnings overlay (US-only) ✅ — 3.5.0-beta1
-- Hazard Overlays editor subpage ✅ — 3.5.0-beta1
-- Region-warning utility for non-US installs ✅ — 3.5.0-beta1
-- Time-based playback range (`past_minutes` / `forecast_minutes` / `frame_stride_minutes`) replacing `frame_count` — source-agnostic via SOURCE_CAPS table; auto-migrates legacy configs ✅ — 3.5.0-beta1
-- WYSIWYG map editing (back-prop pan/zoom into editor Lat/Long fields) ✅ — 3.5.0-beta1
-- Build timestamp in console signon (cache-bust verification aid) ✅ — 3.5.0-beta1
-- Loading spinner + `show_loading_spinner` config (contributed by @genericJE, [#124](https://github.com/Makin-Things/weather-radar-card/pull/124)) ✅ — 3.5.0-beta1
-- Now marker on the progress bar (contributed by @genericJE, [#125](https://github.com/Makin-Things/weather-radar-card/pull/125)) ✅ — 3.5.0-beta1
-- Dark / satellite map scale text-shadow fix (contributed by @genericJE, [#123](https://github.com/Makin-Things/weather-radar-card/pull/123)) ✅ — 3.5.0-beta1
-- `npm run build` regenerates `.js.gz` so HA can't serve a stale gzipped bundle ✅ — 3.5.0-beta1
+- `smooth_overlap` tunable crossfade overlap + editor mutual gating ✅ — 3.4.0-beta2 / 3.5.0
+- Wildfire perimeter overlay (US-only) ✅ — 3.5.0
+- NWS watches & warnings overlay (US-only) ✅ — 3.5.0
+- Hazard Overlays editor subpage ✅ — 3.5.0
+- Region-warning utility for non-US installs ✅ — 3.5.0
+- Time-based playback range (`past_minutes` / `forecast_minutes` / `frame_stride_minutes`) replacing `frame_count` — source-agnostic via SOURCE_CAPS table; auto-migrates legacy configs ✅ — 3.5.0
+- WYSIWYG map editing (back-prop pan/zoom into editor Lat/Long fields) ✅ — 3.5.0
+- Build timestamp in console signon (cache-bust verification aid) ✅ — 3.5.0
+- Loading spinner + `show_loading_spinner` config (contributed by @genericJE, [#124](https://github.com/Makin-Things/weather-radar-card/pull/124)) ✅ — 3.5.0
+- Now marker on the progress bar (contributed by @genericJE, [#125](https://github.com/Makin-Things/weather-radar-card/pull/125)) ✅ — 3.5.0
+- Dark / satellite map scale text-shadow fix (contributed by @genericJE, [#123](https://github.com/Makin-Things/weather-radar-card/pull/123)) ✅ — 3.5.0
+- `npm run build` regenerates `.js.gz` so HA can't serve a stale gzipped bundle ✅ — 3.5.0
+- DWD-outside-coverage region banner — visible UI cue replacing the developer-only `console.warn` from 3.4.0 ✅ — 3.5.0
+- Markercluster `_bounds`-undefined race in the resize path (RAF defer + `try/catch`) ✅ — 3.5.0
+- README split into a slim landing page + focused docs under `docs/` (Configuration, Data Sources, Hazard Overlays, Markers, Examples, Animation architecture) ✅ — 3.5.0
+- `animation.md` rewritten to match the current two-slot + delayed-fade-out model ✅ — 3.5.0
+- 11-language i18n parity sweep (100% key coverage, stale `frame_count` keys dropped) ✅ — 3.5.0
 - Local Docker HA testbed (`npm run ha:up`) replacing the abandoned `.devcontainer/` ✅ — post-3.4.0

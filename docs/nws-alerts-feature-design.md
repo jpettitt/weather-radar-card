@@ -4,9 +4,9 @@ US National Weather Service active alerts as a toggleable map overlay. Polygons 
 
 This design also introduces a **session-only layer-toggle menu** on the map for switching individual warning types and the wildfire layer on/off without editing config.
 
-## Status — shipped in v3.5.0-alpha
+## Status — shipped in v3.5.0
 
-Both Phase 1 (polygon-only alerts) and Phase 2 (zone resolution) released in [v3.5.0-alpha](https://github.com/Makin-Things/weather-radar-card/releases/tag/v3.5.0-alpha) (alpha cut from the `nws-alerts` branch, not yet merged to `main`). Tracking issue [#116](https://github.com/Makin-Things/weather-radar-card/issues/116) stays open until 3.5.0 stable.
+Both Phase 1 (polygon-only alerts) and Phase 2 (zone resolution) released in [v3.5.0](https://github.com/Makin-Things/weather-radar-card/releases/tag/v3.5.0). Tracking issue [#116](https://github.com/Makin-Things/weather-radar-card/issues/116) closed.
 
 **Implementation:** [src/nws-alerts-layer.ts](../src/nws-alerts-layer.ts), [src/nws-alert-colors.ts](../src/nws-alert-colors.ts), [src/nws-alert-categories.ts](../src/nws-alert-categories.ts). Shared helpers in [src/geo-utils.ts](../src/geo-utils.ts), [src/string-utils.ts](../src/string-utils.ts), [src/region-warning.ts](../src/region-warning.ts). Editor surface in the "Hazard Overlays" subpage of [src/editor.ts](../src/editor.ts). Tests in [tests/nws-alert-categories.test.ts](../tests/nws-alert-categories.test.ts), [tests/nws-alert-colors.test.ts](../tests/nws-alert-colors.test.ts), [tests/nws-alerts-helpers.test.ts](../tests/nws-alerts-helpers.test.ts), [tests/region-warning.test.ts](../tests/region-warning.test.ts).
 
