@@ -243,6 +243,33 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   public getCardSize(): number { return 10; }
 
+  /**
+   * Tells HA's sections-view grid the card knows how to resize, which
+   * suppresses the "may not display correctly with custom sizes" banner.
+   * Defaults match the card's typical 400px height: 4 rows × 56px
+   * default density ≈ 224px (so the user can shrink down to roughly the
+   * picker preview), up to 12 rows × 56px ≈ 672px wide-pane.
+   *
+   * The card's existing ResizeObserver (set up in `_setupResizeObserver`)
+   * calls `_map.invalidateSize()` whenever the container changes shape,
+   * so Leaflet's tiles reflow correctly when the grid cell resizes.
+   */
+  public getGridOptions(): {
+    columns?: number | 'full';
+    rows?: number | 'auto';
+    min_columns?: number;
+    min_rows?: number;
+    max_columns?: number;
+    max_rows?: number;
+  } {
+    return {
+      columns: 12,        // full row by default
+      rows: 7,            // ≈ 392 px at 56 px/row — close to the 400 px height default
+      min_columns: 6,     // half a row minimum
+      min_rows: 4,        // ≈ 224 px — readable even at the smallest
+    };
+  }
+
   protected shouldUpdate(changedProps: PropertyValues): boolean {
     if (!this._config) return false;
     return changedProps.has('_config') || changedProps.has('hass')
@@ -332,8 +359,32 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       : dataSource === 'DWD'
         ? '/local/community/weather-radar-card/radar-colour-bar-dwd.png'
         : '/local/community/weather-radar-card/radar-colour-bar-universalblue.png';
+    // Layout mode:
+    //   aspect-mode → square_map without an explicit height. The map div
+    //                 carries aspect-ratio:1/1 and the card grows to its
+    //                 content (chrome stacks above + below). Pre-existing
+    //                 behaviour, preserved as-is.
+    //   flex-mode  → everything else. ha-card is a flex column with
+    //                height:100% (fills sections-grid cells) AND
+    //                min-height:<configured height> (preserves the user's
+    //                expected baseline in regular dashboards). The map
+    //                div is flex:1 so it absorbs whatever vertical room
+    //                is left after the fixed-height chrome (color bar,
+    //                progress bar, bottom bar).
+    const isAspectMode = !!this._config.square_map && !this._config.height;
+    const cardClasses = [
+      isMapDark ? 'map-dark' : '',
+      isAspectMode ? 'aspect-mode' : 'flex-mode',
+    ].filter(Boolean).join(' ');
+    const cardStyles: string[] = [];
+    if (this._config.width && this._validateCssSize(this._config.width)) {
+      cardStyles.push(`width:${this._config.width}`);
+    }
+    if (!isAspectMode) {
+      cardStyles.push(`min-height:${this._calculateHeight()}`);
+    }
     return html`
-      <ha-card class=${isMapDark ? 'map-dark' : ''} style="${this._config.width && this._validateCssSize(this._config.width) ? `width:${this._config.width}` : ''}">
+      <ha-card class=${cardClasses} style=${cardStyles.join(';')}>
         <div id="color-bar" style="height:8px;display:${showColourBar ? '' : 'none'}">
           <img id="img-color-bar" height="8" style="vertical-align:top" src=${colourBarSrc} />
         </div>
@@ -345,16 +396,16 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
             ${localize('ui.rate_limited')}
           </div>
         </div>
-        <div id="mapid" style="${this._config.square_map && !this._config.height ? 'aspect-ratio:1/1' : `height:${this._calculateHeight()}`}"></div>
+        <div id="mapid"></div>
         <div id="div-progress-bar" style="height:8px;cursor:pointer;display:${this._config.show_progress_bar === false ? 'none' : 'flex'}"></div>
         <div id="bottom-container">
-          <div id="timestampid" style="height:32px;float:left;position:absolute">
-            <p id="timestamp" style="margin:0;padding:4px 8px;font-size:12px;white-space:nowrap"></p>
+          <div id="timestampid">
+            <p id="timestamp"></p>
           </div>
           <div id="loading-spinner" class="loading-spinner" style="display:none" role="status" aria-live="polite" aria-label=${localize('ui.loading_radar_tiles')}>
             <div class="loading-spinner-arc" aria-hidden="true"></div>
           </div>
-          <div id="attribution" style="font-size:10px;text-align:right;padding:4px 8px"></div>
+          <div id="attribution"></div>
         </div>
       </ha-card>
     `;
@@ -933,8 +984,32 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     unsafeCSS(leafletCss),
     unsafeCSS(markerClusterCss),
     css`
-      :host { display: block; isolation: isolate; }
-      ha-card { overflow: hidden; position: relative; }
+      :host { display: block; isolation: isolate; height: 100%; }
+      /* flex-mode is the default: ha-card fills its container vertically
+         (sections-grid cell), with min-height set inline from the user's
+         height config so a regular dashboard still renders at the
+         expected size. The map div is flex:1, absorbing whatever
+         vertical space is left after the fixed-height chrome. */
+      ha-card.flex-mode {
+        overflow: hidden; position: relative;
+        display: flex; flex-direction: column; height: 100%;
+        /* Container-query context for the bottom-row narrow-width
+           rule below (drops the date half of the timestamp at ≤397px). */
+        container-type: inline-size;
+      }
+      ha-card.flex-mode #mapid {
+        flex: 1 1 auto; min-height: 0;
+      }
+      /* aspect-mode (square_map without explicit height): the map div
+         is square via aspect-ratio; ha-card grows to its content. Same
+         behaviour as before the flex refactor. */
+      ha-card.aspect-mode {
+        overflow: hidden; position: relative;
+        container-type: inline-size;
+      }
+      ha-card.aspect-mode #mapid {
+        aspect-ratio: 1 / 1;
+      }
       #mapid { width: 100%; position: relative; }
       .banner-stack {
         position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
@@ -958,21 +1033,54 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       #div-progress-bar {
         background: var(--ha-card-background, var(--card-background-color));
       }
+      /* Bottom row: timestamp on the left, attribution on the right,
+         centered spinner overlay. Flex layout so the two text blocks
+         share the available width and never overlap on narrow cards
+         (~390 px or less). Both can ellipsis-truncate when the row is
+         too tight to show everything; the spinner is absolute-
+         positioned so it doesn't participate in the flex flow. */
       #bottom-container {
         height: 32px; font-size: 10px; position: relative;
+        display: flex; align-items: center;
         background: var(--ha-card-background, var(--card-background-color));
         color: var(--primary-text-color);
       }
       #bottom-container a { color: var(--primary-color); }
-      /* Cap the timestamp at half-width minus the spinner radius so a long
-         timestamp on a narrow card (panel mode, ~200px) cannot crowd the
-         centred spinner. Truncates with an ellipsis past that point. */
-      #timestampid { max-width: calc(50% - 16px); }
-      #timestamp { overflow: hidden; text-overflow: ellipsis; }
+      #timestampid {
+        flex: 0 1 auto; min-width: 0;
+        max-width: calc(50% - 16px);
+        overflow: hidden;
+      }
+      #timestamp {
+        margin: 0; padding: 4px 8px; font-size: 12px; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+      }
+      #attribution {
+        flex: 1 1 auto; min-width: 0;
+        text-align: right; padding: 4px 8px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      /* On narrow cards (≤397px) drop the date prefix so just the time
+         shows alongside the attribution. The timestamp is rendered as
+         <span class="ts-date">… </span><span class="ts-time">…</span>
+         in radar-player.ts so the two halves are independently
+         hideable. Container query on ha-card means this responds to
+         the card's actual width regardless of viewport (sections grid,
+         panel mode, masonry — all "just work"). */
+      @container (max-width: 397px) {
+        .ts-date { display: none; }
+      }
       .map-dark .leaflet-control-scale-line {
         color: #bbb; border-color: #bbb; background: rgba(0,0,0,0.5);
         text-shadow: none;
       }
+      /* Leaflet defaults give controls (zoom, scale) z-index 1000 and the
+         popup pane z-index 700, so an open wildfire / NWS-alert popup
+         renders BEHIND the zoom buttons and gets visually clipped on
+         small cards. Lift the popup pane above the controls — the user
+         has to close the popup to interact with the controls again,
+         which is the expected modal-ish UX for these popups. */
+      .leaflet-popup-pane { z-index: 1100; }
       .loading-spinner {
         position: absolute; top: 50%; left: 50%;
         transform: translate(-50%, -50%);

@@ -66,7 +66,9 @@ export class RadarPlayer {
   private _dwdSwapLogged = false;
 
   private _radarImage: (FetchTileLayer | FetchWmsTileLayer)[] = [];
-  private _radarTime: string[] = [];
+  // Date + time stored as separate parts so the bottom row can hide the
+  // date half via CSS on narrow cards (container query in card styles).
+  private _radarTime: { date: string; time: string }[] = [];
   private _radarPaths: RadarFrame[] = [];
   private _nowFrameIndex = -1;
   private _loadedSlots: number[] = [];
@@ -477,12 +479,36 @@ export class RadarPlayer {
     }
   }
 
-  /** Update the timestamp text — appends a localized "(now)" suffix when the displayed frame is the now-frame. */
+  /**
+   * Update the timestamp text — appends a localized "(now)" suffix when
+   * the displayed frame is the now-frame. Renders the date and time as
+   * separate spans (.ts-date / .ts-time) so a container query in the
+   * card's CSS can hide the date half on narrow cards (≤ 397 px) and
+   * leave only the time. Uses createElement / textContent rather than
+   * innerHTML to keep this XSS-safe even though the inputs are all
+   * Intl-formatted strings + a localized "(now)" — defensive habit
+   * for anything writing user-visible HTML.
+   */
   private _setTimestamp(fi: number): void {
     const ts = this._shadowRoot.getElementById('timestamp');
     if (!ts) return;
-    const base = this._radarTime[fi] ?? '';
-    ts.textContent = fi === this._nowFrameIndex ? `${base} ${localize('ui.now')}` : base;
+    ts.textContent = '';  // wipe previous render
+    const t = this._radarTime[fi];
+    if (!t) return;
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'ts-date';
+    dateSpan.textContent = `${t.date} `;
+    ts.appendChild(dateSpan);
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'ts-time';
+    timeSpan.textContent = t.time;
+    ts.appendChild(timeSpan);
+    if (fi === this._nowFrameIndex) {
+      const nowSpan = document.createElement('span');
+      nowSpan.className = 'ts-now';
+      nowSpan.textContent = ` ${localize('ui.now')}`;
+      ts.appendChild(nowSpan);
+    }
   }
 
   private _highlightSegment(fi: number): void {
@@ -682,11 +708,20 @@ export class RadarPlayer {
     } as any);
   }
 
-  private _getTimeString(epochMs: number): string {
-    return new Intl.DateTimeFormat(undefined, {
-      weekday: 'short', day: 'numeric', month: 'short',
-      hour: 'numeric', minute: '2-digit',
-    }).format(new Date(epochMs));
+  // Format date and time as separate parts. The bottom-row template
+  // wraps each in its own span so a container query can hide the date
+  // when the card is narrow (~< 398 px) and only the time stays
+  // visible. Uses the user's browser locale via Intl.DateTimeFormat.
+  private _getTimeString(epochMs: number): { date: string; time: string } {
+    const d = new Date(epochMs);
+    return {
+      date: new Intl.DateTimeFormat(undefined, {
+        weekday: 'short', day: 'numeric', month: 'short',
+      }).format(d),
+      time: new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric', minute: '2-digit',
+      }).format(d),
+    };
   }
 
   // ── Radar init ───────────────────────────────────────────────────────────
