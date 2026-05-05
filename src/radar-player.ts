@@ -207,12 +207,21 @@ export class RadarPlayer {
     }
 
     // _scheduleUpdate's timer keeps running through the pause; if it fired
-    // while navPaused was true it set _doRadarUpdate. Pick that up now.
+    // while navPaused was true it set _doRadarUpdate. Pick that up now;
+    // _updateRadar restarts the loop from its load callback.
     if (this._doRadarUpdate) {
       this._doRadarUpdate = false;
       void this._updateRadar();
-    } else if (this.run) {
-      this._startLoop(this._currentSlot);
+      return;
+    }
+
+    // Resume without re-showing the current slot. _stopLoop already left
+    // the displayed layer at active opacity via _settleVisibility; routing
+    // through _showSlot would snap it to 0 and fade back in, producing a
+    // visible flash on every move.
+    if (this.run) {
+      this._loopGen++;
+      this._scheduleNext(this._loopGen);
     }
   }
 
