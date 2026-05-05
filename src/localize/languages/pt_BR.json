@@ -125,7 +125,8 @@
     "interaction": {
       "disable_scroll": "Desativar rolagem (permite deslizar a página sobre o mapa)",
       "double_tap_action": "Ação ao tocar duas vezes",
-      "double_tap_none": "Nenhuma",
+      "double_tap_none": "Nenhuma (sem ação, sem zoom)",
+      "double_tap_zoom_in": "Aumentar zoom (padrão)",
       "double_tap_recenter": "Recentralizar mapa",
       "double_tap_toggle_play": "Alternar reproduzir / pausar"
     },

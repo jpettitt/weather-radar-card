@@ -61,12 +61,12 @@ Both polygon-bearing alerts (most warnings) and zone-based alerts (most advisori
 
 ### Alert knobs
 
-| Field                    | Default          | Description                                                                                                                                                              |
-| ------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `show_alerts`            | `false`          | Enable the overlay                                                                                                                                                       |
-| `alerts_categories`      | all except `marine` | Allowlist of category keys (`tornado`, `thunderstorm`, `flood`, `winter`, `tropical`, `fire_weather`, `heat`, `wind`, `marine`, `other`).                            |
-| `alerts_types`           | unset            | Explicit event-string allowlist; overrides `alerts_categories` when set                                                                                                  |
-| `alerts_min_severity`    | `'Minor'`        | One of `Extreme`, `Severe`, `Moderate`, `Minor`, `Unknown`. Hides alerts below the chosen severity floor.                                                                |
-| `alerts_radius_km`       | unset            | Only show alerts within N km of the map center                                                                                                                           |
-| `alerts_fill_opacity`    | `0.25`           | Alert polygon fill opacity (`0` = outline only)                                                                                                                          |
-| `alerts_refresh_seconds` | adaptive         | Override the adaptive 60s/300s refresh interval                                                                                                                          |
+| Field                    | Default             | Description                                                                                                                                                              |
+| ------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `show_alerts`            | `false`             | Enable the overlay                                                                                                                                                       |
+| `alerts_categories`      | all except `marine` | Allowlist of category keys (`tornado`, `thunderstorm`, `flood`, `winter`, `tropical`, `fire_weather`, `heat`, `wind`, `marine`, `other`).                                |
+| `alerts_types`           | unset               | Explicit event-string allowlist; overrides `alerts_categories` when set                                                                                                  |
+| `alerts_min_severity`    | `'Minor'`           | One of `Extreme`, `Severe`, `Moderate`, `Minor`, `Unknown`. Hides alerts below the chosen severity floor.                                                                |
+| `alerts_radius_km`       | unset               | Only show alerts within N km of the map center                                                                                                                           |
+| `alerts_fill_opacity`    | `0.25`              | Alert polygon fill opacity (`0` = outline only)                                                                                                                          |
+| `alerts_refresh_seconds` | adaptive            | Override the adaptive 60s/300s refresh interval                                                                                                                          |

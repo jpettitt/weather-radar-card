@@ -345,13 +345,14 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           .selector=${{
             select: {
               options: [
-                { value: 'none', label: localize('editor.interaction.double_tap_none') },
+                { value: 'zoom_in', label: localize('editor.interaction.double_tap_zoom_in') },
                 { value: 'recenter', label: localize('editor.interaction.double_tap_recenter') },
                 { value: 'toggle_play', label: localize('editor.interaction.double_tap_toggle_play') },
+                { value: 'none', label: localize('editor.interaction.double_tap_none') },
               ],
             },
           }}
-          .value=${config.double_tap_action || 'none'}
+          .value=${typeof config.double_tap_action === 'string' ? config.double_tap_action : 'zoom_in'}
           .label=${localize('editor.interaction.double_tap_action')}
           .configValue=${'double_tap_action'}
           @value-changed=${this._handleSelectorChanged}

@@ -125,7 +125,8 @@
     "interaction": {
       "disable_scroll": "Scrollen uitschakelen (laat pagina door kaart vegen)",
       "double_tap_action": "Actie bij dubbeltikken",
-      "double_tap_none": "Geen",
+      "double_tap_none": "Geen (geen actie, geen zoom)",
+      "double_tap_zoom_in": "Inzoomen (standaard)",
       "double_tap_recenter": "Kaart centreren",
       "double_tap_toggle_play": "Afspelen / pauze omschakelen"
     },

@@ -125,7 +125,8 @@
     "interaction": {
       "disable_scroll": "Deaktiver rulling (la siden sveipes gjennom kartet)",
       "double_tap_action": "Dobbelttrykk-handling",
-      "double_tap_none": "Ingen",
+      "double_tap_none": "Ingen (ingen handling, ingen zoom)",
+      "double_tap_zoom_in": "Zoom inn (standard)",
       "double_tap_recenter": "Sentrer kart",
       "double_tap_toggle_play": "Veksle avspilling / pause"
     },

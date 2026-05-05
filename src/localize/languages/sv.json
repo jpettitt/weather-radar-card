@@ -125,7 +125,8 @@
     "interaction": {
       "disable_scroll": "Inaktivera rullning (tillåt sidsvep genom kartan)",
       "double_tap_action": "Åtgärd vid dubbeltryck",
-      "double_tap_none": "Ingen",
+      "double_tap_none": "Ingen (ingen åtgärd, ingen zoom)",
+      "double_tap_zoom_in": "Zooma in (standard)",
       "double_tap_recenter": "Centrera karta",
       "double_tap_toggle_play": "Växla uppspelning / paus"
     },

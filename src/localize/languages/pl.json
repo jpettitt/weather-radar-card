@@ -125,7 +125,8 @@
     "interaction": {
       "disable_scroll": "Wyłącz przewijanie (umożliw przesuwanie strony przez mapę)",
       "double_tap_action": "Akcja dwukrotnego dotknięcia",
-      "double_tap_none": "Brak",
+      "double_tap_none": "Brak (bez akcji, bez powiększenia)",
+      "double_tap_zoom_in": "Powiększ (domyślnie)",
       "double_tap_recenter": "Wyśrodkuj mapę",
       "double_tap_toggle_play": "Przełącz odtwarzanie / pauzę"
     },

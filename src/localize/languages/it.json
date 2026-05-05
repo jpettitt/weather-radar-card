@@ -125,7 +125,8 @@
     "interaction": {
       "disable_scroll": "Disabilita scorrimento (consente scorrimento della pagina sulla mappa)",
       "double_tap_action": "Azione al doppio tocco",
-      "double_tap_none": "Nessuna",
+      "double_tap_none": "Nessuna (nessuna azione, nessun zoom)",
+      "double_tap_zoom_in": "Zoom avanti (predefinito)",
       "double_tap_recenter": "Ricentra mappa",
       "double_tap_toggle_play": "Alterna riproduzione / pausa"
     },

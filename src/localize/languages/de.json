@@ -126,7 +126,8 @@
     "interaction": {
       "disable_scroll": "Scrollen deaktivieren (Seitenwischen über die Karte erlauben)",
       "double_tap_action": "Aktion bei Doppelklick",
-      "double_tap_none": "Keine",
+      "double_tap_none": "Keine (keine Aktion, kein Zoom)",
+      "double_tap_zoom_in": "Hineinzoomen (Standard)",
       "double_tap_recenter": "Karte zentrieren",
       "double_tap_toggle_play": "Wiedergabe / Pause umschalten"
     },

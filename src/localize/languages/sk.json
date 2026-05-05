@@ -125,7 +125,8 @@
     "interaction": {
       "disable_scroll": "Zakázať posúvanie (umožniť potiahnutie stránky cez mapu)",
       "double_tap_action": "Akcia po dvojkliknutí",
-      "double_tap_none": "Žiadna",
+      "double_tap_none": "Žiadna (žiadna akcia, žiadne priblíženie)",
+      "double_tap_zoom_in": "Priblížiť (predvolené)",
       "double_tap_recenter": "Vycentrovať mapu",
       "double_tap_toggle_play": "Prepnúť prehrávanie / pauzu"
     },

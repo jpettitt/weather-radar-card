@@ -125,7 +125,8 @@
     "interaction": {
       "disable_scroll": "Désactiver le défilement (permet le balayage de la page sur la carte)",
       "double_tap_action": "Action au double-clic",
-      "double_tap_none": "Aucune",
+      "double_tap_none": "Aucune (pas d'action, pas de zoom)",
+      "double_tap_zoom_in": "Zoom avant (par défaut)",
       "double_tap_recenter": "Recentrer la carte",
       "double_tap_toggle_play": "Lecture / pause"
     },

@@ -432,7 +432,14 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     );
 
     const isStatic = cfg.static_map === true;
-    const hasDoubleTapAction = cfg.double_tap_action && cfg.double_tap_action !== 'none';
+    // Leaflet's built-in double-click zoom stays on for two cases: when no
+    // double_tap_action is configured at all (back-compat default), and
+    // when the user has explicitly chosen 'zoom_in' (the documented way
+    // to keep the zoom behaviour now that 'none' truly means none).
+    // Every other value (recenter, toggle_play, 'none', or an HA action
+    // object) suppresses Leaflet zoom so it doesn't fight the custom action.
+    const action = cfg.double_tap_action;
+    const hasDoubleTapAction = action !== undefined && action !== 'zoom_in';
     this._map = L.map(mapEl as HTMLElement, {
       zoomControl: cfg.show_zoom === true && !isStatic,
       // Disable Leaflet's built-in double-click zoom when a custom action is configured.
@@ -856,7 +863,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupDoubleTapAction(): void {
     if (!this._map) return;
     const action = this._config.double_tap_action;
-    if (!action || action === 'none') return;
+    // Bail when the value is one we don't need a custom handler for:
+    //   undefined / 'zoom_in' → Leaflet's built-in double-click zoom is
+    //                           on (see _initMap); we sit out.
+    //   'none'                → user explicitly asked for nothing; we
+    //                           sit out AND _initMap turned zoom off too.
+    if (action === undefined || action === 'zoom_in' || action === 'none') return;
     this._map.on('dblclick', (e: L.LeafletMouseEvent) => {
       L.DomEvent.stopPropagation(e);
       if (action === 'recenter') { this._recenter(); return; }

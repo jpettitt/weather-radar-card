@@ -16,11 +16,11 @@ The card knows each source's capabilities (native frame interval, max past, max 
 - Hide the **Forecast Duration** editor row entirely on sources without a forecast.
 - Filter the editor's **History Duration** preset dropdown.
 
-| Source     | Native interval | Max past (API) | Editor cap | Max forecast |
-|------------|-----------------|----------------|------------|--------------|
-| RainViewer | 10 min          | 120 min        | 120 min    | 0            |
-| NOAA       | 5 min           | 120 min        | 120 min    | 0            |
-| DWD        | 5 min           | 5040 min (84 h)| 720 min (12 h) | 120 min  |
+| Source       | Native interval   | Max past (API)   | Editor cap     | Max forecast   |
+| ------------ | ----------------- | ---------------- | -------------- | -------------- |
+| RainViewer   | 10 min            | 120 min          | 120 min        | 0              |
+| NOAA         | 5 min             | 120 min          | 120 min        | 0              |
+| DWD          | 5 min             | 5040 min (84 h)  | 720 min (12 h) | 120 min        |
 
 NOAA's `mapservices.weather.noaa.gov` advertises 4 h of history but in practice frames > 2 h back come back as empty tiles, so we cap at 120 min until that's understood. DWD's editor cap is lower than the API cap because at 5-min intervals, 84 h × 12 frames/h = 1008 frames is impractical for tile fetching; YAML configs can still set `past_minutes` higher (and combine with `frame_stride_minutes` to keep the frame count sane).
 
