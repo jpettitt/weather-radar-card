@@ -14,7 +14,8 @@
         "wildfires": "Incêndios florestais",
         "alerts": "Alertas NWS",
         "noaa": "Radar NOAA"
-      }
+      },
+      "dwd_de_only": "O radar DWD cobre a Alemanha e seus vizinhos imediatos. A localização do seu Home Assistant está fora desta região — o mapa pode mostrar apenas «sem dados»."
     },
     "wildfire": {
       "acres": "Acres",
@@ -35,7 +36,10 @@
       "unknown_event": "Alerta",
       "disclaimer": "APENAS INFORMATIVO — não use para decisões de segurança da vida.",
       "see_readme": "Veja o README"
-    }
+    },
+    "loading_radar_tiles": "Carregando blocos de radar",
+    "now": "(agora)",
+    "now_tooltip": "Agora"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satélite (somente inglês)",
       "style_osm": "OpenStreetMap (localizado)",
       "zoom_level": "Nível de zoom",
-      "zoom_default": "Padrão (5)"
+      "zoom_default": "Padrão (5)",
+      "source_dwd": "DWD (Alemanha — resolução de 5 min)"
     },
     "time_range": {
       "past": "Duração do histórico",
@@ -120,7 +125,8 @@
         "minor": "Leve",
         "unknown": "Desconhecida"
       },
-      "square_map_disabled_helper": "Desativado quando uma altura é definida ou o cartão está em uma célula de grade de seções com número fixo de linhas — essas restrições já fixam a altura do cartão."
+      "square_map_disabled_helper": "Desativado quando uma altura é definida ou o cartão está em uma célula de grade de seções com número fixo de linhas — essas restrições já fixam a altura do cartão.",
+      "show_loading_spinner": "Mostrar indicador de carregamento"
     },
     "interaction": {
       "disable_scroll": "Desativar rolagem (permite deslizar a página sobre o mapa)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Alternar reproduzir / pausar"
     },
     "animation": {
-      "frame_count": "Número de quadros",
       "frame_delay": "Atraso entre quadros (ms)",
       "restart_delay": "Atraso de reinício (ms)",
-      "default_5": "Padrão: 5",
       "default_500": "Padrão: 500",
       "default_1000": "Padrão: 1000",
       "animated_transitions": "Transições animadas",

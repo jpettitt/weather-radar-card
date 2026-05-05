@@ -14,7 +14,8 @@
         "wildfires": "Incendi",
         "alerts": "Allarmi NWS",
         "noaa": "Radar NOAA"
-      }
+      },
+      "dwd_de_only": "Il radar DWD copre la Germania e i suoi vicini immediati. La posizione di Home Assistant è al di fuori di questa regione — la mappa potrebbe mostrare solo «nessun dato»."
     },
     "wildfire": {
       "acres": "Acri",
@@ -35,7 +36,10 @@
       "unknown_event": "Allarme",
       "disclaimer": "SOLO A SCOPO INFORMATIVO — non per decisioni di sicurezza vitale.",
       "see_readme": "Vedi README"
-    }
+    },
+    "loading_radar_tiles": "Caricamento dei tile radar",
+    "now": "(ora)",
+    "now_tooltip": "Ora"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satellite (solo inglese)",
       "style_osm": "OpenStreetMap (localizzata)",
       "zoom_level": "Livello di zoom",
-      "zoom_default": "Predefinito (5)"
+      "zoom_default": "Predefinito (5)",
+      "source_dwd": "DWD (Germania — risoluzione 5 min)"
     },
     "time_range": {
       "past": "Durata della cronologia",
@@ -120,7 +125,8 @@
         "minor": "Lieve",
         "unknown": "Sconosciuta"
       },
-      "square_map_disabled_helper": "Disattivato quando è impostata un'altezza o la scheda è in una cella di griglia delle sezioni con numero di righe fisso — questi vincoli fissano già l'altezza della scheda."
+      "square_map_disabled_helper": "Disattivato quando è impostata un'altezza o la scheda è in una cella di griglia delle sezioni con numero di righe fisso — questi vincoli fissano già l'altezza della scheda.",
+      "show_loading_spinner": "Mostra indicatore di caricamento"
     },
     "interaction": {
       "disable_scroll": "Disabilita scorrimento (consente scorrimento della pagina sulla mappa)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Alterna riproduzione / pausa"
     },
     "animation": {
-      "frame_count": "Numero di fotogrammi",
       "frame_delay": "Ritardo tra fotogrammi (ms)",
       "restart_delay": "Ritardo di riavvio (ms)",
-      "default_5": "Predefinito: 5",
       "default_500": "Predefinito: 500",
       "default_1000": "Predefinito: 1000",
       "animated_transitions": "Transizioni animate",

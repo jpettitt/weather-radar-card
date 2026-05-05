@@ -17,7 +17,8 @@
         "wildfires": "Wildfires",
         "alerts": "NWS alerts",
         "noaa": "NOAA radar"
-      }
+      },
+      "dwd_de_only": "DWD radar covers Germany and its immediate neighbours. Your Home Assistant location is outside this region — the map may show only no-data."
     },
     "wildfire": {
       "acres": "Acres",
@@ -136,10 +137,8 @@
       "double_tap_toggle_play": "Toggle play / pause"
     },
     "animation": {
-      "frame_count": "Frame Count",
       "frame_delay": "Frame Delay (ms)",
       "restart_delay": "Restart Delay (ms)",
-      "default_5": "Default: 5",
       "default_500": "Default: 500",
       "default_1000": "Default: 1000",
       "animated_transitions": "Animated Transitions",

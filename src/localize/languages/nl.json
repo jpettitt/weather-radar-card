@@ -14,7 +14,8 @@
         "wildfires": "Bosbranden",
         "alerts": "NWS-waarschuwingen",
         "noaa": "NOAA-radar"
-      }
+      },
+      "dwd_de_only": "DWD-radar dekt Duitsland en zijn directe buurlanden. Uw Home Assistant-locatie ligt buiten deze regio — de kaart toont mogelijk alleen «geen data»."
     },
     "wildfire": {
       "acres": "Acres",
@@ -35,7 +36,10 @@
       "unknown_event": "Waarschuwing",
       "disclaimer": "UITSLUITEND TER INFORMATIE — niet voor levensreddende beslissingen.",
       "see_readme": "Zie README"
-    }
+    },
+    "loading_radar_tiles": "Radartegels laden",
+    "now": "(nu)",
+    "now_tooltip": "Nu"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satelliet (alleen Engels)",
       "style_osm": "OpenStreetMap (gelokaliseerd)",
       "zoom_level": "Zoomniveau",
-      "zoom_default": "Standaard (5)"
+      "zoom_default": "Standaard (5)",
+      "source_dwd": "DWD (Duitsland — 5-min resolutie)"
     },
     "time_range": {
       "past": "Historiekduur",
@@ -120,7 +125,8 @@
         "minor": "Gering",
         "unknown": "Onbekend"
       },
-      "square_map_disabled_helper": "Uitgeschakeld wanneer een hoogte is ingesteld of de kaart in een sections-rastercel met een vast aantal rijen staat — die beperkingen leggen de kaarthoogte al vast."
+      "square_map_disabled_helper": "Uitgeschakeld wanneer een hoogte is ingesteld of de kaart in een sections-rastercel met een vast aantal rijen staat — die beperkingen leggen de kaarthoogte al vast.",
+      "show_loading_spinner": "Laadindicator weergeven"
     },
     "interaction": {
       "disable_scroll": "Scrollen uitschakelen (laat pagina door kaart vegen)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Afspelen / pauze omschakelen"
     },
     "animation": {
-      "frame_count": "Aantal frames",
       "frame_delay": "Frame-vertraging (ms)",
       "restart_delay": "Herstartvertraging (ms)",
-      "default_5": "Standaard: 5",
       "default_500": "Standaard: 500",
       "default_1000": "Standaard: 1000",
       "animated_transitions": "Geanimeerde overgangen",

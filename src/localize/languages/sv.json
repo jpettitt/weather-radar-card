@@ -14,7 +14,8 @@
         "wildfires": "Skogsbränder",
         "alerts": "NWS-varningar",
         "noaa": "NOAA-radar"
-      }
+      },
+      "dwd_de_only": "DWD-radarn täcker Tyskland och dess omedelbara grannländer. Din Home Assistant-plats ligger utanför detta område — kartan kan endast visa «inga data»."
     },
     "wildfire": {
       "acres": "Acres",
@@ -35,7 +36,10 @@
       "unknown_event": "Varning",
       "disclaimer": "ENDAST FÖR INFORMATION – inte för livsavgörande beslut.",
       "see_readme": "Se README"
-    }
+    },
+    "loading_radar_tiles": "Laddar radarrutor",
+    "now": "(nu)",
+    "now_tooltip": "Nu"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satellit (endast engelska)",
       "style_osm": "OpenStreetMap (lokaliserad)",
       "zoom_level": "Zoomnivå",
-      "zoom_default": "Standard (5)"
+      "zoom_default": "Standard (5)",
+      "source_dwd": "DWD (Tyskland — 5-min upplösning)"
     },
     "time_range": {
       "past": "Historiklängd",
@@ -120,7 +125,8 @@
         "minor": "Liten",
         "unknown": "Okänd"
       },
-      "square_map_disabled_helper": "Inaktiverad när en höjd är angiven eller kortet ligger i en sections-rutnätscell med ett fast antal rader — dessa begränsningar fixerar redan kortets höjd."
+      "square_map_disabled_helper": "Inaktiverad när en höjd är angiven eller kortet ligger i en sections-rutnätscell med ett fast antal rader — dessa begränsningar fixerar redan kortets höjd.",
+      "show_loading_spinner": "Visa laddningsindikator"
     },
     "interaction": {
       "disable_scroll": "Inaktivera rullning (tillåt sidsvep genom kartan)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Växla uppspelning / paus"
     },
     "animation": {
-      "frame_count": "Antal bildrutor",
       "frame_delay": "Bildrutefördröjning (ms)",
       "restart_delay": "Omstartsfördröjning (ms)",
-      "default_5": "Standard: 5",
       "default_500": "Standard: 500",
       "default_1000": "Standard: 1000",
       "animated_transitions": "Animerade övergångar",

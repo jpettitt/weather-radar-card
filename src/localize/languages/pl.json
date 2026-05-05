@@ -14,7 +14,8 @@
         "wildfires": "Pożary",
         "alerts": "Ostrzeżenia NWS",
         "noaa": "Radar NOAA"
-      }
+      },
+      "dwd_de_only": "Radar DWD obejmuje Niemcy i ich bezpośrednich sąsiadów. Twoja lokalizacja Home Assistant znajduje się poza tym regionem — mapa może pokazywać tylko „brak danych\"."
     },
     "wildfire": {
       "acres": "Akry",
@@ -35,7 +36,10 @@
       "unknown_event": "Ostrzeżenie",
       "disclaimer": "TYLKO INFORMACYJNIE — nie do decyzji dotyczących bezpieczeństwa życia.",
       "see_readme": "Zobacz README"
-    }
+    },
+    "loading_radar_tiles": "Ładowanie kafelków radaru",
+    "now": "(teraz)",
+    "now_tooltip": "Teraz"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satelita (tylko angielski)",
       "style_osm": "OpenStreetMap (zlokalizowana)",
       "zoom_level": "Poziom powiększenia",
-      "zoom_default": "Domyślnie (5)"
+      "zoom_default": "Domyślnie (5)",
+      "source_dwd": "DWD (Niemcy — rozdzielczość 5 min)"
     },
     "time_range": {
       "past": "Czas historii",
@@ -120,7 +125,8 @@
         "minor": "Mała",
         "unknown": "Nieznana"
       },
-      "square_map_disabled_helper": "Wyłączone, gdy ustawiono wysokość lub karta znajduje się w komórce siatki sekcji o stałej liczbie wierszy — te ograniczenia już ustalają wysokość karty."
+      "square_map_disabled_helper": "Wyłączone, gdy ustawiono wysokość lub karta znajduje się w komórce siatki sekcji o stałej liczbie wierszy — te ograniczenia już ustalają wysokość karty.",
+      "show_loading_spinner": "Pokaż wskaźnik ładowania"
     },
     "interaction": {
       "disable_scroll": "Wyłącz przewijanie (umożliw przesuwanie strony przez mapę)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Przełącz odtwarzanie / pauzę"
     },
     "animation": {
-      "frame_count": "Liczba klatek",
       "frame_delay": "Opóźnienie klatki (ms)",
       "restart_delay": "Opóźnienie restartu (ms)",
-      "default_5": "Domyślnie: 5",
       "default_500": "Domyślnie: 500",
       "default_1000": "Domyślnie: 1000",
       "animated_transitions": "Animowane przejścia",

@@ -14,7 +14,8 @@
         "wildfires": "Waldbrände",
         "alerts": "NWS-Warnungen",
         "noaa": "NOAA-Radar"
-      }
+      },
+      "dwd_de_only": "Das DWD-Radar deckt Deutschland und seine direkten Nachbarn ab. Ihr Home-Assistant-Standort liegt außerhalb dieser Region — die Karte zeigt möglicherweise nur „keine Daten\"."
     },
     "wildfire": {
       "acres": "Acres",
@@ -35,7 +36,10 @@
       "unknown_event": "Warnung",
       "disclaimer": "NUR ZUR INFORMATION – nicht für lebenswichtige Entscheidungen.",
       "see_readme": "Siehe README"
-    }
+    },
+    "loading_radar_tiles": "Radarkacheln werden geladen",
+    "now": "(jetzt)",
+    "now_tooltip": "Jetzt"
   },
   "editor": {
     "section": {
@@ -121,7 +125,8 @@
         "minor": "Gering",
         "unknown": "Unbekannt"
       },
-      "square_map_disabled_helper": "Deaktiviert, wenn eine Höhe festgelegt ist oder die Karte in einer Sections-Zelle mit fester Zeilenanzahl liegt — diese Beschränkungen legen die Kartenhöhe bereits fest."
+      "square_map_disabled_helper": "Deaktiviert, wenn eine Höhe festgelegt ist oder die Karte in einer Sections-Zelle mit fester Zeilenanzahl liegt — diese Beschränkungen legen die Kartenhöhe bereits fest.",
+      "show_loading_spinner": "Ladeanzeige anzeigen"
     },
     "interaction": {
       "disable_scroll": "Scrollen deaktivieren (Seitenwischen über die Karte erlauben)",
@@ -132,10 +137,8 @@
       "double_tap_toggle_play": "Wiedergabe / Pause umschalten"
     },
     "animation": {
-      "frame_count": "Anzahl der Bilder",
       "frame_delay": "Bildverzögerung (ms)",
       "restart_delay": "Neustartverzögerung (ms)",
-      "default_5": "Standard: 5",
       "default_500": "Standard: 500",
       "default_1000": "Standard: 1000",
       "animated_transitions": "Animierte Übergänge",

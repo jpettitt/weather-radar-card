@@ -14,7 +14,8 @@
         "wildfires": "Incendios forestales",
         "alerts": "Alertas NWS",
         "noaa": "Radar NOAA"
-      }
+      },
+      "dwd_de_only": "El radar DWD cubre Alemania y sus vecinos inmediatos. La ubicación de su Home Assistant está fuera de esta región — el mapa puede mostrar solo «sin datos»."
     },
     "wildfire": {
       "acres": "Acres",
@@ -35,7 +36,10 @@
       "unknown_event": "Alerta",
       "disclaimer": "SOLO INFORMATIVO: no apto para decisiones de seguridad vital.",
       "see_readme": "Consultar README"
-    }
+    },
+    "loading_radar_tiles": "Cargando mosaicos de radar",
+    "now": "(ahora)",
+    "now_tooltip": "Ahora"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satélite (solo inglés)",
       "style_osm": "OpenStreetMap (localizado)",
       "zoom_level": "Nivel de zoom",
-      "zoom_default": "Predeterminado (5)"
+      "zoom_default": "Predeterminado (5)",
+      "source_dwd": "DWD (Alemania — resolución de 5 min)"
     },
     "time_range": {
       "past": "Duración del historial",
@@ -120,7 +125,8 @@
         "minor": "Leve",
         "unknown": "Desconocida"
       },
-      "square_map_disabled_helper": "Desactivado cuando se establece una altura o la tarjeta está en una celda de cuadrícula de secciones con un número fijo de filas — esas restricciones ya fijan la altura de la tarjeta."
+      "square_map_disabled_helper": "Desactivado cuando se establece una altura o la tarjeta está en una celda de cuadrícula de secciones con un número fijo de filas — esas restricciones ya fijan la altura de la tarjeta.",
+      "show_loading_spinner": "Mostrar indicador de carga"
     },
     "interaction": {
       "disable_scroll": "Desactivar desplazamiento (permite deslizar la página sobre el mapa)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Alternar reproducción / pausa"
     },
     "animation": {
-      "frame_count": "Número de fotogramas",
       "frame_delay": "Retardo entre fotogramas (ms)",
       "restart_delay": "Retardo de reinicio (ms)",
-      "default_5": "Predeterminado: 5",
       "default_500": "Predeterminado: 500",
       "default_1000": "Predeterminado: 1000",
       "animated_transitions": "Transiciones animadas",

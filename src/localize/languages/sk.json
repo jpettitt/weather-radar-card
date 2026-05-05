@@ -14,7 +14,8 @@
         "wildfires": "Lesné požiare",
         "alerts": "Výstrahy NWS",
         "noaa": "NOAA radar"
-      }
+      },
+      "dwd_de_only": "Radar DWD pokrýva Nemecko a jeho bezprostredných susedov. Vaša poloha v Home Assistante je mimo tohto regiónu — mapa môže zobrazovať len „žiadne údaje\"."
     },
     "wildfire": {
       "acres": "Akrov",
@@ -35,7 +36,10 @@
       "unknown_event": "Výstraha",
       "disclaimer": "LEN PRE INFORMÁCIU – nie pre rozhodnutia ohrozujúce život.",
       "see_readme": "Pozri README"
-    }
+    },
+    "loading_radar_tiles": "Načítavanie radarových dlaždic",
+    "now": "(teraz)",
+    "now_tooltip": "Teraz"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satelit (iba angličtina)",
       "style_osm": "OpenStreetMap (lokalizovaná)",
       "zoom_level": "Úroveň priblíženia",
-      "zoom_default": "Predvolené (5)"
+      "zoom_default": "Predvolené (5)",
+      "source_dwd": "DWD (Nemecko — rozlíšenie 5 min)"
     },
     "time_range": {
       "past": "Trvanie histórie",
@@ -120,7 +125,8 @@
         "minor": "Malá",
         "unknown": "Neznáma"
       },
-      "square_map_disabled_helper": "Deaktivované, keď je nastavená výška alebo je karta v bunke sekčnej mriežky s pevným počtom riadkov — tieto obmedzenia už fixujú výšku karty."
+      "square_map_disabled_helper": "Deaktivované, keď je nastavená výška alebo je karta v bunke sekčnej mriežky s pevným počtom riadkov — tieto obmedzenia už fixujú výšku karty.",
+      "show_loading_spinner": "Zobraziť indikátor načítavania"
     },
     "interaction": {
       "disable_scroll": "Zakázať posúvanie (umožniť potiahnutie stránky cez mapu)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Prepnúť prehrávanie / pauzu"
     },
     "animation": {
-      "frame_count": "Počet snímok",
       "frame_delay": "Oneskorenie snímky (ms)",
       "restart_delay": "Oneskorenie reštartu (ms)",
-      "default_5": "Predvolené: 5",
       "default_500": "Predvolené: 500",
       "default_1000": "Predvolené: 1000",
       "animated_transitions": "Animované prechody",

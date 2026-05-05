@@ -14,7 +14,8 @@
         "wildfires": "Skogbranner",
         "alerts": "NWS-varsler",
         "noaa": "NOAA-radar"
-      }
+      },
+      "dwd_de_only": "DWD-radaren dekker Tyskland og umiddelbare naboland. Plasseringen din i Home Assistant er utenfor denne regionen — kartet viser kanskje bare «ingen data»."
     },
     "wildfire": {
       "acres": "Acres",
@@ -35,7 +36,10 @@
       "unknown_event": "Varsel",
       "disclaimer": "KUN TIL INFORMASJON – ikke for livsviktige beslutninger.",
       "see_readme": "Se README"
-    }
+    },
+    "loading_radar_tiles": "Laster radarfliser",
+    "now": "(nå)",
+    "now_tooltip": "Nå"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satellitt (kun engelsk)",
       "style_osm": "OpenStreetMap (lokalisert)",
       "zoom_level": "Zoomnivå",
-      "zoom_default": "Standard (5)"
+      "zoom_default": "Standard (5)",
+      "source_dwd": "DWD (Tyskland — 5-min oppløsning)"
     },
     "time_range": {
       "past": "Historikkvarighet",
@@ -120,7 +125,8 @@
         "minor": "Liten",
         "unknown": "Ukjent"
       },
-      "square_map_disabled_helper": "Deaktivert når en høyde er angitt eller kortet er i en sections-rutenettcelle med fast radantall — disse begrensningene fastsetter allerede kortets høyde."
+      "square_map_disabled_helper": "Deaktivert når en høyde er angitt eller kortet er i en sections-rutenettcelle med fast radantall — disse begrensningene fastsetter allerede kortets høyde.",
+      "show_loading_spinner": "Vis lasteindikator"
     },
     "interaction": {
       "disable_scroll": "Deaktiver rulling (la siden sveipes gjennom kartet)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Veksle avspilling / pause"
     },
     "animation": {
-      "frame_count": "Antall bilder",
       "frame_delay": "Bildeforsinkelse (ms)",
       "restart_delay": "Omstartforsinkelse (ms)",
-      "default_5": "Standard: 5",
       "default_500": "Standard: 500",
       "default_1000": "Standard: 1000",
       "animated_transitions": "Animerte overganger",

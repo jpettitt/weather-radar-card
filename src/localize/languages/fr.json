@@ -14,7 +14,8 @@
         "wildfires": "Feux de forêt",
         "alerts": "Alertes NWS",
         "noaa": "Radar NOAA"
-      }
+      },
+      "dwd_de_only": "Le radar DWD couvre l’Allemagne et ses voisins immédiats. Votre emplacement Home Assistant est en dehors de cette région — la carte peut n’afficher aucune donnée."
     },
     "wildfire": {
       "acres": "Acres",
@@ -35,7 +36,10 @@
       "unknown_event": "Alerte",
       "disclaimer": "À TITRE INFORMATIF UNIQUEMENT — ne pas utiliser pour des décisions vitales.",
       "see_readme": "Voir le README"
-    }
+    },
+    "loading_radar_tiles": "Chargement des tuiles radar",
+    "now": "(maintenant)",
+    "now_tooltip": "Maintenant"
   },
   "editor": {
     "section": {
@@ -61,7 +65,8 @@
       "style_satellite": "Satellite (anglais uniquement)",
       "style_osm": "OpenStreetMap (localisé)",
       "zoom_level": "Niveau de zoom",
-      "zoom_default": "Par défaut (5)"
+      "zoom_default": "Par défaut (5)",
+      "source_dwd": "DWD (Allemagne — résolution 5 min)"
     },
     "time_range": {
       "past": "Durée d’historique",
@@ -120,7 +125,8 @@
         "minor": "Mineure",
         "unknown": "Inconnue"
       },
-      "square_map_disabled_helper": "Désactivé lorsqu'une hauteur est définie ou que la carte est dans une cellule de grille de sections avec un nombre de lignes fixe — ces contraintes fixent déjà la hauteur de la carte."
+      "square_map_disabled_helper": "Désactivé lorsqu'une hauteur est définie ou que la carte est dans une cellule de grille de sections avec un nombre de lignes fixe — ces contraintes fixent déjà la hauteur de la carte.",
+      "show_loading_spinner": "Afficher l’indicateur de chargement"
     },
     "interaction": {
       "disable_scroll": "Désactiver le défilement (permet le balayage de la page sur la carte)",
@@ -131,10 +137,8 @@
       "double_tap_toggle_play": "Lecture / pause"
     },
     "animation": {
-      "frame_count": "Nombre d'images",
       "frame_delay": "Délai entre images (ms)",
       "restart_delay": "Délai de redémarrage (ms)",
-      "default_5": "Par défaut : 5",
       "default_500": "Par défaut : 500",
       "default_1000": "Par défaut : 1000",
       "animated_transitions": "Transitions animées",
