@@ -145,4 +145,56 @@ describe('migrateConfig', () => {
     const cfg = { ...base, show_marker: true, marker_latitude: -33.86, marker_longitude: 151.21, zoom_level: 9 };
     expect(migrateConfig(cfg).zoom_level).toBe(9);
   });
+
+  describe('time-range migration', () => {
+    it('converts legacy frame_count to past_minutes using the source interval (RainViewer)', () => {
+      const cfg = { ...base, data_source: 'RainViewer', frame_count: 5 };
+      const r = migrateConfig(cfg);
+      // (5 - 1) × 10 min = 40 min
+      expect(r.past_minutes).toBe(40);
+    });
+
+    it('converts legacy frame_count to past_minutes using the source interval (NOAA, 5-min)', () => {
+      const cfg = { ...base, data_source: 'NOAA', frame_count: 12 };
+      const r = migrateConfig(cfg);
+      // (12 - 1) × 5 min = 55 min
+      expect(r.past_minutes).toBe(55);
+    });
+
+    it('converts legacy frame_count using RainViewer interval when data_source is undefined', () => {
+      // Default source is RainViewer (10-min interval).
+      const cfg = { ...base, frame_count: 7 };
+      const r = migrateConfig(cfg);
+      expect(r.past_minutes).toBe(60);
+    });
+
+    it('converts legacy dwd_forecast_hours to forecast_minutes', () => {
+      const cfg = { ...base, data_source: 'DWD', dwd_forecast_hours: 2 };
+      const r = migrateConfig(cfg);
+      expect(r.forecast_minutes).toBe(120);
+    });
+
+    it('does not overwrite explicit past_minutes with frame_count derivation', () => {
+      const cfg = { ...base, data_source: 'RainViewer', frame_count: 5, past_minutes: 90 };
+      expect(migrateConfig(cfg).past_minutes).toBe(90);
+    });
+
+    it('does not overwrite explicit forecast_minutes with dwd_forecast_hours derivation', () => {
+      const cfg = { ...base, data_source: 'DWD', dwd_forecast_hours: 1, forecast_minutes: 30 };
+      expect(migrateConfig(cfg).forecast_minutes).toBe(30);
+    });
+
+    it('clamps negative legacy frame_count to 0 minutes (defensive against bad YAML)', () => {
+      const cfg = { ...base, frame_count: 0 };
+      // (0 - 1) × 10 = -10 → clamped to 0
+      expect(migrateConfig(cfg).past_minutes).toBe(0);
+    });
+
+    it('migrates both frame_count and dwd_forecast_hours together for DWD', () => {
+      const cfg = { ...base, data_source: 'DWD', frame_count: 13, dwd_forecast_hours: 2 };
+      const r = migrateConfig(cfg);
+      expect(r.past_minutes).toBe(60);  // (13 - 1) × 5
+      expect(r.forecast_minutes).toBe(120); // 2 × 60
+    });
+  });
 });

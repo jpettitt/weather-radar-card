@@ -11,9 +11,10 @@ import markerClusterCss from 'leaflet.markercluster/dist/MarkerCluster.css';
 
 import './editor';
 import { WeatherRadarCardConfig, Marker } from './types';
-import { CARD_VERSION } from './const';
+import { CARD_VERSION, BUILD_TIMESTAMP } from './const';
+import { getEffectiveTimeRange } from './source-caps';
 import { localize } from './localize/localize';
-import { RateLimiter } from './rate-limiter';
+import { rainviewerLimiter, noaaLimiter, dwdLimiter } from './rate-limiters';
 import { FetchTileLayer } from './fetch-tile-layer';
 import { RadarToolbar } from './radar-toolbar';
 import { RadarPlayer } from './radar-player';
@@ -25,10 +26,13 @@ import {
 } from './coordinate-utils';
 import { createMarkerIconForMarker, HOME_PATH } from './marker-icon';
 import { migrateConfig, resolveMarkerPosition, resolveTracking } from './marker-utils';
+import { WildfireLayer } from './wildfire-layer';
+import { NwsAlertsLayer } from './nws-alerts-layer';
+import { getRegionWarnings } from './region-warning';
 
 /* eslint no-console: 0 */
 console.info(
-  `%c  WEATHER-RADAR-CARD \n%c  ${localize('common.version')} ${CARD_VERSION}    `,
+  `%c  WEATHER-RADAR-CARD \n%c  ${localize('common.version')} ${CARD_VERSION}  (built ${BUILD_TIMESTAMP})    `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
@@ -38,6 +42,12 @@ console.info(
   type: 'weather-radar-card',
   name: 'Weather Radar Card',
   description: 'A rain radar card using tiled imagery from RainViewer, NOAA/NWS, and DWD',
+  // Tell HA's card picker to render a live preview (defaults to false on
+  // unknown custom cards, so without this we get just the name +
+  // description tile — no map. The card uses getStubConfig() below to
+  // pick the preview / initial config.)
+  preview: true,
+  documentationURL: 'https://github.com/Makin-Things/weather-radar-card',
 });
 
 @customElement('weather-radar-card')
@@ -45,7 +55,17 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   public static async getConfigElement(): Promise<LovelaceCardEditor> {
     return document.createElement('weather-radar-card-editor') as LovelaceCardEditor;
   }
-  public static getStubConfig(): Record<string, unknown> { return {}; }
+  // Picked by HA's card-picker to render the preview AND used as the
+  // initial config when the user adds the card to a dashboard. Keep
+  // it compact enough to fit the picker pane (~250px tall) but
+  // representative of what the card normally does — RainViewer, home
+  // marker (auto-created by migrateConfig from absent markers[]),
+  // default crossfade. The user tunes from here.
+  public static getStubConfig(): Record<string, unknown> {
+    return {
+      height: '220px',
+    };
+  }
 
   // ── HA properties ────────────────────────────────────────────────────────
 
@@ -68,8 +88,18 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _rangeRings: L.Circle[] = [];
   private _dynamicStyleEl!: HTMLStyleElement;
   private _player: RadarPlayer | null = null;
+  private _wildfireLayer: WildfireLayer | null = null;
+  private _alertsLayer: NwsAlertsLayer | null = null;
 
-  @state() private _pendingCenter: { lat: number; lon: number; zoom: number } | null = null;
+  // True while the user is actively editing this card via HA's edit dialog.
+  // Detected via window-level events from the editor element's lifecycle —
+  // we can't infer it from the card's `editMode` property, which only tells
+  // us the dashboard is editable, not whether the card's edit dialog is open.
+  // Used to decide whether to auto-propagate pan/zoom into the editor's
+  // Lat/Long/Zoom fields.
+  @state() private _editorOpen = false;
+  private _editorOpenedHandler: (() => void) | null = null;
+  private _editorClosedHandler: (() => void) | null = null;
   private _userMoveInProgress = false;
 
   private _navReloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -81,15 +111,10 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _darkModeQuery: MediaQueryList | null = null;
   private _darkModeHandler: (() => void) | null = null;
 
-  private _rainviewerLimiter = new RateLimiter(500);
-  private _noaaLimiter = new RateLimiter(120);
-  // DWD via maps.dwd.de is fronted by Akamai with no documented per-IP
-  // limit. 500/min (matches RainViewer) is well within polite budget for
-  // a single user — burst pan/zoom can pull ~80 tiles in one move and
-  // the previous 120/min cap was visibly throttling without ever seeing
-  // 429s from the server.
-  private _dwdLimiter = new RateLimiter(500);
-  private _dwdCoverageWarned = false;
+  // Per-source rate limiters live as module-level singletons in
+  // ./rate-limiters so the sliding-window count survives card teardown
+  // (config edit) AND is shared across multiple card instances on the
+  // dashboard. See that file for rate choices.
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -116,6 +141,22 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const cfg = this._config;
     if (cfg.height && this._validateCssSize(cfg.height)) return cfg.height;
     return '400px';
+  }
+
+  /**
+   * Detect whether we're being rendered inside HA's card-add picker.
+   * Walks up through both light DOM and shadow DOM hosts looking for a
+   * `hui-card-picker` ancestor. Hass alone is not a reliable signal —
+   * the picker passes hass through like a normal mount.
+   */
+  private _isInPickerPreview(): boolean {
+    let el: Node | null = this.parentNode ?? (this.getRootNode() as ShadowRoot)?.host ?? null;
+    while (el) {
+      const tag = (el as Element)?.tagName?.toLowerCase?.();
+      if (tag === 'hui-card-picker') return true;
+      el = (el as ShadowRoot).host ?? el.parentNode;
+    }
+    return false;
   }
 
   // ── HA lifecycle ──────────────────────────────────────────────────────────
@@ -201,10 +242,37 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   public getCardSize(): number { return 10; }
 
+  /**
+   * Tells HA's sections-view grid the card knows how to resize, which
+   * suppresses the "may not display correctly with custom sizes" banner.
+   * Defaults match the card's typical 400px height: 4 rows × 56px
+   * default density ≈ 224px (so the user can shrink down to roughly the
+   * picker preview), up to 12 rows × 56px ≈ 672px wide-pane.
+   *
+   * The card's existing ResizeObserver (set up in `_setupResizeObserver`)
+   * calls `_map.invalidateSize()` whenever the container changes shape,
+   * so Leaflet's tiles reflow correctly when the grid cell resizes.
+   */
+  public getGridOptions(): {
+    columns?: number | 'full';
+    rows?: number | 'auto';
+    min_columns?: number;
+    min_rows?: number;
+    max_columns?: number;
+    max_rows?: number;
+  } {
+    return {
+      columns: 12,        // full row by default
+      rows: 7,            // ≈ 392 px at 56 px/row — close to the 400 px height default
+      min_columns: 6,     // half a row minimum
+      min_rows: 4,        // ≈ 224 px — readable even at the smallest
+    };
+  }
+
   protected shouldUpdate(changedProps: PropertyValues): boolean {
     if (!this._config) return false;
     return changedProps.has('_config') || changedProps.has('hass')
-      || changedProps.has('editMode') || changedProps.has('_pendingCenter');
+      || changedProps.has('editMode');
   }
 
   protected firstUpdated(): void {
@@ -216,9 +284,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   }
 
   protected updated(changedProps: PropertyValues): void {
-    if (changedProps.has('editMode') && !this.editMode) {
-      this._pendingCenter = null;
-    }
     if (!this._map && this._config) {
       this._initMap();
     } else if (changedProps.has('hass') && this._map) {
@@ -233,11 +298,37 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         const hasTracking = (this._config?.markers ?? []).some(m => m.track);
         if (hasTracking) this._resolveTracking();
       }
+      this._wildfireLayer?.updateHass(this.hass);
+      this._alertsLayer?.updateHass(this.hass);
+    }
+  }
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    // Listen for the editor element's lifecycle so we can switch on
+    // auto-propagate of pan/zoom into the editor's Lat/Long/Zoom fields
+    // ONLY while the user is editing this card. The editor dispatches the
+    // events on its own connect/disconnect (see editor.ts).
+    this._editorOpenedHandler = () => { this._editorOpen = true; };
+    this._editorClosedHandler = () => { this._editorOpen = false; };
+    window.addEventListener('weather-radar-editor-opened', this._editorOpenedHandler);
+    window.addEventListener('weather-radar-editor-closed', this._editorClosedHandler);
+    // Race fix: if the editor already mounted before us (preview card in
+    // the edit dialog — order is up to HA), its 'opened' event has been
+    // and gone. The editor maintains a global mount counter; consult it
+    // so we don't get stuck with _editorOpen=false through the entire
+    // edit session and silently never push pan/zoom back to the form.
+    if ((window as unknown as { __weatherRadarCardEditorCount?: number }).__weatherRadarCardEditorCount) {
+      this._editorOpen = true;
     }
   }
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
+    if (this._editorOpenedHandler) window.removeEventListener('weather-radar-editor-opened', this._editorOpenedHandler);
+    if (this._editorClosedHandler) window.removeEventListener('weather-radar-editor-closed', this._editorClosedHandler);
+    this._editorOpenedHandler = null;
+    this._editorClosedHandler = null;
     this._teardown();
   }
 
@@ -245,6 +336,19 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   protected render(): TemplateResult | void {
     if (!this._config) return html``;
+    // Show a static preview image when rendered inside HA's card picker
+    // dialog. Otherwise the picker would hammer the tile API on every
+    // open AND the result looks like an empty map whenever there's no
+    // current rain in the user's area.
+    if (this._isInPickerPreview()) {
+      return html`
+        <ha-card>
+          <img src="/local/community/weather-radar-card/preview.jpg"
+               style="width:100%; display:block; border-radius: var(--ha-card-border-radius, 12px); object-fit: cover;"
+               alt="Weather Radar Card preview" />
+        </ha-card>
+      `;
+    }
     const mapStyle = this._effectiveMapStyle();
     const isMapDark = mapStyle === 'dark' || mapStyle === 'satellite';
     const dataSource = this._config.data_source ?? 'RainViewer';
@@ -254,29 +358,53 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       : dataSource === 'DWD'
         ? '/local/community/weather-radar-card/radar-colour-bar-dwd.png'
         : '/local/community/weather-radar-card/radar-colour-bar-universalblue.png';
+    // Layout mode:
+    //   aspect-mode → square_map without an explicit height. The map div
+    //                 carries aspect-ratio:1/1 and the card grows to its
+    //                 content (chrome stacks above + below). Pre-existing
+    //                 behaviour, preserved as-is.
+    //   flex-mode  → everything else. ha-card is a flex column with
+    //                height:100% (fills sections-grid cells) AND
+    //                min-height:<configured height> (preserves the user's
+    //                expected baseline in regular dashboards). The map
+    //                div is flex:1 so it absorbs whatever vertical room
+    //                is left after the fixed-height chrome (color bar,
+    //                progress bar, bottom bar).
+    const isAspectMode = !!this._config.square_map && !this._config.height;
+    const cardClasses = [
+      isMapDark ? 'map-dark' : '',
+      isAspectMode ? 'aspect-mode' : 'flex-mode',
+    ].filter(Boolean).join(' ');
+    const cardStyles: string[] = [];
+    if (this._config.width && this._validateCssSize(this._config.width)) {
+      cardStyles.push(`width:${this._config.width}`);
+    }
+    if (!isAspectMode) {
+      cardStyles.push(`min-height:${this._calculateHeight()}`);
+    }
     return html`
-      <ha-card class=${isMapDark ? 'map-dark' : ''} style="${this._config.width && this._validateCssSize(this._config.width) ? `width:${this._config.width}` : ''}">
+      <ha-card class=${cardClasses} style=${cardStyles.join(';')}>
         <div id="color-bar" style="height:8px;display:${showColourBar ? '' : 'none'}">
           <img id="img-color-bar" height="8" style="vertical-align:top" src=${colourBarSrc} />
         </div>
-        <div id="rate-limit-banner" class="status-banner" style="display:none">
-          ${localize('ui.rate_limited')}
+        <div id="banner-stack" class="banner-stack">
+          ${getRegionWarnings(this.hass, this._config).map(msg => html`
+            <div class="status-banner status-banner-info">${msg}</div>
+          `)}
+          <div id="rate-limit-banner" class="status-banner" style="display:none">
+            ${localize('ui.rate_limited')}
+          </div>
         </div>
-        ${this.editMode && this._pendingCenter ? html`
-          <button class="save-center-btn" @click=${this._savePendingCenter}>
-            ${localize('ui.save_map_center')}
-          </button>
-        ` : ''}
-        <div id="mapid" style="${this._config.square_map && !this._config.height ? 'aspect-ratio:1/1' : `height:${this._calculateHeight()}`}"></div>
+        <div id="mapid"></div>
         <div id="div-progress-bar" style="height:8px;cursor:pointer;display:${this._config.show_progress_bar === false ? 'none' : 'flex'}"></div>
         <div id="bottom-container">
-          <div id="timestampid" style="height:32px;float:left;position:absolute">
-            <p id="timestamp" style="margin:0;padding:4px 8px;font-size:12px;white-space:nowrap"></p>
+          <div id="timestampid">
+            <p id="timestamp"></p>
           </div>
           <div id="loading-spinner" class="loading-spinner" style="display:none" role="status" aria-live="polite" aria-label=${localize('ui.loading_radar_tiles')}>
             <div class="loading-spinner-arc" aria-hidden="true"></div>
           </div>
-          <div id="attribution" style="font-size:10px;text-align:right;padding:4px 8px"></div>
+          <div id="attribution"></div>
         </div>
       </ha-card>
     `;
@@ -303,7 +431,14 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     );
 
     const isStatic = cfg.static_map === true;
-    const hasDoubleTapAction = cfg.double_tap_action && cfg.double_tap_action !== 'none';
+    // Leaflet's built-in double-click zoom stays on for two cases: when no
+    // double_tap_action is configured at all (back-compat default), and
+    // when the user has explicitly chosen 'zoom_in' (the documented way
+    // to keep the zoom behaviour now that 'none' truly means none).
+    // Every other value (recenter, toggle_play, 'none', or an HA action
+    // object) suppresses Leaflet zoom so it doesn't fight the custom action.
+    const action = cfg.double_tap_action;
+    const hasDoubleTapAction = action !== undefined && action !== 'zoom_in';
     this._map = L.map(mapEl as HTMLElement, {
       zoomControl: cfg.show_zoom === true && !isStatic,
       // Disable Leaflet's built-in double-click zoom when a custom action is configured.
@@ -341,27 +476,35 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._darkModeQuery.addEventListener('change', this._darkModeHandler);
     }
 
-    // Warn once if the HA location is outside DWD's coverage (Germany + ~50–150 km buffer).
-    if (cfg.data_source === 'DWD' && !this._dwdCoverageWarned && (haLat !== 0 || haLon !== 0)) {
-      const inside = haLat >= 46 && haLat <= 56 && haLon >= 5 && haLon <= 16;
-      if (!inside) {
-        console.warn(
-          `[weather-radar-card] DWD selected but HA location (${haLat.toFixed(2)}, ${haLon.toFixed(2)}) is outside DWD coverage; the map will show only no-data.`,
-        );
-      }
-      this._dwdCoverageWarned = true;
-    }
+    // DWD-outside-coverage warning is surfaced as a status banner via
+    // getRegionWarnings() in render() — a single visible UI cue users will
+    // actually see, replacing the earlier one-shot console.warn that only
+    // helped developers.
 
     this._player = new RadarPlayer({
       map: this._map,
       shadowRoot: this.shadowRoot!,
       getConfig: () => this._config,
-      rainviewerLimiter: this._rainviewerLimiter,
-      noaaLimiter: this._noaaLimiter,
-      dwdLimiter: this._dwdLimiter,
+      rainviewerLimiter,
+      noaaLimiter,
+      dwdLimiter,
     });
     this._player.toolbar = this._toolbar;
-    this._player.start(cfg.frame_count ?? 5);
+    // frame count is derived from past_minutes / forecast_minutes / stride
+    // via getEffectiveTimeRange — passed in for back-compat with the
+    // start(frameCount) signature. Player re-derives from this._cfg
+    // internally too.
+    this._player.start(getEffectiveTimeRange(cfg).frameCount);
+
+    if (cfg.show_wildfires === true) {
+      this._wildfireLayer = new WildfireLayer(this._map, () => this._config, this.hass);
+      this._wildfireLayer.start();
+    }
+
+    if (cfg.show_alerts === true) {
+      this._alertsLayer = new NwsAlertsLayer(this._map, () => this._config, this.hass);
+      this._alertsLayer.start();
+    }
   }
 
   private _teardown(): void {
@@ -385,6 +528,10 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     }
     this._player?.clear();
     this._player = null;
+    this._wildfireLayer?.clear();
+    this._wildfireLayer = null;
+    this._alertsLayer?.clear();
+    this._alertsLayer = null;
     if (this._clusterGroup) { this._clusterGroup.clearLayers(); this._clusterGroup = null; }
     this._clusterSpiderfied = false;
     if (this._map) { this._map.remove(); this._map = null; }
@@ -689,18 +836,19 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._toolbar.addTo(this._map);
   }
 
-  private _savePendingCenter(): void {
-    if (!this._pendingCenter) return;
-    const { lat, lon, zoom } = this._pendingCenter;
-    this._pendingCenter = null;
-    // Communicate to the editor element via a window event so the editor can
-    // fire config-changed from the correct element. Firing it from the card
-    // causes HA to call setConfig back with the old stored config (snap-back).
+  // Push the current map centre + zoom into the editor's Lat/Long/Zoom
+  // fields via a window event. The editor element (in editor.ts) listens
+  // for this and calls config-changed itself — firing it from the card
+  // causes HA to round-trip back through setConfig with the old stored
+  // values, which would snap the map back.
+  private _pushCenterToEditor(): void {
+    if (!this._map) return;
+    const c = this._map.getCenter();
     window.dispatchEvent(new CustomEvent('weather-radar-center-update', {
       detail: {
-        center_latitude: Math.round(lat * 10000) / 10000,
-        center_longitude: Math.round(lon * 10000) / 10000,
-        zoom_level: zoom,
+        center_latitude: Math.round(c.lat * 10000) / 10000,
+        center_longitude: Math.round(c.lng * 10000) / 10000,
+        zoom_level: this._map.getZoom(),
       },
     }));
   }
@@ -708,7 +856,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupDoubleTapAction(): void {
     if (!this._map) return;
     const action = this._config.double_tap_action;
-    if (!action || action === 'none') return;
+    // Bail when the value is one we don't need a custom handler for:
+    //   undefined / 'zoom_in' → Leaflet's built-in double-click zoom is
+    //                           on (see _initMap); we sit out.
+    //   'none'                → user explicitly asked for nothing; we
+    //                           sit out AND _initMap turned zoom off too.
+    if (action === undefined || action === 'zoom_in' || action === 'none') return;
     this._map.on('dblclick', (e: L.LeafletMouseEvent) => {
       L.DomEvent.stopPropagation(e);
       if (action === 'recenter') { this._recenter(); return; }
@@ -779,11 +932,14 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._map.on('moveend zoomend', () => {
       if (this._navReloadTimer) clearTimeout(this._navReloadTimer);
       this._navReloadTimer = setTimeout(() => {
-        this._player?.onNavSettled(this._config.frame_count ?? 5);
+        this._player?.onNavSettled(getEffectiveTimeRange(this._config).frameCount);
       }, 100);
-      if (this._userMoveInProgress && this.editMode && this._map) {
-        const c = this._map.getCenter();
-        this._pendingCenter = { lat: c.lat, lon: c.lng, zoom: this._map.getZoom() };
+      // When the user is editing this card, push the new map view straight
+      // into the editor's Lat/Long/Zoom fields. WYSIWYG — no save button.
+      // editMode alone isn't enough (it just means the dashboard is
+      // editable); _editorOpen is set by the editor element's lifecycle.
+      if (this._userMoveInProgress && this.editMode && this._editorOpen) {
+        this._pushCenterToEditor();
       }
       this._userMoveInProgress = false;
     });
@@ -792,14 +948,30 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // ── Visibility / resize observers ─────────────────────────────────────────
 
   private _setupVisibilityObserver(): void {
+    // Triggered by IntersectionObserver (card scrolled off-screen) AND
+    // document.visibilitychange (tab hidden). Either condition pauses
+    // ALL network activity we control: radar player frame loop +
+    // overlay-layer polling timers. Tile fetches for the basemap and
+    // labels naturally stop too — Leaflet only requests new tiles when
+    // the view changes, which doesn't happen while the card is hidden.
+    const onHide = (): void => {
+      this._player?.onVisibilityHidden();
+      this._wildfireLayer?.pause();
+      this._alertsLayer?.pause();
+    };
+    const onShow = (): void => {
+      this._player?.onVisibilityVisible();
+      this._wildfireLayer?.resume();
+      this._alertsLayer?.resume();
+    };
     this._visObserver = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) this._player?.onVisibilityVisible();
-      else this._player?.onVisibilityHidden();
+      if (entries[0].isIntersecting) onShow();
+      else onHide();
     }, { threshold: 0.1 });
     this._visObserver.observe(this);
     this._visibilityHandler = () => {
-      if (document.hidden) this._player?.onVisibilityHidden();
-      else this._player?.onVisibilityVisible();
+      if (document.hidden) onHide();
+      else onShow();
     };
     document.addEventListener('visibilitychange', this._visibilityHandler);
   }
@@ -807,7 +979,28 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupResizeObserver(): void {
     const mapEl = this.shadowRoot?.getElementById('mapid');
     if (!mapEl) return;
-    this._resizeObserver = new ResizeObserver(() => this._map?.invalidateSize());
+    this._resizeObserver = new ResizeObserver(() => {
+      // Defer to next frame so any pending markercluster initialization
+      // microtasks (esp. the first bounds computation) complete before
+      // we fire 'resize' via invalidateSize. Without this defer, the
+      // ResizeObserver's first callback can race the cluster group's
+      // setup — markercluster's resize handler tries to read
+      // _topClusterLevel._bounds while it's still undefined and crashes
+      // with "Cannot read properties of undefined (reading 'lat')".
+      // See issue #110 for the original instance of the same race
+      // (zoomEnd path); this is the resize path of the same root cause.
+      requestAnimationFrame(() => {
+        if (!this._map) return;
+        try {
+          this._map.invalidateSize();
+        } catch (e) {
+          // Belt-and-braces: if markercluster still trips on this in
+          // some edge case, log instead of breaking the whole card.
+          // The next ResizeObserver tick will re-attempt.
+          console.warn('[weather-radar-card] invalidateSize() raised — likely the markercluster init race. Recovering on next resize.', e);
+        }
+      });
+    });
     this._resizeObserver.observe(mapEl);
   }
 
@@ -817,16 +1010,45 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     unsafeCSS(leafletCss),
     unsafeCSS(markerClusterCss),
     css`
-      :host { display: block; isolation: isolate; }
-      ha-card { overflow: hidden; position: relative; }
+      :host { display: block; isolation: isolate; height: 100%; }
+      /* flex-mode is the default: ha-card fills its container vertically
+         (sections-grid cell), with min-height set inline from the user's
+         height config so a regular dashboard still renders at the
+         expected size. The map div is flex:1, absorbing whatever
+         vertical space is left after the fixed-height chrome. */
+      ha-card.flex-mode {
+        overflow: hidden; position: relative;
+        display: flex; flex-direction: column; height: 100%;
+        /* Container-query context for the bottom-row narrow-width
+           rule below (drops the date half of the timestamp at ≤397px). */
+        container-type: inline-size;
+      }
+      ha-card.flex-mode #mapid {
+        flex: 1 1 auto; min-height: 0;
+      }
+      /* aspect-mode (square_map without explicit height): the map div
+         is square via aspect-ratio; ha-card grows to its content. Same
+         behaviour as before the flex refactor. */
+      ha-card.aspect-mode {
+        overflow: hidden; position: relative;
+        container-type: inline-size;
+      }
+      ha-card.aspect-mode #mapid {
+        aspect-ratio: 1 / 1;
+      }
       #mapid { width: 100%; position: relative; }
-      .status-banner {
+      .banner-stack {
         position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
-        z-index: 1000; background: rgba(180,60,0,0.85); color: #fff;
+        z-index: 1000; display: flex; flex-direction: column; gap: 4px;
+        align-items: center; pointer-events: none; max-width: calc(100% - 16px);
+      }
+      .status-banner {
+        background: rgba(180,60,0,0.85); color: #fff;
         padding: 4px 12px; border-radius: 4px;
         font: 12px/1.5 'Helvetica Neue',Arial,sans-serif;
-        pointer-events: none; white-space: nowrap;
+        pointer-events: none; text-align: center;
       }
+      .status-banner-info { background: rgba(40,80,160,0.85); }
       .marker-entity-picture {
         border-radius: 50%; border: 2px solid white;
         box-shadow: 0 1px 3px rgba(0,0,0,0.4); object-fit: cover;
@@ -837,28 +1059,54 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       #div-progress-bar {
         background: var(--ha-card-background, var(--card-background-color));
       }
+      /* Bottom row: timestamp on the left, attribution on the right,
+         centered spinner overlay. Flex layout so the two text blocks
+         share the available width and never overlap on narrow cards
+         (~390 px or less). Both can ellipsis-truncate when the row is
+         too tight to show everything; the spinner is absolute-
+         positioned so it doesn't participate in the flex flow. */
       #bottom-container {
         height: 32px; font-size: 10px; position: relative;
+        display: flex; align-items: center;
         background: var(--ha-card-background, var(--card-background-color));
         color: var(--primary-text-color);
       }
       #bottom-container a { color: var(--primary-color); }
-      /* Cap the timestamp at half-width minus the spinner radius so a long
-         timestamp on a narrow card (panel mode, ~200px) cannot crowd the
-         centred spinner. Truncates with an ellipsis past that point. */
-      #timestampid { max-width: calc(50% - 16px); }
-      #timestamp { overflow: hidden; text-overflow: ellipsis; }
+      #timestampid {
+        flex: 0 1 auto; min-width: 0;
+        max-width: calc(50% - 16px);
+        overflow: hidden;
+      }
+      #timestamp {
+        margin: 0; padding: 4px 8px; font-size: 12px; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+      }
+      #attribution {
+        flex: 1 1 auto; min-width: 0;
+        text-align: right; padding: 4px 8px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      /* On narrow cards (≤397px) drop the date prefix so just the time
+         shows alongside the attribution. The timestamp is rendered as
+         <span class="ts-date">… </span><span class="ts-time">…</span>
+         in radar-player.ts so the two halves are independently
+         hideable. Container query on ha-card means this responds to
+         the card's actual width regardless of viewport (sections grid,
+         panel mode, masonry — all "just work"). */
+      @container (max-width: 397px) {
+        .ts-date { display: none; }
+      }
       .map-dark .leaflet-control-scale-line {
         color: #bbb; border-color: #bbb; background: rgba(0,0,0,0.5);
         text-shadow: none;
       }
-      .save-center-btn {
-        position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%);
-        z-index: 1000; background: var(--primary-color); color: var(--text-primary-color, #fff);
-        border: none; border-radius: 4px; padding: 6px 16px; cursor: pointer;
-        font: 12px/1.5 'Helvetica Neue', Arial, sans-serif;
-        white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      }
+      /* Leaflet defaults give controls (zoom, scale) z-index 1000 and the
+         popup pane z-index 700, so an open wildfire / NWS-alert popup
+         renders BEHIND the zoom buttons and gets visually clipped on
+         small cards. Lift the popup pane above the controls — the user
+         has to close the popup to interact with the controls again,
+         which is the expected modal-ish UX for these popups. */
+      .leaflet-popup-pane { z-index: 1100; }
       .loading-spinner {
         position: absolute; top: 50%; left: 50%;
         transform: translate(-50%, -50%);

@@ -32,7 +32,26 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   height?: string;
   width?: string;
   extra_labels?: boolean;
+  /** @deprecated since 3.5: use past_minutes (and forecast_minutes for sources that support it). Auto-migrated by migrateConfig. */
   frame_count?: number;
+  /**
+   * How many minutes of history to load. Source-specific defaults apply
+   * when unset. The editor offers presets up to the source's maximum;
+   * YAML can exceed the editor cap (clamped to the source's API limit).
+   */
+  past_minutes?: number;
+  /**
+   * How many minutes of forecast to include in the playback. Only
+   * applies to sources that have a forecast (currently DWD).
+   * Source-specific defaults apply when unset.
+   */
+  forecast_minutes?: number;
+  /**
+   * YAML-only escape hatch for the perf cost of large past_minutes
+   * ranges: forces a custom frame interval (snapped to a multiple of
+   * the source's native interval). Defaults to the native interval.
+   */
+  frame_stride_minutes?: number;
   frame_delay?: number;
   animated_transitions?: boolean;
   transition_time?: number;
@@ -68,14 +87,30 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   data_source?: string;
   /** DWD-only: ISO timestamp to anchor frames at instead of "now" — for testing with historical rain. */
   dwd_time_override?: string;
-  /** DWD-only: WMS layer name override. Default Niederschlagsradar (past-only); auto-switches to Radar_wn-product_1x1km_ger when dwd_forecast_hours > 0 since that one carries the +2h nowcast. */
+  /** DWD-only: WMS layer name override. Default Niederschlagsradar (past-only); auto-switches to Radar_wn-product_1x1km_ger when forecast_minutes > 0 since that one carries the +2h nowcast. */
   dwd_layer?: string;
-  /** DWD-only: include this many hours of nowcast forecast in the playback range. Default 0. */
+  /** @deprecated since 3.5: use forecast_minutes (source-agnostic). Auto-migrated by migrateConfig. */
   dwd_forecast_hours?: number;
   show_snow?: boolean;
   show_progress_bar?: boolean;
   show_color_bar?: boolean;
   show_loading_spinner?: boolean;
+  // Wildfire overlay (US-only — see docs/wildfire-feature-design.md)
+  show_wildfires?: boolean;
+  wildfire_min_acres?: number;
+  wildfire_radius_km?: number;
+  wildfire_color?: string;
+  wildfire_contained_color?: string;
+  wildfire_fill_opacity?: number;
+  wildfire_refresh_minutes?: number;
+  // NWS watches & warnings overlay (US-only — see docs/nws-alerts-feature-design.md)
+  show_alerts?: boolean;
+  alerts_categories?: string[];        // category keys; default: all except 'marine'
+  alerts_types?: string[];             // explicit event-string allowlist; overrides alerts_categories when set
+  alerts_radius_km?: number;
+  alerts_min_severity?: 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
+  alerts_fill_opacity?: number;
+  alerts_refresh_seconds?: number;
   // Simple shortcut string OR a standard HA action object e.g. {action: navigate, navigation_path: /lovelace/1}
   double_tap_action?: string | { action: string; [key: string]: unknown };
   disable_scroll?: boolean;
@@ -83,4 +118,17 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   show_error?: boolean;
   test_gui?: boolean;
   show_header_toggle?: boolean;
+  /**
+   * HA's sections-view grid passes grid_options on the card config to
+   * record the user's resize-handle position. We don't write it; we
+   * read it (along with `height`) to know when the card's vertical
+   * extent is being externally constrained — the editor uses that to
+   * grey out controls (like square_map) that have no effect under that
+   * constraint. `rows: 'auto'` means HA lets the card pick its height,
+   * which is back to the unconstrained case.
+   */
+  grid_options?: {
+    rows?: number | 'auto';
+    columns?: number | 'full';
+  };
 }

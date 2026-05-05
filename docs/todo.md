@@ -88,29 +88,35 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
-- **Time-based playback range instead of frame count.** Today the user
-  configures `frame_count` (number of frames) and `frame_delay` (ms per
-  frame), and the resulting playback duration is implicit:
-  `frame_count × source-specific frame interval`. For RainViewer the
-  frame interval is 10 min, for NOAA 5 min, for DWD 5 min — so "I want
-  the last hour of radar" becomes 6 / 12 / 12 frames depending on the
-  source. Not intuitive, breaks when the user switches sources.
+- **Lightning overlay (Blitzortung)** — proposed for 3.6. Render live
+  lightning strikes from the [Blitzortung HA integration](https://www.home-assistant.io/integrations/blitzortung/)
+  as small `mdi:lightning-bolt-outline` markers, interior coloured by
+  age (white → yellow → orange → red over the integration's max-age
+  window). One-shot pulse animation on appearance. Detection via
+  `hass.config.components.includes('blitzortung')`; toggle disabled
+  with tooltip when not installed. Inherits the integration's distance
+  and age caps (no card-side duplicates). Popup links into the
+  Blitzortung web map at the strike location.
 
-  Replace `frame_count` with `history_minutes` (default e.g. 60). The
-  card computes the right frame count for the active source's interval.
-  For sources that publish a forecast (currently DWD via
-  `dwd_forecast_hours`, future NWS HRRR / others), also expose
-  `forecast_minutes` — the playback range becomes `[now - history,
-  now + forecast]`. Editor shows two text fields ("History (min)",
-  "Forecast (min)" — the second only when the active source supports
-  forecast); legacy `frame_count` keeps working with a one-release
-  deprecation warning.
+  Full design: [docs/lightning-feature-design.md](lightning-feature-design.md).
+  Implementation roughly mirrors `wildfire-layer.ts` — new file
+  `src/lightning-layer.ts`, editor row in the Hazard Overlays
+  subpage, 11-language i18n keys.
 
-  Touches: `WeatherRadarCardConfig`, `RadarPlayer._fetchPaths` for each
-  source, the editor's Animation section, the README config table,
-  migration in `setConfig` (frame_count → history_minutes at the source's
-  default interval). Per-source interval becomes a constant lookup
-  (`SOURCE_FRAME_INTERVAL_MS[ds]`) so the math is consistent.
+### Investigated, won't pursue
+
+- **Custom HACS icon** ([#126](https://github.com/Makin-Things/weather-radar-card/issues/126)).
+  HACS doesn't render custom icons for Lovelace plugins — verified
+  empirically by checking the HACS frontend tab: zero plugins in the
+  default store carry one, and the
+  [home-assistant/brands](https://github.com/home-assistant/brands) repo
+  path that works for HACS *integrations* (`custom_integrations/<slug>/icon.png`)
+  isn't wired up for the *plugins* category. Submitting to brands would
+  be a no-op until / unless HACS adds the support upstream.
+  Practical workaround that other authors use: prefix the card name in
+  `customCards` with an emoji (e.g. `📡 Weather Radar Card`) — no
+  external PR, guaranteed to render. We've held off on that to keep the
+  card name canonical; revisit if the issue gets attention.
 
 ### Shipped
 
@@ -122,7 +128,23 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - Dynamic map style (Auto) ✅
 - Marker clustering ✅
 - Multi-marker support ✅
-- Wildfire perimeter overlay ✅ — 3.4.0 work, in nws-alerts branch chain
-- NWS watches & warnings overlay ✅ — 3.4.0 work, in nws-alerts branch
-- DWD radar source ✅ — 3.4.0-beta
-- Crossfade alpha-dip fix + smooth_animation ✅ — 3.4.0-beta
+- DWD radar source ✅ — 3.4.0
+- Crossfade alpha-dip fix + smooth_animation ✅ — 3.4.0
+- `smooth_overlap` tunable crossfade overlap + editor mutual gating ✅ — 3.4.0-beta2 / 3.5.0
+- Wildfire perimeter overlay (US-only) ✅ — 3.5.0
+- NWS watches & warnings overlay (US-only) ✅ — 3.5.0
+- Hazard Overlays editor subpage ✅ — 3.5.0
+- Region-warning utility for non-US installs ✅ — 3.5.0
+- Time-based playback range (`past_minutes` / `forecast_minutes` / `frame_stride_minutes`) replacing `frame_count` — source-agnostic via SOURCE_CAPS table; auto-migrates legacy configs ✅ — 3.5.0
+- WYSIWYG map editing (back-prop pan/zoom into editor Lat/Long fields) ✅ — 3.5.0
+- Build timestamp in console signon (cache-bust verification aid) ✅ — 3.5.0
+- Loading spinner + `show_loading_spinner` config (contributed by @genericJE, [#124](https://github.com/Makin-Things/weather-radar-card/pull/124)) ✅ — 3.5.0
+- Now marker on the progress bar (contributed by @genericJE, [#125](https://github.com/Makin-Things/weather-radar-card/pull/125)) ✅ — 3.5.0
+- Dark / satellite map scale text-shadow fix (contributed by @genericJE, [#123](https://github.com/Makin-Things/weather-radar-card/pull/123)) ✅ — 3.5.0
+- `npm run build` regenerates `.js.gz` so HA can't serve a stale gzipped bundle ✅ — 3.5.0
+- DWD-outside-coverage region banner — visible UI cue replacing the developer-only `console.warn` from 3.4.0 ✅ — 3.5.0
+- Markercluster `_bounds`-undefined race in the resize path (RAF defer + `try/catch`) ✅ — 3.5.0
+- README split into a slim landing page + focused docs under `docs/` (Configuration, Data Sources, Hazard Overlays, Markers, Examples, Animation architecture) ✅ — 3.5.0
+- `animation.md` rewritten to match the current two-slot + delayed-fade-out model ✅ — 3.5.0
+- 11-language i18n parity sweep (100% key coverage, stale `frame_count` keys dropped) ✅ — 3.5.0
+- Local Docker HA testbed (`npm run ha:up`) replacing the abandoned `.devcontainer/` ✅ — post-3.4.0

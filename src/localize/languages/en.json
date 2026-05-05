@@ -4,10 +4,42 @@
   },
   "ui": {
     "rate_limited": "Rate limited — waiting for quota to reset",
-    "save_map_center": "Save as map center",
     "loading_radar_tiles": "Loading radar tiles",
     "now": "(now)",
-    "now_tooltip": "Now"
+    "now_tooltip": "Now",
+    "region_warning": {
+      "wildfires_us_only": "Wildfire data is US-only. Your Home Assistant location is outside the US — no fires will show.",
+      "noaa_us_only": "NOAA radar is US-only. Your Home Assistant location is outside the US — radar may not load.",
+      "combined": "{features} are US-only. Your Home Assistant location is outside the US — these will not load.",
+      "and": "and",
+      "alerts_us_only": "NWS watches & warnings are US-only. Your Home Assistant location is outside the US — alerts will not load.",
+      "label": {
+        "wildfires": "Wildfires",
+        "alerts": "NWS alerts",
+        "noaa": "NOAA radar"
+      },
+      "dwd_de_only": "DWD radar covers Germany and its immediate neighbours. Your Home Assistant location is outside this region — the map may show only no-data."
+    },
+    "wildfire": {
+      "acres": "Acres",
+      "contained": "Contained",
+      "discovered": "Discovered",
+      "more_info": "More info → NIFC",
+      "unknown_name": "Unnamed incident",
+      "disclaimer": "Informational only — not a substitute for official alerts.",
+      "see_readme": "See README"
+    },
+    "alerts": {
+      "severity": "Severity",
+      "certainty": "Certainty",
+      "urgency": "Urgency",
+      "effective": "Effective",
+      "expires": "Expires",
+      "more_info": "More info → NWS",
+      "unknown_event": "Alert",
+      "disclaimer": "INFORMATIONAL ONLY — not for life-safety decisions.",
+      "see_readme": "See README"
+    }
   },
   "editor": {
     "section": {
@@ -17,13 +49,15 @@
       "display": "Display",
       "interaction": "Interaction",
       "animation": "Animation",
-      "appearance": "Appearance"
+      "appearance": "Appearance",
+      "overlays": "Hazard Overlays",
+      "markers_and_overlays": "Markers and Overlays"
     },
     "map": {
       "radar_source": "Radar Source",
       "source_rainviewer": "RainViewer (Global)",
       "source_noaa": "NOAA/NWS (US Only — Experimental)",
-      "source_dwd": "DWD (Germany — 5 min, +2h forecast)",
+      "source_dwd": "DWD (Germany — 5 min resolution)",
       "map_style": "Map Style",
       "style_auto": "Auto (follows OS dark/light mode)",
       "style_light": "CARTO Light (English only)",
@@ -33,6 +67,14 @@
       "style_osm": "OpenStreetMap (Localized)",
       "zoom_level": "Zoom Level",
       "zoom_default": "Default (5)"
+    },
+    "time_range": {
+      "past": "History Duration",
+      "forecast": "Forecast Duration",
+      "forecast_off": "Off",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} frames at {interval}-min intervals",
+      "helper_stride": "≈ {n} frames at 1-frame-per-{stride}-min (YAML stride)"
     },
     "location": {
       "centre_latitude": "Centre Latitude",
@@ -68,24 +110,35 @@
       "extra_labels": "Extra Labels",
       "static_map": "Static Map",
       "square_map": "Square Map",
+      "square_map_disabled_helper": "Disabled when a height is set or the card is in a sections-grid cell with a fixed row count — those constraints already pin the card's height.",
       "cluster_markers": "Cluster Markers",
       "show_snow": "Show Snow",
       "show_color_bar": "Show Colour Bar",
       "show_progress_bar": "Show Progress Bar",
-      "show_loading_spinner": "Show Loading Spinner"
+      "show_loading_spinner": "Show Loading Spinner",
+      "show_wildfires": "Show Wildfires (US only)",
+      "show_alerts": "Show NWS Alerts (US only)",
+      "alerts_min_severity": "Alerts: minimum severity",
+      "alerts_min_severity_helper": "Hide alerts below this severity level",
+      "alerts_severity": {
+        "extreme": "Extreme",
+        "severe": "Severe",
+        "moderate": "Moderate",
+        "minor": "Minor",
+        "unknown": "Unknown"
+      }
     },
     "interaction": {
       "disable_scroll": "Disable Scroll (allow page swipe through map)",
       "double_tap_action": "Double-tap action",
-      "double_tap_none": "None",
+      "double_tap_none": "None (no action, no zoom)",
+      "double_tap_zoom_in": "Zoom in (default)",
       "double_tap_recenter": "Re-centre map",
       "double_tap_toggle_play": "Toggle play / pause"
     },
     "animation": {
-      "frame_count": "Frame Count",
       "frame_delay": "Frame Delay (ms)",
       "restart_delay": "Restart Delay (ms)",
-      "default_5": "Default: 5",
       "default_500": "Default: 500",
       "default_1000": "Default: 1000",
       "animated_transitions": "Animated Transitions",
@@ -102,6 +155,33 @@
       "width_helper": "e.g. 100%, 500px",
       "radar_opacity": "Radar opacity",
       "radar_opacity_helper": "1.0 = fully opaque (default), lower = more transparent over the basemap"
+    },
+    "overlays": {
+      "back": "Back to settings",
+      "none_enabled": "None enabled",
+      "wildfires_header": "Wildfires (US only)",
+      "wildfires_description": "Active US wildfire perimeters from NIFC's WFIGS feed.",
+      "alerts_header": "NWS Watches & Warnings (US only)",
+      "alerts_description": "Active US National Weather Service watches and warnings.",
+      "wildfire_min_acres": "Minimum acreage",
+      "wildfire_min_acres_helper": "Hide fires below this size (default 10)",
+      "wildfire_radius_km": "Radius (km)",
+      "wildfire_radius_km_helper": "Only show fires within N km of map centre",
+      "alerts_radius_km": "Radius (km)",
+      "alerts_radius_km_helper": "Only show alerts within N km of map centre",
+      "alerts_categories_label": "Alert categories — toggle which event types render",
+      "alerts_category": {
+        "tornado": "Tornado",
+        "thunderstorm": "Thunderstorm",
+        "flood": "Flood",
+        "winter": "Winter",
+        "tropical": "Tropical",
+        "fire_weather": "Fire Weather",
+        "heat": "Heat",
+        "wind": "Wind",
+        "marine": "Marine",
+        "other": "Other"
+      }
     }
   }
 }

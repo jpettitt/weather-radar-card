@@ -5,7 +5,20 @@ import { HomeAssistant, fireEvent, LovelaceCardEditor } from 'custom-card-helper
 import { WeatherRadarCardConfig, CoordinateConfig, Marker } from './types';
 import { migrateConfig } from './marker-utils';
 import { localize } from './localize/localize';
+import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-categories';
+import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
 import { customElement, property, state } from 'lit/decorators.js';
+
+// Curated past-time presets in minutes. Editor filters to ≤ source's
+// editorMaxPastMin. 20/40 give finer-grained control at the small end
+// where users care most; the upper end skips toward larger steps.
+const PAST_PRESETS_MIN = [20, 40, 60, 120, 240, 360, 720, 1440, 2880, 4320, 5040];
+
+function formatDuration(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = min / 60;
+  return Number.isInteger(h) ? `${h} h` : `${h.toFixed(1)} h`;
+}
 
 // Subset of HA's device_class → default icon mapping.
 // Sourced from the HA frontend (entity_components/*) — only the classes likely
@@ -66,7 +79,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
   // Which sub-view of the editor is showing. Defaults to 'main' (the
   // top-level settings). Routing happens entirely in-memory — closing and
   // re-opening the editor returns to 'main', matching HA editor conventions.
-  @state() private _view: 'main' | 'markers' = 'main';
+  @state() private _view: 'main' | 'markers' | 'overlays' = 'main';
 
   private _initialized = false;
 
@@ -93,11 +106,26 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
   connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener('weather-radar-center-update', this._boundCenterUpdate);
+    // Tell every weather-radar-card on the dashboard that *some* editor is
+    // now open. Cards use this to switch on auto-propagate of pan/zoom
+    // into the editor's Lat/Long/Zoom fields — see _initMap in the card.
+    //
+    // Also bump a global mount counter so a preview card that mounts
+    // AFTER us (and therefore missed the 'opened' event) can detect that
+    // an editor is already live and start pushing immediately. Without
+    // this, the back-prop silently never fires for the preview-card +
+    // editor pair when the dialog mounts the editor first.
+    const w = window as unknown as { __weatherRadarCardEditorCount?: number };
+    w.__weatherRadarCardEditorCount = (w.__weatherRadarCardEditorCount ?? 0) + 1;
+    window.dispatchEvent(new CustomEvent('weather-radar-editor-opened'));
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener('weather-radar-center-update', this._boundCenterUpdate);
+    const w = window as unknown as { __weatherRadarCardEditorCount?: number };
+    w.__weatherRadarCardEditorCount = Math.max(0, (w.__weatherRadarCardEditorCount ?? 0) - 1);
+    window.dispatchEvent(new CustomEvent('weather-radar-editor-closed'));
   }
 
   protected shouldUpdate(): boolean {
@@ -113,9 +141,9 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       return html``;
     }
     if (!this._config) return html``;
-    return this._view === 'markers'
-      ? this._renderMarkersView(this._config)
-      : this._renderMainView(this._config);
+    if (this._view === 'markers') return this._renderMarkersView(this._config);
+    if (this._view === 'overlays') return this._renderOverlaysView(this._config);
+    return this._renderMainView(this._config);
   }
 
   private _renderMainView(config: WeatherRadarCardConfig): TemplateResult {
@@ -140,6 +168,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           .configValue=${'data_source'}
           @value-changed=${this._handleSelectorChanged}
         ></ha-selector>
+        ${this._renderTimeRangeFields(config)}
         <div class="side-by-side">
           <ha-selector
             .hass=${this.hass}
@@ -202,8 +231,8 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           ></ha-textfield>
         </div>
 
-        <!-- MARKERS -->
-        <h3 class="section-header">${localize('editor.section.markers')}</h3>
+        <!-- MARKERS AND OVERLAYS -->
+        <h3 class="section-header">${localize('editor.section.markers_and_overlays')}</h3>
         <button
           class="subpage-nav-row"
           @click=${() => this._setView('markers')}
@@ -214,74 +243,117 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           </span>
           <span class="subpage-nav-chevron">›</span>
         </button>
+        <button
+          class="subpage-nav-row"
+          @click=${() => this._setView('overlays')}
+        >
+          <span class="subpage-nav-label">${localize('editor.section.overlays')}</span>
+          <span class="subpage-nav-summary">${this._overlaysSummary(config)}</span>
+          <span class="subpage-nav-chevron">›</span>
+        </button>
 
         <!-- DISPLAY -->
         <h3 class="section-header">${localize('editor.section.display')}</h3>
         <div class="side-by-side">
-          <label>${localize('editor.display.show_zoom')}
+          <label>
             <ha-switch .checked=${config.show_zoom === true} .configValue=${'show_zoom'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_zoom')}</span>
           </label>
-          <label>${localize('editor.display.show_playback')}
+          <label>
             <ha-switch .checked=${config.show_playback === true} .configValue=${'show_playback'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_playback')}</span>
           </label>
-          <label>${localize('editor.display.show_recenter')}
+          <label>
             <ha-switch .checked=${config.show_recenter === true} .configValue=${'show_recenter'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_recenter')}</span>
           </label>
         </div>
         <div class="side-by-side">
-          <label>${localize('editor.display.show_scale')}
+          <label>
             <ha-switch .checked=${config.show_scale === true} .configValue=${'show_scale'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_scale')}</span>
           </label>
-          <label>${localize('editor.display.show_range')}
+          <label>
             <ha-switch .checked=${config.show_range === true} .configValue=${'show_range'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_range')}</span>
           </label>
-          <label>${localize('editor.display.extra_labels')}
+          <label>
             <ha-switch .checked=${config.extra_labels === true} .configValue=${'extra_labels'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.extra_labels')}</span>
           </label>
         </div>
         <div class="side-by-side">
-          <label>${localize('editor.display.static_map')}
+          <label>
             <ha-switch .checked=${config.static_map === true} .configValue=${'static_map'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.static_map')}</span>
           </label>
-          <label>${localize('editor.display.square_map')}
-            <ha-switch .checked=${config.square_map === true} .configValue=${'square_map'} @change=${this._valueChangedSwitch}></ha-switch>
-          </label>
-          <label>${localize('editor.display.cluster_markers')}
+          ${(() => {
+            // square_map has no effect once the card's height is being
+            // externally pinned: an explicit `height:` config wins, and
+            // a sections-grid cell with a fixed row count constrains
+            // the card to that cell. Grey out the toggle in those cases
+            // so the user isn't left wondering why nothing happened.
+            // grid_options.rows: 'auto' means HA gave the card freedom
+            // to pick — that counts as un-pinned.
+            const heightPinned = !!config.height
+              || (config.grid_options?.rows !== undefined
+                  && config.grid_options.rows !== 'auto');
+            return html`
+              <label class=${heightPinned ? 'disabled-row' : ''}
+                     title=${heightPinned ? localize('editor.display.square_map_disabled_helper') : ''}>
+                <ha-switch
+                  .checked=${config.square_map === true}
+                  .disabled=${heightPinned}
+                  .configValue=${'square_map'}
+                  @change=${this._valueChangedSwitch}
+                ></ha-switch>
+                <span>${localize('editor.display.square_map')}</span>
+              </label>
+            `;
+          })()}
+          <label>
             <ha-switch .checked=${config.cluster_markers !== false} .configValue=${'cluster_markers'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.cluster_markers')}</span>
           </label>
         </div>
         <div class="side-by-side">
-          <label>${localize('editor.display.show_snow')}
+          <label>
             <ha-switch .checked=${config.show_snow === true} .configValue=${'show_snow'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_snow')}</span>
           </label>
-          <label>${localize('editor.display.show_color_bar')}
+          <label>
             <ha-switch .checked=${config.show_color_bar !== false} .configValue=${'show_color_bar'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_color_bar')}</span>
           </label>
-          <label>${localize('editor.display.show_progress_bar')}
+          <label>
             <ha-switch .checked=${config.show_progress_bar !== false} .configValue=${'show_progress_bar'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_progress_bar')}</span>
           </label>
-          <label>${localize('editor.display.show_loading_spinner')}
+          <label>
             <ha-switch .checked=${config.show_loading_spinner !== false} .configValue=${'show_loading_spinner'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.show_loading_spinner')}</span>
           </label>
         </div>
 
         <!-- INTERACTION -->
         <h3 class="section-header">${localize('editor.section.interaction')}</h3>
-        <label>${localize('editor.interaction.disable_scroll')}
+        <label>
           <ha-switch .checked=${config.disable_scroll === true} .configValue=${'disable_scroll'} @change=${this._valueChangedSwitch}></ha-switch>
+          <span>${localize('editor.interaction.disable_scroll')}</span>
         </label>
         <ha-selector
           .hass=${this.hass}
           .selector=${{
             select: {
               options: [
-                { value: 'none', label: localize('editor.interaction.double_tap_none') },
+                { value: 'zoom_in', label: localize('editor.interaction.double_tap_zoom_in') },
                 { value: 'recenter', label: localize('editor.interaction.double_tap_recenter') },
                 { value: 'toggle_play', label: localize('editor.interaction.double_tap_toggle_play') },
+                { value: 'none', label: localize('editor.interaction.double_tap_none') },
               ],
             },
           }}
-          .value=${config.double_tap_action || 'none'}
+          .value=${typeof config.double_tap_action === 'string' ? config.double_tap_action : 'zoom_in'}
           .label=${localize('editor.interaction.double_tap_action')}
           .configValue=${'double_tap_action'}
           @value-changed=${this._handleSelectorChanged}
@@ -290,13 +362,6 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
         <!-- ANIMATION -->
         <h3 class="section-header">${localize('editor.section.animation')}</h3>
         <div class="side-by-side">
-          <ha-textfield
-            label=${localize('editor.animation.frame_count')}
-            .value=${config.frame_count ? config.frame_count : ''}
-            .configValue=${'frame_count'}
-            @input=${this._valueChangedNumber}
-            helper=${localize('editor.animation.default_5')}
-          ></ha-textfield>
           <ha-textfield
             label=${localize('editor.animation.frame_delay')}
             .value=${config.frame_delay ? config.frame_delay : ''}
@@ -312,12 +377,13 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             helper=${localize('editor.animation.default_1000')}
           ></ha-textfield>
         </div>
-        <label>${localize('editor.animation.animated_transitions')}
+        <label>
           <ha-switch
             .checked=${config.animated_transitions !== false}
             .configValue=${'animated_transitions'}
             @change=${this._valueChangedSwitch}
           ></ha-switch>
+          <span>${localize('editor.animation.animated_transitions')}</span>
         </label>
         ${config.animated_transitions !== false ? html`
           <ha-textfield
@@ -380,6 +446,129 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     `;
   }
 
+  // Compose the right-hand summary text for the Overlays nav row. Empty
+  // string means neither overlay is enabled — the user gets just the row
+  // label with no count, which reads as "tap to enable".
+  private _overlaysSummary(config: WeatherRadarCardConfig): string {
+    const parts: string[] = [];
+    if (config.show_wildfires === true) parts.push(localize('ui.region_warning.label.wildfires'));
+    if (config.show_alerts === true) parts.push(localize('ui.region_warning.label.alerts'));
+    if (parts.length === 0) return localize('editor.overlays.none_enabled');
+    return parts.join(', ');
+  }
+
+  private _renderOverlaysView(config: WeatherRadarCardConfig): TemplateResult {
+    return html`
+      <div class="values">
+        <button class="subpage-back" @click=${() => this._setView('main')}>
+          ‹ ${localize('editor.overlays.back')}
+        </button>
+
+        <!-- WILDFIRES -->
+        <h3 class="section-header">${localize('editor.overlays.wildfires_header')}</h3>
+        <p class="section-description">${localize('editor.overlays.wildfires_description')}</p>
+        <label>
+          <ha-switch .checked=${config.show_wildfires === true} .configValue=${'show_wildfires'} @change=${this._valueChangedSwitch}></ha-switch>
+          <span>${localize('editor.display.show_wildfires')}</span>
+        </label>
+        ${config.show_wildfires === true ? html`
+          <div class="side-by-side">
+            <ha-textfield
+              label=${localize('editor.overlays.wildfire_min_acres')}
+              .value=${config.wildfire_min_acres !== undefined ? String(config.wildfire_min_acres) : ''}
+              helper=${localize('editor.overlays.wildfire_min_acres_helper')}
+              .configValue=${'wildfire_min_acres'}
+              @input=${this._valueChangedNumber}
+            ></ha-textfield>
+            <ha-textfield
+              label=${localize('editor.overlays.wildfire_radius_km')}
+              .value=${config.wildfire_radius_km !== undefined ? String(config.wildfire_radius_km) : ''}
+              helper=${localize('editor.overlays.wildfire_radius_km_helper')}
+              .configValue=${'wildfire_radius_km'}
+              @input=${this._valueChangedNumber}
+            ></ha-textfield>
+          </div>
+        ` : ''}
+
+        <!-- NWS ALERTS -->
+        <h3 class="section-header">${localize('editor.overlays.alerts_header')}</h3>
+        <p class="section-description">${localize('editor.overlays.alerts_description')}</p>
+        <label>
+          <ha-switch .checked=${config.show_alerts === true} .configValue=${'show_alerts'} @change=${this._valueChangedSwitch}></ha-switch>
+          <span>${localize('editor.display.show_alerts')}</span>
+        </label>
+        ${config.show_alerts === true ? html`
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{
+              select: {
+                options: [
+                  { value: 'Extreme', label: localize('editor.display.alerts_severity.extreme') },
+                  { value: 'Severe', label: localize('editor.display.alerts_severity.severe') },
+                  { value: 'Moderate', label: localize('editor.display.alerts_severity.moderate') },
+                  { value: 'Minor', label: localize('editor.display.alerts_severity.minor') },
+                  { value: 'Unknown', label: localize('editor.display.alerts_severity.unknown') },
+                ],
+              },
+            }}
+            .value=${config.alerts_min_severity ?? 'Minor'}
+            .label=${localize('editor.display.alerts_min_severity')}
+            .helper=${localize('editor.display.alerts_min_severity_helper')}
+            .configValue=${'alerts_min_severity'}
+            @value-changed=${this._handleSelectorChanged}
+          ></ha-selector>
+          <ha-textfield
+            label=${localize('editor.overlays.alerts_radius_km')}
+            .value=${config.alerts_radius_km !== undefined ? String(config.alerts_radius_km) : ''}
+            helper=${localize('editor.overlays.alerts_radius_km_helper')}
+            .configValue=${'alerts_radius_km'}
+            @input=${this._valueChangedNumber}
+          ></ha-textfield>
+          <p class="section-description" style="margin-top:12px">${localize('editor.overlays.alerts_categories_label')}</p>
+          ${this._renderAlertCategoryToggles(config)}
+        ` : ''}
+      </div>
+    `;
+  }
+
+  // Render a checkbox per alert category. Reflects the active set
+  // (alerts_categories config or the default if unset). Toggling rebuilds
+  // the alerts_categories list and fires config-changed.
+  private _renderAlertCategoryToggles(config: WeatherRadarCardConfig): TemplateResult {
+    const active = getActiveAlertCategories(config.alerts_categories);
+    return html`
+      <div class="alert-category-grid">
+        ${ALL_ALERT_CATEGORIES.map((cat) => html`
+          <label class="alert-category">
+            <ha-switch
+              .checked=${active.has(cat)}
+              .alertCategory=${cat}
+              @change=${this._toggleAlertCategory}
+            ></ha-switch>
+            <span>${localize(`editor.overlays.alerts_category.${cat}`)}</span>
+          </label>
+        `)}
+      </div>
+    `;
+  }
+
+  private _toggleAlertCategory = (ev: Event): void => {
+    if (!this._config) return;
+    const target = ev.target as any;
+    const cat = target.alertCategory as string;
+    const isOn = !!target.checked;
+    // Start from the currently-active set (defaults when unset, explicit
+    // when set — including explicit empty meaning "none enabled").
+    const current = getActiveAlertCategories(this._config.alerts_categories);
+    if (isOn) current.add(cat as any); else current.delete(cat as any);
+    // Persist the explicit set even when empty — an empty array means
+    // "user opted out of every category", which the layer correctly
+    // treats as "render nothing". Reverting to defaults is done by
+    // removing the key from YAML, not by us.
+    this._config = { ...this._config, alerts_categories: Array.from(current) };
+    fireEvent(this, 'config-changed', { config: this._config });
+  };
+
   private _renderMarkersView(config: WeatherRadarCardConfig): TemplateResult {
     const markers = config.markers ?? [];
     return html`
@@ -394,7 +583,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     `;
   }
 
-  private _setView(view: 'main' | 'markers'): void {
+  private _setView(view: 'main' | 'markers' | 'overlays'): void {
     this._view = view;
     // Scroll the editor pane back to the top so the user always lands at the
     // start of the new view, not part-way down where they were on the old one.
@@ -451,12 +640,13 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           </div>
         ` : ''}
         ${m.entity && m.entity.startsWith('person.') ? html`
-          <label class="marker-mobile-only">${localize('editor.markers.use_entity_picture')}
+          <label class="marker-mobile-only">
             <ha-switch
               .checked=${m.icon === 'entity_picture'}
               .markerIndex=${i}
               @change=${this._toggleEntityPicture}
             ></ha-switch>
+            <span>${localize('editor.markers.use_entity_picture')}</span>
           </label>
         ` : ''}
         ${m.icon !== 'entity_picture' ? html`
@@ -500,13 +690,14 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             ` : ''}
           </div>
         ` : ''}
-        <label class="marker-mobile-only">${localize('editor.markers.mobile_only')}
+        <label class="marker-mobile-only">
           <ha-switch
             .checked=${m.mobile_only === true}
             .markerIndex=${i}
             .markerField=${'mobile_only'}
             @change=${this._updateMarkerSwitch}
           ></ha-switch>
+          <span>${localize('editor.markers.mobile_only')}</span>
         </label>
       </div>
     `;
@@ -655,6 +846,96 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
 
   private async loadCardHelpers(): Promise<void> {
     this._helpers = await (window as any).loadCardHelpers();
+  }
+
+  // Render the past + (optional) forecast time-range dropdowns plus a
+  // helper line showing derived frame count. Only the past row is
+  // unconditional; the forecast row is omitted entirely (not greyed)
+  // for sources where maxForecastMin === 0, so RainViewer / NOAA users
+  // never see a row that doesn't apply.
+  private _renderTimeRangeFields(config: WeatherRadarCardConfig): TemplateResult {
+    const caps = getSourceCaps(config.data_source);
+    const range = getEffectiveTimeRange(config);
+
+    const pastOptions = this._buildPastOptions(config.past_minutes, caps.editorMaxPastMin);
+    const pastValue = String(config.past_minutes ?? caps.defaultPastMin);
+
+    const forecastOptions = caps.maxForecastMin > 0
+      ? this._buildForecastOptions(config.forecast_minutes, caps.maxForecastMin)
+      : null;
+    const forecastValue = caps.maxForecastMin > 0
+      ? String(config.forecast_minutes ?? caps.defaultForecastMin)
+      : '';
+
+    // Helper text: "≈ N frames at X-min intervals", flagged when a
+    // YAML-only stride override is in effect so the user knows the
+    // editor isn't the source of truth for that knob.
+    const isStrideOverride = range.strideMin !== caps.intervalMin;
+    const helper = isStrideOverride
+      ? localize('editor.time_range.helper_stride')
+        .replace('{n}', String(range.frameCount))
+        .replace('{stride}', String(range.strideMin))
+      : localize('editor.time_range.helper')
+        .replace('{n}', String(range.frameCount))
+        .replace('{interval}', String(caps.intervalMin));
+
+    return html`
+      <div class="side-by-side">
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{ select: { options: pastOptions } }}
+          .value=${pastValue}
+          .label=${localize('editor.time_range.past')}
+          .configValue=${'past_minutes'}
+          @value-changed=${this._handleSelectorNumberChanged}
+        ></ha-selector>
+        ${forecastOptions ? html`
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ select: { options: forecastOptions } }}
+            .value=${forecastValue}
+            .label=${localize('editor.time_range.forecast')}
+            .configValue=${'forecast_minutes'}
+            @value-changed=${this._handleSelectorNumberChanged}
+          ></ha-selector>
+        ` : ''}
+      </div>
+      <div class="time-range-helper">${helper}</div>
+    `;
+  }
+
+  // Builds the past-time dropdown options from PAST_PRESETS_MIN,
+  // filtered to ≤ editor cap. If the configured raw value isn't
+  // in the preset list (either > cap or just an off-grid YAML value),
+  // appends it as a "(YAML)" entry at the bottom so the user sees their
+  // actual current value rather than a wrong display.
+  private _buildPastOptions(rawValue: number | undefined, editorCap: number): { value: string; label: string }[] {
+    const opts = PAST_PRESETS_MIN
+      .filter(m => m <= editorCap)
+      .map(m => ({ value: String(m), label: formatDuration(m) }));
+    if (rawValue !== undefined && !PAST_PRESETS_MIN.includes(rawValue)) {
+      opts.push({
+        value: String(rawValue),
+        label: `${formatDuration(rawValue)} ${localize('editor.time_range.yaml_suffix')}`,
+      });
+    }
+    return opts;
+  }
+
+  // Forecast presets: Off + each whole hour up to the source's max.
+  // (Currently only DWD: 0 / 60 / 120.)
+  private _buildForecastOptions(rawValue: number | undefined, maxMin: number): { value: string; label: string }[] {
+    const opts: { value: string; label: string }[] = [
+      { value: '0', label: localize('editor.time_range.forecast_off') },
+    ];
+    for (let m = 60; m <= maxMin; m += 60) opts.push({ value: String(m), label: formatDuration(m) });
+    if (rawValue !== undefined && rawValue !== 0 && !opts.some(o => Number(o.value) === rawValue)) {
+      opts.push({
+        value: String(rawValue),
+        label: `${formatDuration(rawValue)} ${localize('editor.time_range.yaml_suffix')}`,
+      });
+    }
+    return opts;
   }
 
   private _handleSelectorChanged(ev: CustomEvent): void {
@@ -855,18 +1136,34 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       color: var(--secondary-text-color);
       margin: 0 0 12px 0;
     }
+    .time-range-helper {
+      font-size: 0.8em;
+      color: var(--secondary-text-color);
+      margin: -8px 0 16px 0;
+    }
     .subsection {
       margin-left: 16px;
       padding-left: 8px;
       border-left: 2px solid var(--divider-color);
       margin-bottom: 8px;
     }
+    /* Every toggle renders as [switch] [label-text], left-aligned with a
+       gap. DOM order is the same: <ha-switch> first, then a <span> with
+       the label text. Standard checkbox UX. */
     label {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 10px;
       padding: 6px 0;
       font-size: 0.95em;
+    }
+    /* Greyed-out look for switches whose effect is overridden by another
+       config field (e.g. square_map when height is pinned by the user
+       or by a sections-grid cell). The switch itself is .disabled via
+       the property; this just dims the label text alongside it. */
+    label.disabled-row {
+      opacity: 0.55;
+      cursor: not-allowed;
     }
     ha-switch {
       padding: 12px 6px;
@@ -962,6 +1259,18 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       cursor: pointer;
     }
     .subpage-back:hover { text-decoration: underline; }
+    /* Two-column grid for the alert-category checkboxes — keeps the list
+       compact instead of stacking 10 full-width rows. */
+    .alert-category-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 12px;
+      margin-bottom: 8px;
+    }
+    .alert-category {
+      padding: 4px 0;
+      font-size: 0.9em;
+    }
     .marker-mobile-only {
       font-size: 0.85em;
     }

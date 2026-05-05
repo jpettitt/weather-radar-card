@@ -4,7 +4,42 @@
   },
   "ui": {
     "rate_limited": "Limite di richieste raggiunto — in attesa del ripristino della quota",
-    "save_map_center": "Salva come centro della mappa"
+    "region_warning": {
+      "wildfires_us_only": "I dati sugli incendi sono solo per gli USA. La tua posizione di Home Assistant è fuori dagli USA: non verrà mostrato alcun incendio.",
+      "noaa_us_only": "Il radar NOAA è solo per gli USA. La tua posizione di Home Assistant è fuori dagli USA: il radar potrebbe non caricarsi.",
+      "combined": "{features} sono solo per gli USA. La tua posizione di Home Assistant è fuori dagli USA: questi dati non verranno caricati.",
+      "and": "e",
+      "alerts_us_only": "Gli avvisi e gli allarmi NWS sono solo per gli USA. La tua posizione di Home Assistant è fuori dagli USA: gli allarmi non verranno caricati.",
+      "label": {
+        "wildfires": "Incendi",
+        "alerts": "Allarmi NWS",
+        "noaa": "Radar NOAA"
+      },
+      "dwd_de_only": "Il radar DWD copre la Germania e i suoi vicini immediati. La posizione di Home Assistant è al di fuori di questa regione — la mappa potrebbe mostrare solo «nessun dato»."
+    },
+    "wildfire": {
+      "acres": "Acri",
+      "contained": "Contenuto",
+      "discovered": "Rilevato",
+      "more_info": "Maggiori info → NIFC",
+      "unknown_name": "Incidente senza nome",
+      "disclaimer": "Solo a scopo informativo — non sostituisce gli allarmi ufficiali.",
+      "see_readme": "Vedi README"
+    },
+    "alerts": {
+      "severity": "Gravità",
+      "certainty": "Certezza",
+      "urgency": "Urgenza",
+      "effective": "In vigore",
+      "expires": "Scade",
+      "more_info": "Maggiori info → NWS",
+      "unknown_event": "Allarme",
+      "disclaimer": "SOLO A SCOPO INFORMATIVO — non per decisioni di sicurezza vitale.",
+      "see_readme": "Vedi README"
+    },
+    "loading_radar_tiles": "Caricamento dei tile radar",
+    "now": "(ora)",
+    "now_tooltip": "Ora"
   },
   "editor": {
     "section": {
@@ -14,7 +49,9 @@
       "display": "Visualizzazione",
       "interaction": "Interazione",
       "animation": "Animazione",
-      "appearance": "Aspetto"
+      "appearance": "Aspetto",
+      "overlays": "Sovrapposizioni di rischio",
+      "markers_and_overlays": "Marcatori e sovrapposizioni"
     },
     "map": {
       "radar_source": "Sorgente radar",
@@ -28,7 +65,16 @@
       "style_satellite": "Satellite (solo inglese)",
       "style_osm": "OpenStreetMap (localizzata)",
       "zoom_level": "Livello di zoom",
-      "zoom_default": "Predefinito (5)"
+      "zoom_default": "Predefinito (5)",
+      "source_dwd": "DWD (Germania — risoluzione 5 min)"
+    },
+    "time_range": {
+      "past": "Durata della cronologia",
+      "forecast": "Durata della previsione",
+      "forecast_off": "Disattivato",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} fotogrammi a intervalli di {interval} min",
+      "helper_stride": "≈ {n} fotogrammi, 1 ogni {stride} min (passo YAML)"
     },
     "location": {
       "centre_latitude": "Latitudine del centro",
@@ -52,8 +98,8 @@
       "icon_colour": "Colore dell'icona",
       "reset": "Ripristina",
       "mobile_only": "Solo mobile",
-      "count_summary": "{n} configured",
-      "back": "Back to settings"
+      "count_summary": "{n} configurati",
+      "back": "Torna alle impostazioni"
     },
     "display": {
       "show_zoom": "Mostra zoom",
@@ -67,20 +113,32 @@
       "cluster_markers": "Raggruppa marcatori",
       "show_snow": "Mostra neve",
       "show_color_bar": "Mostra barra dei colori",
-      "show_progress_bar": "Mostra barra di avanzamento"
+      "show_progress_bar": "Mostra barra di avanzamento",
+      "show_wildfires": "Mostra incendi (solo USA)",
+      "show_alerts": "Mostra allarmi NWS (solo USA)",
+      "alerts_min_severity": "Allarmi: gravità minima",
+      "alerts_min_severity_helper": "Nascondi allarmi sotto questo livello di gravità",
+      "alerts_severity": {
+        "extreme": "Estrema",
+        "severe": "Grave",
+        "moderate": "Moderata",
+        "minor": "Lieve",
+        "unknown": "Sconosciuta"
+      },
+      "square_map_disabled_helper": "Disattivato quando è impostata un'altezza o la scheda è in una cella di griglia delle sezioni con numero di righe fisso — questi vincoli fissano già l'altezza della scheda.",
+      "show_loading_spinner": "Mostra indicatore di caricamento"
     },
     "interaction": {
       "disable_scroll": "Disabilita scorrimento (consente scorrimento della pagina sulla mappa)",
       "double_tap_action": "Azione al doppio tocco",
-      "double_tap_none": "Nessuna",
+      "double_tap_none": "Nessuna (nessuna azione, nessun zoom)",
+      "double_tap_zoom_in": "Zoom avanti (predefinito)",
       "double_tap_recenter": "Ricentra mappa",
       "double_tap_toggle_play": "Alterna riproduzione / pausa"
     },
     "animation": {
-      "frame_count": "Numero di fotogrammi",
       "frame_delay": "Ritardo tra fotogrammi (ms)",
       "restart_delay": "Ritardo di riavvio (ms)",
-      "default_5": "Predefinito: 5",
       "default_500": "Predefinito: 500",
       "default_1000": "Predefinito: 1000",
       "animated_transitions": "Transizioni animate",
@@ -97,6 +155,33 @@
       "width_helper": "es. 100%, 500px",
       "radar_opacity": "Opacità del radar",
       "radar_opacity_helper": "1.0 = completamente opaco (predefinito), inferiore = più trasparente sulla mappa di base"
+    },
+    "overlays": {
+      "back": "Torna alle impostazioni",
+      "none_enabled": "Nessuno attivato",
+      "wildfires_header": "Incendi (solo USA)",
+      "wildfires_description": "Perimetri di incendi attivi negli USA dal feed WFIGS del NIFC.",
+      "alerts_header": "Avvisi e allarmi NWS (solo USA)",
+      "alerts_description": "Avvisi e allarmi attivi del National Weather Service degli Stati Uniti.",
+      "wildfire_min_acres": "Superficie minima",
+      "wildfire_min_acres_helper": "Nascondi incendi più piccoli di questa dimensione (predefinito 10)",
+      "wildfire_radius_km": "Raggio (km)",
+      "wildfire_radius_km_helper": "Mostra solo incendi entro N km dal centro della mappa",
+      "alerts_radius_km": "Raggio (km)",
+      "alerts_radius_km_helper": "Mostra solo allarmi entro N km dal centro della mappa",
+      "alerts_categories_label": "Categorie di allarme — scegli quali tipi di eventi mostrare",
+      "alerts_category": {
+        "tornado": "Tornado",
+        "thunderstorm": "Temporale",
+        "flood": "Alluvione",
+        "winter": "Inverno",
+        "tropical": "Tropicale",
+        "fire_weather": "Rischio incendio",
+        "heat": "Caldo",
+        "wind": "Vento",
+        "marine": "Marino",
+        "other": "Altro"
+      }
     }
   }
 }

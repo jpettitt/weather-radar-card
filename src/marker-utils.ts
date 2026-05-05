@@ -1,7 +1,40 @@
 import { HomeAssistant } from 'custom-card-helpers';
 import { Marker, WeatherRadarCardConfig } from './types';
+import { getSourceCaps } from './source-caps';
+
+/**
+ * Convert legacy time-related fields to the source-agnostic
+ * past_minutes / forecast_minutes model introduced in 3.5.
+ *
+ *   - frame_count → past_minutes = (frame_count - 1) × intervalMin,
+ *     using the configured source's native interval. Existing configs
+ *     get a time-range that closely matches what their frame_count
+ *     was producing on the prior version.
+ *   - dwd_forecast_hours → forecast_minutes = hours × 60.
+ *
+ * Only fills missing fields; user-set past_minutes / forecast_minutes
+ * always win. Returns the same object reference when no migration is
+ * needed (so callers can detect a no-op).
+ */
+function migrateTimeRange(config: WeatherRadarCardConfig): WeatherRadarCardConfig {
+  const needsPast = config.past_minutes === undefined && config.frame_count !== undefined;
+  const needsForecast = config.forecast_minutes === undefined && config.dwd_forecast_hours !== undefined;
+  if (!needsPast && !needsForecast) return config;
+
+  const next = { ...config };
+  if (needsPast) {
+    const caps = getSourceCaps(config.data_source);
+    next.past_minutes = Math.max(0, (config.frame_count! - 1) * caps.intervalMin);
+  }
+  if (needsForecast) {
+    next.forecast_minutes = Math.max(0, config.dwd_forecast_hours! * 60);
+  }
+  return next;
+}
 
 export function migrateConfig(config: WeatherRadarCardConfig): WeatherRadarCardConfig {
+  config = migrateTimeRange(config);
+
   // markers explicitly set (including empty array) — respect the user's choice
   if (config.markers !== undefined) return config;
 

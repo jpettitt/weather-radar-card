@@ -4,7 +4,42 @@
   },
   "ui": {
     "rate_limited": "Aanvraaglimiet bereikt — wachten op herstel van quotum",
-    "save_map_center": "Opslaan als kaartmiddelpunt"
+    "region_warning": {
+      "wildfires_us_only": "Bosbranddata is alleen voor de VS. Uw Home Assistant-locatie is buiten de VS — er worden geen branden getoond.",
+      "noaa_us_only": "NOAA-radar is alleen voor de VS. Uw Home Assistant-locatie is buiten de VS — de radar laadt mogelijk niet.",
+      "combined": "{features} zijn alleen voor de VS. Uw Home Assistant-locatie is buiten de VS — deze worden niet geladen.",
+      "and": "en",
+      "alerts_us_only": "NWS-waarschuwingen zijn alleen voor de VS. Uw Home Assistant-locatie is buiten de VS — waarschuwingen worden niet geladen.",
+      "label": {
+        "wildfires": "Bosbranden",
+        "alerts": "NWS-waarschuwingen",
+        "noaa": "NOAA-radar"
+      },
+      "dwd_de_only": "DWD-radar dekt Duitsland en zijn directe buurlanden. Uw Home Assistant-locatie ligt buiten deze regio — de kaart toont mogelijk alleen «geen data»."
+    },
+    "wildfire": {
+      "acres": "Acres",
+      "contained": "Onder controle",
+      "discovered": "Ontdekt",
+      "more_info": "Meer info → NIFC",
+      "unknown_name": "Naamloos incident",
+      "disclaimer": "Alleen ter informatie — geen vervanging voor officiële waarschuwingen.",
+      "see_readme": "Zie README"
+    },
+    "alerts": {
+      "severity": "Ernst",
+      "certainty": "Zekerheid",
+      "urgency": "Urgentie",
+      "effective": "Geldig vanaf",
+      "expires": "Verloopt",
+      "more_info": "Meer info → NWS",
+      "unknown_event": "Waarschuwing",
+      "disclaimer": "UITSLUITEND TER INFORMATIE — niet voor levensreddende beslissingen.",
+      "see_readme": "Zie README"
+    },
+    "loading_radar_tiles": "Radartegels laden",
+    "now": "(nu)",
+    "now_tooltip": "Nu"
   },
   "editor": {
     "section": {
@@ -14,7 +49,9 @@
       "display": "Weergave",
       "interaction": "Interactie",
       "animation": "Animatie",
-      "appearance": "Uiterlijk"
+      "appearance": "Uiterlijk",
+      "overlays": "Risicolagen",
+      "markers_and_overlays": "Markeringen en lagen"
     },
     "map": {
       "radar_source": "Radarbron",
@@ -28,7 +65,16 @@
       "style_satellite": "Satelliet (alleen Engels)",
       "style_osm": "OpenStreetMap (gelokaliseerd)",
       "zoom_level": "Zoomniveau",
-      "zoom_default": "Standaard (5)"
+      "zoom_default": "Standaard (5)",
+      "source_dwd": "DWD (Duitsland — 5-min resolutie)"
+    },
+    "time_range": {
+      "past": "Historiekduur",
+      "forecast": "Voorspellingsduur",
+      "forecast_off": "Uit",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} frames met {interval}-min interval",
+      "helper_stride": "≈ {n} frames, 1 per {stride} min (YAML-stap)"
     },
     "location": {
       "centre_latitude": "Middenbreedtegraad",
@@ -52,8 +98,8 @@
       "icon_colour": "Pictogramkleur",
       "reset": "Herstellen",
       "mobile_only": "Alleen mobiel",
-      "count_summary": "{n} configured",
-      "back": "Back to settings"
+      "count_summary": "{n} geconfigureerd",
+      "back": "Terug naar instellingen"
     },
     "display": {
       "show_zoom": "Zoom tonen",
@@ -67,20 +113,32 @@
       "cluster_markers": "Markeringen groeperen",
       "show_snow": "Sneeuw tonen",
       "show_color_bar": "Kleurenbalk tonen",
-      "show_progress_bar": "Voortgangsbalk tonen"
+      "show_progress_bar": "Voortgangsbalk tonen",
+      "show_wildfires": "Bosbranden tonen (alleen VS)",
+      "show_alerts": "NWS-waarschuwingen tonen (alleen VS)",
+      "alerts_min_severity": "Waarschuwingen: minimale ernst",
+      "alerts_min_severity_helper": "Verberg waarschuwingen onder dit ernstniveau",
+      "alerts_severity": {
+        "extreme": "Extreem",
+        "severe": "Ernstig",
+        "moderate": "Matig",
+        "minor": "Gering",
+        "unknown": "Onbekend"
+      },
+      "square_map_disabled_helper": "Uitgeschakeld wanneer een hoogte is ingesteld of de kaart in een sections-rastercel met een vast aantal rijen staat — die beperkingen leggen de kaarthoogte al vast.",
+      "show_loading_spinner": "Laadindicator weergeven"
     },
     "interaction": {
       "disable_scroll": "Scrollen uitschakelen (laat pagina door kaart vegen)",
       "double_tap_action": "Actie bij dubbeltikken",
-      "double_tap_none": "Geen",
+      "double_tap_none": "Geen (geen actie, geen zoom)",
+      "double_tap_zoom_in": "Inzoomen (standaard)",
       "double_tap_recenter": "Kaart centreren",
       "double_tap_toggle_play": "Afspelen / pauze omschakelen"
     },
     "animation": {
-      "frame_count": "Aantal frames",
       "frame_delay": "Frame-vertraging (ms)",
       "restart_delay": "Herstartvertraging (ms)",
-      "default_5": "Standaard: 5",
       "default_500": "Standaard: 500",
       "default_1000": "Standaard: 1000",
       "animated_transitions": "Geanimeerde overgangen",
@@ -97,6 +155,33 @@
       "width_helper": "bv. 100%, 500px",
       "radar_opacity": "Radar-dekking",
       "radar_opacity_helper": "1.0 = volledig dekkend (standaard), lager = transparanter over de basiskaart"
+    },
+    "overlays": {
+      "back": "Terug naar instellingen",
+      "none_enabled": "Geen ingeschakeld",
+      "wildfires_header": "Bosbranden (alleen VS)",
+      "wildfires_description": "Actieve bosbrandperimeters in de VS uit de WFIGS-feed van NIFC.",
+      "alerts_header": "NWS observaties & waarschuwingen (alleen VS)",
+      "alerts_description": "Actieve observaties en waarschuwingen van de US National Weather Service.",
+      "wildfire_min_acres": "Minimale oppervlakte",
+      "wildfire_min_acres_helper": "Verberg branden kleiner dan deze grootte (standaard 10)",
+      "wildfire_radius_km": "Straal (km)",
+      "wildfire_radius_km_helper": "Toon alleen branden binnen N km van het kaartmiddelpunt",
+      "alerts_radius_km": "Straal (km)",
+      "alerts_radius_km_helper": "Toon alleen waarschuwingen binnen N km van het kaartmiddelpunt",
+      "alerts_categories_label": "Waarschuwingscategorieën — kies welke gebeurtenistypes getoond worden",
+      "alerts_category": {
+        "tornado": "Tornado",
+        "thunderstorm": "Onweer",
+        "flood": "Overstroming",
+        "winter": "Winter",
+        "tropical": "Tropisch",
+        "fire_weather": "Brandgevaar",
+        "heat": "Hitte",
+        "wind": "Wind",
+        "marine": "Maritiem",
+        "other": "Overig"
+      }
     }
   }
 }

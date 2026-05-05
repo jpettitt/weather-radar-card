@@ -4,7 +4,42 @@
   },
   "ui": {
     "rate_limited": "Forespørselsgrense nådd — venter på tilbakestilling",
-    "save_map_center": "Lagre som kartsentrum"
+    "region_warning": {
+      "wildfires_us_only": "Skogbrann-data er kun for USA. Din Home Assistant-plassering er utenfor USA – ingen branner vil vises.",
+      "noaa_us_only": "NOAA-radar er kun for USA. Din Home Assistant-plassering er utenfor USA – radaren laster kanskje ikke.",
+      "combined": "{features} er kun for USA. Din Home Assistant-plassering er utenfor USA – disse vil ikke lastes.",
+      "and": "og",
+      "alerts_us_only": "NWS-varsler er kun for USA. Din Home Assistant-plassering er utenfor USA – varsler vil ikke lastes.",
+      "label": {
+        "wildfires": "Skogbranner",
+        "alerts": "NWS-varsler",
+        "noaa": "NOAA-radar"
+      },
+      "dwd_de_only": "DWD-radaren dekker Tyskland og umiddelbare naboland. Plasseringen din i Home Assistant er utenfor denne regionen — kartet viser kanskje bare «ingen data»."
+    },
+    "wildfire": {
+      "acres": "Acres",
+      "contained": "Begrenset",
+      "discovered": "Oppdaget",
+      "more_info": "Mer info → NIFC",
+      "unknown_name": "Navnløs hendelse",
+      "disclaimer": "Kun til informasjon – erstatter ikke offisielle varsler.",
+      "see_readme": "Se README"
+    },
+    "alerts": {
+      "severity": "Alvorlighetsgrad",
+      "certainty": "Sikkerhet",
+      "urgency": "Hastegrad",
+      "effective": "Gjelder fra",
+      "expires": "Utløper",
+      "more_info": "Mer info → NWS",
+      "unknown_event": "Varsel",
+      "disclaimer": "KUN TIL INFORMASJON – ikke for livsviktige beslutninger.",
+      "see_readme": "Se README"
+    },
+    "loading_radar_tiles": "Laster radarfliser",
+    "now": "(nå)",
+    "now_tooltip": "Nå"
   },
   "editor": {
     "section": {
@@ -14,7 +49,9 @@
       "display": "Visning",
       "interaction": "Interaksjon",
       "animation": "Animasjon",
-      "appearance": "Utseende"
+      "appearance": "Utseende",
+      "overlays": "Faresoner",
+      "markers_and_overlays": "Markører og overlegg"
     },
     "map": {
       "radar_source": "Radarkilde",
@@ -28,7 +65,16 @@
       "style_satellite": "Satellitt (kun engelsk)",
       "style_osm": "OpenStreetMap (lokalisert)",
       "zoom_level": "Zoomnivå",
-      "zoom_default": "Standard (5)"
+      "zoom_default": "Standard (5)",
+      "source_dwd": "DWD (Tyskland — 5-min oppløsning)"
+    },
+    "time_range": {
+      "past": "Historikkvarighet",
+      "forecast": "Varselvarighet",
+      "forecast_off": "Av",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} bilder med {interval}-min mellomrom",
+      "helper_stride": "≈ {n} bilder, 1 per {stride} min (YAML-steg)"
     },
     "location": {
       "centre_latitude": "Sentrumsbreddegrad",
@@ -52,8 +98,8 @@
       "icon_colour": "Ikonfarge",
       "reset": "Tilbakestill",
       "mobile_only": "Kun mobil",
-      "count_summary": "{n} configured",
-      "back": "Back to settings"
+      "count_summary": "{n} konfigurert",
+      "back": "Tilbake til innstillinger"
     },
     "display": {
       "show_zoom": "Vis zoom",
@@ -67,20 +113,32 @@
       "cluster_markers": "Grupper markører",
       "show_snow": "Vis snø",
       "show_color_bar": "Vis fargeskala",
-      "show_progress_bar": "Vis fremdriftslinje"
+      "show_progress_bar": "Vis fremdriftslinje",
+      "show_wildfires": "Vis skogbranner (kun USA)",
+      "show_alerts": "Vis NWS-varsler (kun USA)",
+      "alerts_min_severity": "Varsler: minste alvorlighetsgrad",
+      "alerts_min_severity_helper": "Skjul varsler under denne alvorlighetsgraden",
+      "alerts_severity": {
+        "extreme": "Ekstrem",
+        "severe": "Alvorlig",
+        "moderate": "Moderat",
+        "minor": "Liten",
+        "unknown": "Ukjent"
+      },
+      "square_map_disabled_helper": "Deaktivert når en høyde er angitt eller kortet er i en sections-rutenettcelle med fast radantall — disse begrensningene fastsetter allerede kortets høyde.",
+      "show_loading_spinner": "Vis lasteindikator"
     },
     "interaction": {
       "disable_scroll": "Deaktiver rulling (la siden sveipes gjennom kartet)",
       "double_tap_action": "Dobbelttrykk-handling",
-      "double_tap_none": "Ingen",
+      "double_tap_none": "Ingen (ingen handling, ingen zoom)",
+      "double_tap_zoom_in": "Zoom inn (standard)",
       "double_tap_recenter": "Sentrer kart",
       "double_tap_toggle_play": "Veksle avspilling / pause"
     },
     "animation": {
-      "frame_count": "Antall bilder",
       "frame_delay": "Bildeforsinkelse (ms)",
       "restart_delay": "Omstartforsinkelse (ms)",
-      "default_5": "Standard: 5",
       "default_500": "Standard: 500",
       "default_1000": "Standard: 1000",
       "animated_transitions": "Animerte overganger",
@@ -97,6 +155,33 @@
       "width_helper": "f.eks. 100%, 500px",
       "radar_opacity": "Radar-opasitet",
       "radar_opacity_helper": "1.0 = helt ugjennomsiktig (standard), lavere = mer gjennomsiktig over kartet"
+    },
+    "overlays": {
+      "back": "Tilbake til innstillinger",
+      "none_enabled": "Ingen aktivert",
+      "wildfires_header": "Skogbranner (kun USA)",
+      "wildfires_description": "Aktive skogbrann-perimetere i USA fra NIFC sin WFIGS-feed.",
+      "alerts_header": "NWS observasjoner og varsler (kun USA)",
+      "alerts_description": "Aktive observasjoner og varsler fra US National Weather Service.",
+      "wildfire_min_acres": "Minste areal",
+      "wildfire_min_acres_helper": "Skjul branner mindre enn denne størrelsen (standard 10)",
+      "wildfire_radius_km": "Radius (km)",
+      "wildfire_radius_km_helper": "Vis kun branner innenfor N km fra kartens midtpunkt",
+      "alerts_radius_km": "Radius (km)",
+      "alerts_radius_km_helper": "Vis kun varsler innenfor N km fra kartens midtpunkt",
+      "alerts_categories_label": "Varselkategorier – velg hvilke hendelsestyper som vises",
+      "alerts_category": {
+        "tornado": "Tornado",
+        "thunderstorm": "Tordenvær",
+        "flood": "Flom",
+        "winter": "Vinter",
+        "tropical": "Tropisk",
+        "fire_weather": "Brannfare",
+        "heat": "Hete",
+        "wind": "Vind",
+        "marine": "Maritimt",
+        "other": "Annet"
+      }
     }
   }
 }

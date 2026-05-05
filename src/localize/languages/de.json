@@ -4,7 +4,42 @@
   },
   "ui": {
     "rate_limited": "Anfragelimit erreicht — warte auf Zurücksetzen des Kontingents",
-    "save_map_center": "Als Kartenmittelpunkt speichern"
+    "region_warning": {
+      "wildfires_us_only": "Waldbranddaten sind nur für die USA verfügbar. Ihr Home-Assistant-Standort liegt außerhalb der USA – es werden keine Brände angezeigt.",
+      "noaa_us_only": "NOAA-Radar ist nur für die USA verfügbar. Ihr Home-Assistant-Standort liegt außerhalb der USA – das Radar lädt möglicherweise nicht.",
+      "combined": "{features} sind nur für die USA verfügbar. Ihr Home-Assistant-Standort liegt außerhalb der USA – diese Daten werden nicht geladen.",
+      "and": "und",
+      "alerts_us_only": "NWS-Wetterwarnungen sind nur für die USA verfügbar. Ihr Home-Assistant-Standort liegt außerhalb der USA – Warnungen werden nicht geladen.",
+      "label": {
+        "wildfires": "Waldbrände",
+        "alerts": "NWS-Warnungen",
+        "noaa": "NOAA-Radar"
+      },
+      "dwd_de_only": "Das DWD-Radar deckt Deutschland und seine direkten Nachbarn ab. Ihr Home-Assistant-Standort liegt außerhalb dieser Region — die Karte zeigt möglicherweise nur „keine Daten\"."
+    },
+    "wildfire": {
+      "acres": "Acres",
+      "contained": "Eingedämmt",
+      "discovered": "Entdeckt",
+      "more_info": "Mehr Infos → NIFC",
+      "unknown_name": "Unbenannter Vorfall",
+      "disclaimer": "Nur zu Informationszwecken – kein Ersatz für offizielle Warnungen.",
+      "see_readme": "Siehe README"
+    },
+    "alerts": {
+      "severity": "Schweregrad",
+      "certainty": "Gewissheit",
+      "urgency": "Dringlichkeit",
+      "effective": "Beginn",
+      "expires": "Endet",
+      "more_info": "Mehr Infos → NWS",
+      "unknown_event": "Warnung",
+      "disclaimer": "NUR ZUR INFORMATION – nicht für lebenswichtige Entscheidungen.",
+      "see_readme": "Siehe README"
+    },
+    "loading_radar_tiles": "Radarkacheln werden geladen",
+    "now": "(jetzt)",
+    "now_tooltip": "Jetzt"
   },
   "editor": {
     "section": {
@@ -14,13 +49,15 @@
       "display": "Anzeige",
       "interaction": "Interaktion",
       "animation": "Animation",
-      "appearance": "Aussehen"
+      "appearance": "Aussehen",
+      "overlays": "Gefahren-Overlays",
+      "markers_and_overlays": "Markierungen und Overlays"
     },
     "map": {
       "radar_source": "Radarquelle",
       "source_rainviewer": "RainViewer (Global)",
       "source_noaa": "NOAA/NWS (nur USA — experimentell)",
-      "source_dwd": "DWD (Deutschland — 5 Min., +2 h Vorhersage)",
+      "source_dwd": "DWD (Deutschland — 5 Min. Auflösung)",
       "map_style": "Kartenstil",
       "style_auto": "Auto (folgt dem hellen/dunklen Modus des Systems)",
       "style_light": "CARTO Light (nur Englisch)",
@@ -30,6 +67,14 @@
       "style_osm": "OpenStreetMap (lokalisiert)",
       "zoom_level": "Zoomstufe",
       "zoom_default": "Standard (5)"
+    },
+    "time_range": {
+      "past": "Verlaufsdauer",
+      "forecast": "Vorhersagedauer",
+      "forecast_off": "Aus",
+      "yaml_suffix": "(YAML)",
+      "helper": "≈ {n} Bilder, alle {interval} Min.",
+      "helper_stride": "≈ {n} Bilder, alle {stride} Min. (YAML-Schrittweite)"
     },
     "location": {
       "centre_latitude": "Breitengrad des Mittelpunkts",
@@ -53,8 +98,8 @@
       "icon_colour": "Symbolfarbe",
       "reset": "Zurücksetzen",
       "mobile_only": "Nur Mobil",
-      "count_summary": "{n} configured",
-      "back": "Back to settings"
+      "count_summary": "{n} konfiguriert",
+      "back": "Zurück zu den Einstellungen"
     },
     "display": {
       "show_zoom": "Zoom anzeigen",
@@ -68,20 +113,32 @@
       "cluster_markers": "Markierungen gruppieren",
       "show_snow": "Schnee anzeigen",
       "show_color_bar": "Farbskala anzeigen",
-      "show_progress_bar": "Fortschrittsleiste anzeigen"
+      "show_progress_bar": "Fortschrittsleiste anzeigen",
+      "show_wildfires": "Waldbrände anzeigen (nur USA)",
+      "show_alerts": "NWS-Warnungen anzeigen (nur USA)",
+      "alerts_min_severity": "Warnungen: Mindestschweregrad",
+      "alerts_min_severity_helper": "Warnungen unterhalb dieses Schweregrads ausblenden",
+      "alerts_severity": {
+        "extreme": "Extrem",
+        "severe": "Schwer",
+        "moderate": "Mäßig",
+        "minor": "Gering",
+        "unknown": "Unbekannt"
+      },
+      "square_map_disabled_helper": "Deaktiviert, wenn eine Höhe festgelegt ist oder die Karte in einer Sections-Zelle mit fester Zeilenanzahl liegt — diese Beschränkungen legen die Kartenhöhe bereits fest.",
+      "show_loading_spinner": "Ladeanzeige anzeigen"
     },
     "interaction": {
       "disable_scroll": "Scrollen deaktivieren (Seitenwischen über die Karte erlauben)",
       "double_tap_action": "Aktion bei Doppelklick",
-      "double_tap_none": "Keine",
+      "double_tap_none": "Keine (keine Aktion, kein Zoom)",
+      "double_tap_zoom_in": "Hineinzoomen (Standard)",
       "double_tap_recenter": "Karte zentrieren",
       "double_tap_toggle_play": "Wiedergabe / Pause umschalten"
     },
     "animation": {
-      "frame_count": "Anzahl der Bilder",
       "frame_delay": "Bildverzögerung (ms)",
       "restart_delay": "Neustartverzögerung (ms)",
-      "default_5": "Standard: 5",
       "default_500": "Standard: 500",
       "default_1000": "Standard: 1000",
       "animated_transitions": "Animierte Übergänge",
@@ -98,6 +155,33 @@
       "width_helper": "z. B. 100%, 500px",
       "radar_opacity": "Radar-Deckkraft",
       "radar_opacity_helper": "1.0 = vollständig deckend (Standard), niedriger = transparenter über der Hintergrundkarte"
+    },
+    "overlays": {
+      "back": "Zurück zu den Einstellungen",
+      "none_enabled": "Keine aktiviert",
+      "wildfires_header": "Waldbrände (nur USA)",
+      "wildfires_description": "Aktive US-Waldbrandgrenzen aus dem WFIGS-Feed der NIFC.",
+      "alerts_header": "NWS-Beobachtungen & Warnungen (nur USA)",
+      "alerts_description": "Aktive Beobachtungen und Warnungen des US National Weather Service.",
+      "wildfire_min_acres": "Mindestfläche",
+      "wildfire_min_acres_helper": "Brände unter dieser Größe ausblenden (Standard 10)",
+      "wildfire_radius_km": "Radius (km)",
+      "wildfire_radius_km_helper": "Nur Brände innerhalb von N km vom Kartenmittelpunkt anzeigen",
+      "alerts_radius_km": "Radius (km)",
+      "alerts_radius_km_helper": "Nur Warnungen innerhalb von N km vom Kartenmittelpunkt anzeigen",
+      "alerts_categories_label": "Warnkategorien – wählen Sie, welche Ereignistypen angezeigt werden",
+      "alerts_category": {
+        "tornado": "Tornado",
+        "thunderstorm": "Gewitter",
+        "flood": "Hochwasser",
+        "winter": "Winter",
+        "tropical": "Tropisch",
+        "fire_weather": "Brandwetter",
+        "heat": "Hitze",
+        "wind": "Wind",
+        "marine": "Marine",
+        "other": "Sonstiges"
+      }
     }
   }
 }
