@@ -2,11 +2,13 @@
 
 ## Status
 
-Current architecture as of **v3.5.0-alpha**. The original design (single
+Current architecture as of **v3.5.0-beta1**. The original design (single
 "current" slot at opacity 1, all others at 0, opposing crossfade between two
 slots) shipped through v3.3.0; it was replaced in v3.4.0-beta to fix a
 mid-fade alpha dip ([#113](https://github.com/Makin-Things/weather-radar-card/pull/113))
-and refined further in v3.5.0-alpha (dynamic tile size, pause when hidden).
+and refined further in 3.5: dynamic tile size, pause when hidden, the
+`smooth_overlap` knob, and the `past_minutes` / `forecast_minutes` /
+`frame_stride_minutes` time-range model (replacing `frame_count`).
 
 ## Goal
 
