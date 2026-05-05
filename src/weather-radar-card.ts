@@ -986,7 +986,28 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupResizeObserver(): void {
     const mapEl = this.shadowRoot?.getElementById('mapid');
     if (!mapEl) return;
-    this._resizeObserver = new ResizeObserver(() => this._map?.invalidateSize());
+    this._resizeObserver = new ResizeObserver(() => {
+      // Defer to next frame so any pending markercluster initialization
+      // microtasks (esp. the first bounds computation) complete before
+      // we fire 'resize' via invalidateSize. Without this defer, the
+      // ResizeObserver's first callback can race the cluster group's
+      // setup — markercluster's resize handler tries to read
+      // _topClusterLevel._bounds while it's still undefined and crashes
+      // with "Cannot read properties of undefined (reading 'lat')".
+      // See issue #110 for the original instance of the same race
+      // (zoomEnd path); this is the resize path of the same root cause.
+      requestAnimationFrame(() => {
+        if (!this._map) return;
+        try {
+          this._map.invalidateSize();
+        } catch (e) {
+          // Belt-and-braces: if markercluster still trips on this in
+          // some edge case, log instead of breaking the whole card.
+          // The next ResizeObserver tick will re-attempt.
+          console.warn('[weather-radar-card] invalidateSize() raised — likely the markercluster init race. Recovering on next resize.', e);
+        }
+      });
+    });
     this._resizeObserver.observe(mapEl);
   }
 
