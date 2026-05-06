@@ -106,6 +106,12 @@ export class RadarPlayer {
   // Toolbar reference (set externally after toolbar is created)
   toolbar: RadarToolbar | null = null;
 
+  // Highest native tile zoom requested in this session. Bumped on zoom-in
+  // via _onZoomEnd, never lowered. Passed as minNativeZoom on each layer
+  // so zoom-out reuses cached high-res tiles instead of fetching at the
+  // lower native zoom.
+  private _pinnedNativeZoom = 0;
+
   constructor(opts: RadarPlayerOptions) {
     this._map = opts.map;
     this._shadowRoot = opts.shadowRoot;
@@ -114,7 +120,29 @@ export class RadarPlayer {
     this._noaaLimiter = opts.noaaLimiter;
     this._dwdLimiter = opts.dwdLimiter;
     this._startWorker();
+    this._pinnedNativeZoom = Math.min(
+      this._map.getZoom(),
+      this._sourceMaxNativeZoom(),
+    );
+    this._map.on('zoomend', this._onZoomEnd);
   }
+
+  private _sourceMaxNativeZoom(): number {
+    // Must match the maxNativeZoom set per source in _createLayer.
+    return (this._cfg.data_source ?? 'RainViewer') === 'DWD' ? 8 : 7;
+  }
+
+  private _onZoomEnd = (): void => {
+    if (!this._map) return;
+    const newPin = Math.min(this._map.getZoom(), this._sourceMaxNativeZoom());
+    if (newPin <= this._pinnedNativeZoom) return;
+    this._pinnedNativeZoom = newPin;
+    // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
+    // option on existing layers is enough, no redraw needed.
+    for (const layer of this._radarImage) {
+      if (layer) (layer.options as any).minNativeZoom = newPin;
+    }
+  };
 
   // ── Config helpers ───────────────────────────────────────────────────────
 
@@ -176,6 +204,7 @@ export class RadarPlayer {
   clear(): void {
     this._stopLoop();
     this._clearLayers();
+    this._map?.off('zoomend', this._onZoomEnd);
     if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
     this._worker?.terminate();
     this._worker = null;
@@ -190,15 +219,39 @@ export class RadarPlayer {
   onNavPaused(): void {
     this.navPaused = true;
     this._stopLoop();
-    for (let i = 0; i < this._configFrameCount; i++) this._setSegment(i, 'empty');
-    this._showRateLimitBanner(false);
   }
 
   async onNavSettled(frameCount: number): Promise<void> {
     this.navPaused = false;
-    this._clearLayers();
-    this._configFrameCount = frameCount;
-    await this._initRadar();
+
+    // Full re-init only when state needs rebuilding: initial load not yet
+    // complete, or frame_count changed. Pan, zoom, and programmatic view
+    // changes leave layers attached — Leaflet fetches only the tiles
+    // entering the new viewport.
+    if (!this._radarReady || this._configFrameCount !== frameCount) {
+      this._clearLayers();
+      this._configFrameCount = frameCount;
+      await this._initRadar();
+      return;
+    }
+
+    // _scheduleUpdate's timer keeps running through the pause; if it fired
+    // while navPaused was true it set _doRadarUpdate. Pick that up now;
+    // _updateRadar restarts the loop from its load callback.
+    if (this._doRadarUpdate) {
+      this._doRadarUpdate = false;
+      void this._updateRadar();
+      return;
+    }
+
+    // Resume without re-showing the current slot. _stopLoop already left
+    // the displayed layer at active opacity via _settleVisibility; routing
+    // through _showSlot would snap it to 0 and fade back in, producing a
+    // visible flash on every move.
+    if (this.run) {
+      this._loopGen++;
+      this._scheduleNext(this._loopGen);
+    }
   }
 
   onVisibilityHidden(): void {
@@ -459,7 +512,12 @@ export class RadarPlayer {
     const spinner = this._shadowRoot.getElementById('loading-spinner');
     if (!spinner) return;
     const enabled = this._cfg.show_loading_spinner !== false;
-    const isLoading = enabled && this._frameStatuses.some(s => s === 'loading');
+    // _frameStatuses covers initial load and periodic refresh;
+    // _tilePending catches pan/zoom on attached layers, where edge-tile
+    // fetches don't go through _setSegment(loading).
+    const segLoading = this._frameStatuses.some(s => s === 'loading');
+    const tileLoading = this._radarImage.some(l => (l?._tilePending ?? 0) > 0);
+    const isLoading = enabled && (segLoading || tileLoading);
     spinner.style.display = isLoading ? '' : 'none';
   }
 
@@ -642,9 +700,15 @@ export class RadarPlayer {
   private _createLayer(frame: RadarFrame): FetchTileLayer | FetchWmsTileLayer {
     const dataSource = this._cfg.data_source ?? 'RainViewer';
     const { size: tileSize, zoomOffset } = this._radarTileSize();
+    // Drive the spinner from each layer's load events, so pan/zoom edge
+    // fetches on attached layers light it up too (not just frame status).
+    const wireSpinner = (l: FetchTileLayer | FetchWmsTileLayer): typeof l => {
+      l.on('loading load', () => this._updateLoadingSpinner());
+      return l;
+    };
     if (dataSource === 'NOAA') {
       const isoTime = new Date(frame.time * 1000).toISOString().split('.')[0] + 'Z';
-      return new FetchWmsTileLayer(NOAA_WMS_URL, {
+      return wireSpinner(new FetchWmsTileLayer(NOAA_WMS_URL, {
         layers: NOAA_WMS_LAYER,
         format: 'image/png',
         transparent: true,
@@ -654,12 +718,13 @@ export class RadarPlayer {
         // mean fewer requests for the same coverage on large maps.
         tileSize,
         zoomOffset,
+        minNativeZoom: this._pinnedNativeZoom,
         // NOAA's 4 km MRMS native; cap to keep upscaled appearance.
         maxNativeZoom: 7 + Math.max(0, -zoomOffset),
         rateLimiter: this._noaaLimiter,
         on429: () => this._onRateLimited(),
         animationOwnsOpacity: true,
-      } as any);
+      } as any));
     }
     if (dataSource === 'DWD') {
       const isoTime = new Date(frame.time * 1000).toISOString().split('.')[0] + 'Z';
@@ -674,7 +739,7 @@ export class RadarPlayer {
         );
         this._dwdSwapLogged = true;
       }
-      return new FetchWmsTileLayer(DWD_WMS_URL, {
+      return wireSpinner(new FetchWmsTileLayer(DWD_WMS_URL, {
         layers: layerName,
         format: 'image/png',
         transparent: true,
@@ -684,28 +749,30 @@ export class RadarPlayer {
         // count proportionally — see _radarTileSize() for the picker.
         tileSize,
         zoomOffset,
+        minNativeZoom: this._pinnedNativeZoom,
         // DWD's 1 km grid supports zoom 8; bump for larger tiles.
         maxNativeZoom: 8 + Math.max(0, -zoomOffset),
         rateLimiter: this._dwdLimiter,
         on429: () => this._onRateLimited(),
         animationOwnsOpacity: true,
-      } as any);
+      } as any));
     }
     const snow = this._cfg.show_snow ? 1 : 0;
     const host = frame.host ?? 'https://tilecache.rainviewer.com';
     // RainViewer encodes tile size as a path segment (256/512/1024/2048).
     // Build the URL with whichever size we picked for this map.
-    return new FetchTileLayer(`${host}${frame.path}/${tileSize}/{z}/{x}/{y}/2/1_${snow}.png`, {
+    return wireSpinner(new FetchTileLayer(`${host}${frame.path}/${tileSize}/{z}/{x}/{y}/2/1_${snow}.png`, {
       detectRetina: false,
       tileSize,
       zoomOffset,
+      minNativeZoom: this._pinnedNativeZoom,
       // RainViewer publishes tiles up to native zoom 7 at 256px;
       // higher native zoom available with bigger tiles.
       maxNativeZoom: 7 + Math.max(0, -zoomOffset),
       rateLimiter: this._rainviewerLimiter,
       on429: () => this._onRateLimited(),
       animationOwnsOpacity: true,
-    } as any);
+    } as any));
   }
 
   // Format date and time as separate parts. The bottom-row template
