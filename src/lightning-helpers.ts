@@ -7,10 +7,11 @@ import { HomeAssistant } from 'custom-card-helpers';
 
 // Default Blitzortung integration max-age window. Used when we can't read
 // the user's actual configured value out of HA (the integration stores it
-// in a config entry, which Lovelace cards can't query directly). 600 s
-// matches the integration's own default — see Open Questions in
+// in a config entry, which Lovelace cards can't query directly). 7200 s
+// (= 120 min) matches the integration's current default — verified
+// empirically on a fresh install. See Open Questions in
 // docs/lightning-feature-design.md for the long-term fix.
-export const DEFAULT_BLITZORTUNG_MAX_AGE_SEC = 600;
+export const DEFAULT_BLITZORTUNG_MAX_AGE_SEC = 7200;
 
 // hass.config.components is HA's loaded-integrations list, populated at
 // startup and stable thereafter. We gate the editor toggle on it (not on

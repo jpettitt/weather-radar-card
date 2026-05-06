@@ -107,8 +107,8 @@ describe('colorForAge', () => {
     expect(colorForAge(50, -10)).toBe('#ffffff');
   });
 
-  it('default max age constant matches the Blitzortung integration default', () => {
-    expect(DEFAULT_BLITZORTUNG_MAX_AGE_SEC).toBe(600);
+  it('default max age constant matches the Blitzortung integration default (verified empirically)', () => {
+    expect(DEFAULT_BLITZORTUNG_MAX_AGE_SEC).toBe(7200);
   });
 
   it('progresses monotonically through the gradient (no backwards segments)', () => {

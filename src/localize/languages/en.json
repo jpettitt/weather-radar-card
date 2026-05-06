@@ -39,6 +39,27 @@
       "unknown_event": "Alert",
       "disclaimer": "INFORMATIONAL ONLY — not for life-safety decisions.",
       "see_readme": "See README"
+    },
+    "lightning": {
+      "popup_title": "Lightning strike",
+      "source_label": "Source: Blitzortung",
+      "more_info": "More info → Blitzortung",
+      "bearing": {
+        "n": "N",
+        "ne": "NE",
+        "e": "E",
+        "se": "SE",
+        "s": "S",
+        "sw": "SW",
+        "w": "W",
+        "nw": "NW"
+      },
+      "relative": {
+        "just_now": "just now",
+        "seconds_ago": "{n} s ago",
+        "minutes_ago": "{n} min ago",
+        "hours_ago": "{n} h ago"
+      }
     }
   },
   "editor": {
@@ -126,7 +147,8 @@
         "moderate": "Moderate",
         "minor": "Minor",
         "unknown": "Unknown"
-      }
+      },
+      "show_lightning": "Show Lightning (Blitzortung)"
     },
     "interaction": {
       "disable_scroll": "Disable Scroll (allow page swipe through map)",

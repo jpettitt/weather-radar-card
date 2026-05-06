@@ -28,6 +28,8 @@ import { createMarkerIconForMarker, HOME_PATH } from './marker-icon';
 import { migrateConfig, resolveMarkerPosition, resolveTracking } from './marker-utils';
 import { WildfireLayer } from './wildfire-layer';
 import { NwsAlertsLayer } from './nws-alerts-layer';
+import { LightningLayer } from './lightning-layer';
+import { isBlitzortungLoaded } from './lightning-helpers';
 import { getRegionWarnings } from './region-warning';
 
 /* eslint no-console: 0 */
@@ -90,6 +92,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _player: RadarPlayer | null = null;
   private _wildfireLayer: WildfireLayer | null = null;
   private _alertsLayer: NwsAlertsLayer | null = null;
+  private _lightningLayer: LightningLayer | null = null;
 
   // True while the user is actively editing this card via HA's edit dialog.
   // Detected via window-level events from the editor element's lifecycle —
@@ -300,6 +303,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       }
       this._wildfireLayer?.updateHass(this.hass);
       this._alertsLayer?.updateHass(this.hass);
+      this._lightningLayer?.updateHass(this.hass);
     }
   }
 
@@ -505,6 +509,15 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._alertsLayer = new NwsAlertsLayer(this._map, () => this._config, this.hass);
       this._alertsLayer.start();
     }
+
+    // Lightning overlay only attaches when the user has BOTH opted in via
+    // config AND has the Blitzortung integration loaded. The integration
+    // is the data source — without it the layer would silently render
+    // nothing, so we don't even instantiate it.
+    if (cfg.show_lightning === true && isBlitzortungLoaded(this.hass)) {
+      this._lightningLayer = new LightningLayer(this._map, () => this._config, this.hass);
+      this._lightningLayer.start();
+    }
   }
 
   private _teardown(): void {
@@ -532,6 +545,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._wildfireLayer = null;
     this._alertsLayer?.clear();
     this._alertsLayer = null;
+    this._lightningLayer?.clear();
+    this._lightningLayer = null;
     if (this._clusterGroup) { this._clusterGroup.clearLayers(); this._clusterGroup = null; }
     this._clusterSpiderfied = false;
     if (this._map) { this._map.remove(); this._map = null; }
@@ -958,11 +973,13 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._player?.onVisibilityHidden();
       this._wildfireLayer?.pause();
       this._alertsLayer?.pause();
+      this._lightningLayer?.pause();
     };
     const onShow = (): void => {
       this._player?.onVisibilityVisible();
       this._wildfireLayer?.resume();
       this._alertsLayer?.resume();
+      this._lightningLayer?.resume();
     };
     this._visObserver = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) onShow();
@@ -1126,6 +1143,28 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       }
       @media (prefers-reduced-motion: reduce) {
         .loading-spinner-arc { animation: none; }
+      }
+      /* Lightning overlay (Blitzortung). The divIcon outer container
+         carries the animation; the inner SVG paints the bolt. overflow:
+         visible on the SVG lets the brief scale(2) flash spill outside
+         the divIcon box without being clipped. */
+      .wrc-lightning-icon {
+        pointer-events: auto;
+        cursor: pointer;
+      }
+      .wrc-lightning-icon svg {
+        overflow: visible;
+      }
+      @keyframes wrc-lightning-pulse {
+        0%   { transform: scale(2);   filter: brightness(2); opacity: 1; }
+        60%  { transform: scale(1.3); filter: brightness(1.4); opacity: 1; }
+        100% { transform: scale(1);   filter: brightness(1);   opacity: 1; }
+      }
+      .wrc-lightning-pulse {
+        animation: wrc-lightning-pulse 600ms ease-out;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .wrc-lightning-pulse { animation: none; }
       }
     `,
   ];

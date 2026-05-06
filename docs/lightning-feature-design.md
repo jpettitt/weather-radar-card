@@ -29,7 +29,7 @@ The integration also exposes:
 
 We don't use the sensors. We render the geo_location entities directly, since each one is a strike with its own coordinates.
 
-**Lifecycle:** the integration adds a geo_location entity when a strike comes in via Blitzortung's WebSocket, and removes it after the user-configured max age (default 600 s = 10 min). The card listens for hass updates and reflects the appear/disappear churn.
+**Lifecycle:** the integration adds a geo_location entity when a strike comes in via Blitzortung's WebSocket, and removes it after the user-configured max age (default **7200 s = 120 min**, verified empirically on a fresh install). The card listens for hass updates and reflects the appear/disappear churn.
 
 **Distance filtering:** the integration also has its own configured radius. Strikes outside it never reach hass.states. The card therefore inherits the user's chosen distance — no card-side `lightning_radius_km` knob needed (we'd just be re-applying the same filter).
 
@@ -94,7 +94,7 @@ function colorForAge(ageSec: number, maxAgeSec: number): string {
 }
 ```
 
-Reading the integration's max age: query `sensor.blitzortung_lightning_distance` attributes for the configured cap, or fall back to the default 600 s if it's not exposed. (Open question — see below.)
+Reading the integration's max age: query `sensor.blitzortung_lightning_distance` attributes for the configured cap, or fall back to the default 7200 s (120 min) if it's not exposed. (Open question — see below.)
 
 ### Pulse on appearance
 
