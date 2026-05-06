@@ -24,6 +24,14 @@ This card displays animated weather radar loops within Home Assistant. It suppor
 
 For the full release history see [CHANGELOG](https://github.com/Makin-Things/weather-radar-card/blob/master/CHANGELOG.md).
 
+## Roadmap
+
+- **Real-time lightning strikes** when the [Blitzortung integration](https://www.home-assistant.io/integrations/blitzortung/) is installed — target 3.6
+- **Wind overlay** (DWD, Germany only — target 3.6; global via [Open-Meteo](https://open-meteo.com/) — target 3.7)
+- **Per-user / per-card layer visibility control** — target 3.7
+
+Full backlog: [docs/todo.md](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/todo.md).
+
 ## Documentation
 
 | Topic | What's there |

@@ -88,7 +88,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
-- **Lightning overlay (Blitzortung)** — proposed for 3.6. Render live
+- **Lightning overlay (Blitzortung)** — target 3.6. Render live
   lightning strikes from the [Blitzortung HA integration](https://www.home-assistant.io/integrations/blitzortung/)
   as small `mdi:lightning-bolt-outline` markers, interior coloured by
   age (white → yellow → orange → red over the integration's max-age
@@ -102,6 +102,84 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   Implementation roughly mirrors `wildfire-layer.ts` — new file
   `src/lightning-layer.ts`, editor row in the Hazard Overlays
   subpage, 11-language i18n keys.
+
+- **Open-Meteo as an alternate wind source for global coverage** — target 3.7.
+  The wind overlay landing in 3.6 (PR #133) is DWD-only — Germany +
+  immediate neighbours via the ICON-D2 model. To extend the feature
+  globally, add [Open-Meteo](https://open-meteo.com/) as a second
+  source. They auto-pick the best regional model per location (DWD
+  ICON in Europe, NOAA GFS for the Americas, JMA in Japan, ECMWF
+  elsewhere), expose `wind_u_component_10m` / `wind_v_component_10m`
+  in the same U/V form the existing layer expects, and crucially
+  support **bulk lat/lon queries in a single HTTPS GET** — would
+  collapse PR #133's 400-parallel-WMS-request burst per pan into 1
+  batched JSON call.
+
+  Implementation pattern: parallel `WIND_SOURCE_CAPS` table in a new
+  `src/wind-source-caps.ts`, mirroring `src/source-caps.ts` for
+  radar — each entry declaring native grid resolution, fetch
+  strategy (`'wms-getfeatureinfo'` vs `'json-bulk'`), max points per
+  request, and global / regional coverage. New `wind_source` config
+  field with auto-pick default ("DWD if EU, Open-Meteo elsewhere"),
+  matching the auto map-style behaviour we already do.
+
+  Caveats: Open-Meteo is non-commercial use only (HACS distribution
+  probably qualifies but verify current terms before shipping); free
+  tier is 10k req/day per IP (with bulk batching, not even close to
+  hitting it); resolution drops to ~28 km outside Europe vs DWD's
+  native 2.2 km, but invisible at typical card zoom levels.
+
+  Order: land #133 first (DWD-only baseline), then this PR adds the
+  source abstraction without changing the EU experience.
+
+- **Real-time per-user layer control** with persistent state — target 3.7.
+  The card now ships radar + wildfires + NWS alerts + lightning + DWD
+  coverage outline + three wind modes — too many for the editor to
+  be the only enable/disable surface. Add an on-map control letting
+  users toggle individual overlays in real time without re-opening
+  the editor.
+
+  **UX:** custom on-map button (`mdi:layers`) → expanding panel
+  matching the existing toolbar idiom (zoom / recenter / playback).
+  Considered Leaflet's built-in `L.control.layers` but it's dated
+  and doesn't match HA's design language. The custom panel can also
+  group toggles (Hazards / Wind / Coverage) and show live state
+  ("Wildfires (3 visible)").
+
+  **Composition semantics — approach B (subset):** dashboard YAML
+  defines the *available* set of layers; user UI controls visibility
+  within that set, can't enable layers the dashboard owner didn't
+  authorise. Mirrors how HA's own per-user dashboard customisation
+  works — owner curates, user tunes within frame.
+
+  **Persistence:** HA's frontend storage API
+  (`frontend/get_user_data` / `frontend/set_user_data` over
+  WebSocket). Server-side, per-user, syncs across the user's
+  browsers and devices. Same API HA's own frontend uses for sidebar
+  state and view bookmarks.
+
+  **Storage key = config-hash + dashboard path.** SHA-1 (or short
+  hash) of the canonical card config (lat/lon/data_source/etc.) plus
+  the dashboard URL path. Rationale: the same card config can appear
+  on two dashboards (e.g. one user's main radar dashboard and a
+  separate "weather wall") — the user's toggle choices belong to
+  the dashboard they're looking at, not to the card-config in the
+  abstract. Two dashboards × same config = two independent
+  per-user states. Key shape: `wrc-overlays:{configHash}:{dashboardPath}`.
+
+  **What gets stored:** which overlays the user has hidden (sparse —
+  only overrides, not full state). Defaults are the dashboard YAML;
+  storage layer just records "user explicitly turned X off" or "user
+  explicitly turned Y back on after toggling it off then back".
+
+  **Edge cases to think about during design:**
+  - YAML config changes — does a meaningful change invalidate the
+    user's overrides (they were tuning a different set), or do
+    overrides survive across config edits?
+  - Dashboard rename — URL path changes, user's state appears to
+    reset. Acceptable (rare) or handle via stable dashboard ID?
+  - Multi-card dashboards (same card type, different configs on the
+    same dashboard) — config-hash differentiates them naturally.
 
 ### Investigated, won't pursue
 
