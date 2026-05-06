@@ -12,6 +12,44 @@ export interface FetchTileOptions extends L.TileLayerOptions {
   on429?: () => void;
   /** When true, Leaflet's _updateOpacity is suppressed so CSS animations own opacity. */
   animationOwnsOpacity?: boolean;
+  /**
+   * Optional pixel-level rewrite applied to each fetched tile before it
+   * is assigned to the <img>. The function mutates the RGBA byte array
+   * in place. Use to drop server-rendered pixels that shouldn't be in
+   * the animation stack — e.g. the grey "no-data" mask + magenta
+   * coverage outline that DWD's WMS bakes into every tile, which would
+   * otherwise pulse during a crossfade because two stacked layers
+   * compound the dim.
+   */
+  pixelFilter?: (data: Uint8ClampedArray) => void;
+}
+
+// Decode `blob` to a canvas, run `filter` over its RGBA bytes in place,
+// re-encode back to a PNG blob. Returns a fresh blob; the caller owns
+// it. Falls back to the original blob on any failure (a tile is more
+// useful than no tile, even if the mask leaks through).
+async function applyPixelFilter(
+  blob: Blob,
+  filter: (data: Uint8ClampedArray) => void,
+): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { bitmap.close?.(); return blob; }
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    filter(imgData.data);
+    ctx.putImageData(imgData, 0, 0);
+    return await new Promise<Blob>((resolve) => {
+      canvas.toBlob((b) => resolve(b ?? blob), 'image/png');
+    });
+  } catch {
+    return blob;
+  }
 }
 
 // Augment Leaflet's Coords type (it's missing `z` in some @types versions)
@@ -58,6 +96,10 @@ function createFetchTile(
         if (r.status === 429) { const e: any = new Error('429'); e.status = 429; throw e; }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.blob();
+      })
+      .then((blob) => {
+        const filter = (layer.options as FetchTileOptions).pixelFilter;
+        return filter ? applyPixelFilter(blob, filter) : blob;
       })
       .then((blob) => {
         const objUrl = URL.createObjectURL(blob);
@@ -151,13 +193,14 @@ export class FetchWmsTileLayer extends L.TileLayer.WMS {
     // Leaflet's L.TileLayer.WMS appends ANY option that isn't a recognised
     // Leaflet/WMS field to the GetMap URL as a query parameter — that
     // would leak our internal options (rateLimiter, on429,
-    // animationOwnsOpacity) into the request, producing URL fragments
-    // like `&rateLimiter=[object%20Object]`. Split them off, hand only
-    // the WMS-relevant subset to the parent initialize, then put ours
-    // back onto this.options so createTile / _updateOpacity can read them.
-    const { rateLimiter, on429, animationOwnsOpacity, ...wmsOptions } = options;
+    // animationOwnsOpacity, pixelFilter) into the request, producing URL
+    // fragments like `&rateLimiter=[object%20Object]`. Split them off,
+    // hand only the WMS-relevant subset to the parent initialize, then
+    // put ours back onto this.options so createTile / _updateOpacity can
+    // read them.
+    const { rateLimiter, on429, animationOwnsOpacity, pixelFilter, ...wmsOptions } = options;
     (L.TileLayer.WMS.prototype as any).initialize.call(this, url, wmsOptions);
-    Object.assign(this.options, { rateLimiter, on429, animationOwnsOpacity });
+    Object.assign(this.options, { rateLimiter, on429, animationOwnsOpacity, pixelFilter });
   }
 
   createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {

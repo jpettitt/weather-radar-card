@@ -39,6 +39,60 @@ const DWD_WMS_LAYER_DEFAULT = 'Niederschlagsradar';
 // Frames usually appear 1–3 min after their timestamp; 5 min is safely past the lag.
 const DWD_LAG_MS = 5 * 60 * 1000;
 
+// DWD's WMS tiles bake a "no-data" mask into every frame: a faint grey
+// wash (rgba 126,126,126,77) for areas outside coverage, plus a magenta
+// boundary outline (rgb 255,0,255 at varying α) where the underlying
+// raster ends. Two stacked tile layers during a crossfade compound the
+// dim, producing a visible pulse. Stripping these at fetch time lifts
+// the mask out of the per-slot stack.
+//
+// The pixel filter is a *whitelist* in colour space: anything that
+// shaped like purple (G low, R and B both higher than G) gets dropped
+// unless it exactly matches a known palette entry. The DWD radar
+// colourmaps only have a handful of purple/magenta hues for heavy
+// rain, and they fall on specific (r, g, b) triples that no outline
+// blend will hit. Asymmetric outline blends like (188,38,204) and
+// symmetric ones like a hypothetical (112,35,112) are both caught by
+// the same rule; symmetry no longer matters.
+//
+// Known palette purples across the DWD radar layers:
+//   Niederschlagsradar/RV: (204,0,152) (102,0,203)
+//   WN-product/-analysis:  (153,0,153) (255,51,255)
+//
+// `layerName` selects which palette whitelist applies. Pure red/orange
+// palette entries (e.g. (255,32,32), (255,137,0)) are *not* purple-shape
+// because B ≤ G — they pass through untouched.
+const WN_PALETTE_PURPLES = new Set<number>([
+  (153 << 16) | (0 << 8) | 153,
+  (255 << 16) | (51 << 8) | 255,
+]);
+const RV_PALETTE_PURPLES = new Set<number>([
+  (204 << 16) | (0 << 8) | 152,
+  (102 << 16) | (0 << 8) | 203,
+]);
+
+function makeDwdMaskFilter(layerName: string): (data: Uint8ClampedArray) => void {
+  const palette = layerName.startsWith('Radar_wn-')
+    ? WN_PALETTE_PURPLES
+    : RV_PALETTE_PURPLES;
+  return (data) => {
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3];
+      if (a === 0) continue;
+      if (a < 255) { data[i + 3] = 0; continue; }
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      if (r === g && g === b) { data[i + 3] = 0; continue; }
+      // Purple-shape: G is the smallest channel, and both R and B are
+      // bright enough to read as a colour rather than near-black.
+      if (g >= 120 || r <= 50 || b <= 50 || r <= g || b <= g) continue;
+      const key = (r << 16) | (g << 8) | b;
+      if (!palette.has(key)) data[i + 3] = 0;
+    }
+  };
+}
+
 export interface RadarPlayerOptions {
   map: L.Map;
   shadowRoot: ShadowRoot;
@@ -689,6 +743,7 @@ export class RadarPlayer {
         rateLimiter: this._dwdLimiter,
         on429: () => this._onRateLimited(),
         animationOwnsOpacity: true,
+        pixelFilter: makeDwdMaskFilter(layerName),
       } as any);
     }
     const snow = this._cfg.show_snow ? 1 : 0;
