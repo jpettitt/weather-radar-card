@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0-alpha3] - 2026-05-07
+
+> Two NWS-layer improvements: a smarter paint order for overlapping alerts, plus an XSS-hardening pass on every popup `href` interpolation. Same-day fix-and-improvement release for the 3.6 alpha track.
+
+### Security
+
+- **Escape three popup `href` interpolations.** The NWS, wildfire, and lightning popup builders each had a `<a href="${url}">` interpolation that wasn't going through `escapeHtml`. Only the NWS one had a known attack surface (`props.uri` is server-controlled, but the existing scheme check blocks `javascript:` URIs *not* HTML attribute breakouts via `"` or `>`). Wildfire (`linkSlug` is `slugify`-derived) and lightning (`url` is built from clamped numeric inputs) were safe by construction; defensive escape protects against future refactors. No known live exploit at any of the three sites — the fix closes the theoretical gap.
+
+### Changed
+
+- **NWS alert paint order is now lexicographic over (severity, urgency, certainty)** — replaces the prior single-key severity-ascending sort. Severity dominates (matching the `alerts_min_severity` filter), urgency breaks severity ties (`Past < Unknown < Future < Expected < Immediate`), certainty breaks urgency ties (`Unknown < Unlikely < Possible < Likely < Observed`). Result: a Tornado Warning Observed paints over a Tornado Warning Radar-Indicated; both paint over Severe Thunderstorm Warnings; Wind Advisory Observed over Frost Advisory; etc. CAP-standard fields, no event-name regex.
+
+### Tests
+
+316 → **329**. New coverage:
+
+- 8 cases for the three-axis lex sort (severity primary, urgency secondary, certainty tertiary, severity-dominates-other-axes, Past < Unknown urgency, all-defaults vs missing properties, realistic mixed-alerts pin)
+- 5 cases for `buildPopupHtml` URL escaping (attribute-breakout escaped, javascript: scheme triggers fallback, normal uri unchanged, `< > &` in uri escaped, null/undefined uri falls back to alerts index)
+
 ## [3.6.0-alpha2] - 2026-05-06
 
 > Small follow-up to alpha1: a "no animation" option for users who want a static current-frame view. The animation was always on prior to 3.6 because `getEffectiveTimeRange` floored the frame count at 2 — `past_minutes: 0` silently became a 2-frame loop. Now `0` means 1 frame.
@@ -382,7 +401,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha2...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha3...HEAD
+[3.6.0-alpha3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha2...v3.6.0-alpha3
 [3.6.0-alpha2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha1...v3.6.0-alpha2
 [3.6.0-alpha1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.5.0...v3.6.0-alpha1
 [3.5.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.4.0...v3.5.0
