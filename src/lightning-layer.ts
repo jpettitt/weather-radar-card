@@ -485,7 +485,7 @@ export class LightningLayer {
         <div>${escapeHtml(distLabel)}</div>
         <div>${escapeHtml(relLabel)}</div>
         <div style="margin-top:6px;font-size:10px;color:#666">${escapeHtml(localize('ui.lightning.source_label'))}</div>
-        <div style="margin-top:4px"><a href="${url}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.lightning.more_info'))}</a></div>
+        <div style="margin-top:4px"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.lightning.more_info'))}</a></div>
       </div>
     `;
   }

@@ -167,11 +167,11 @@ export class NwsAlertsLayer {
     }
     if (myGen !== this._gen) return;   // stale
 
-    // Filter, then sort severity-ascending so more-severe features render
-    // on top (Leaflet draws later features above earlier ones in a layer).
-    // Sort once here, not per render — the order is stable until the next
-    // _fetch() pass.
-    this._features = this._filter(features).sort(severityAscending);
+    // Filter, then sort lexicographically by (severity, urgency,
+    // certainty) so the most actionable alerts paint last and end up
+    // on top of the visual stack. Sort once here, not per render —
+    // the order is stable until the next _fetch().
+    this._features = this._filter(features).sort(paintOrderAscending);
     // Render polygon-bearing alerts immediately for snappy first paint;
     // zone-only alerts will fill in progressively as their geometry arrives.
     this._render();
@@ -488,12 +488,66 @@ function featureKey(f: GeoJSON.Feature): string {
   return p?.id ?? '';
 }
 
-// Severity-ascending so more-severe features render on top in Leaflet
-// (later features draw above earlier ones in a GeoJSON layer).
-function severityAscending(a: GeoJSON.Feature, b: GeoJSON.Feature): number {
-  const sa = SEVERITY_RANK[((a.properties as AlertProps)?.severity ?? 'Unknown') as Severity] ?? 0;
-  const sb = SEVERITY_RANK[((b.properties as AlertProps)?.severity ?? 'Unknown') as Severity] ?? 0;
-  return sa - sb;
+// CAP-standard rank tables for the two attributes beyond severity.
+// Higher rank = "more important to surface" — so ascending sort
+// (lower-rank-first) puts the highest-priority alerts last in the array,
+// which means Leaflet paints them on top.
+//
+// Past sits below Unknown for urgency: "this already happened" is the
+// least actionable state, while "we don't know" at least carries some
+// possibility. Mirrors NWS field documentation.
+type Urgency = 'Past' | 'Unknown' | 'Future' | 'Expected' | 'Immediate';
+type Certainty = 'Unknown' | 'Unlikely' | 'Possible' | 'Likely' | 'Observed';
+
+const URGENCY_RANK: Record<Urgency, number> = {
+  Past: 0, Unknown: 1, Future: 2, Expected: 3, Immediate: 4,
+};
+const CERTAINTY_RANK: Record<Certainty, number> = {
+  Unknown: 0, Unlikely: 1, Possible: 2, Likely: 3, Observed: 4,
+};
+
+// Lexicographic paint-order sort over the three CAP fields NWS attaches
+// to every alert. Ascending: lowest-priority paints first (ends up at
+// the bottom of the visual stack), highest-priority paints last (ends
+// up on top).
+//
+//   Primary:    severity   (Unknown < Minor < Moderate < Severe < Extreme)
+//   Secondary:  urgency    (Past < Unknown < Future < Expected < Immediate)
+//   Tertiary:   certainty  (Unknown < Unlikely < Possible < Likely < Observed)
+//
+// Severity dominates because it's also the user-facing filter axis
+// (`alerts_min_severity`). Urgency breaks severity ties — at the same
+// "how bad" level, sooner-action-needed wins. Certainty breaks urgency
+// ties — same-severity-and-urgency, the more confident alert wins.
+//
+// Worked examples (within typical Warnings):
+//   Tornado Warning Observed         (Extreme, Immediate, Observed)  ← top
+//   Tornado Warning Radar-Indicated  (Extreme, Immediate, Likely)
+//   Severe T-storm Warning Observed  (Severe,  Immediate, Observed)
+//   Severe T-storm Warning Likely    (Severe,  Immediate, Likely)
+//   Flash Flood Warning              (Severe,  Expected,  Likely)
+//   Wind Advisory Observed           (Moderate, Expected, Observed)
+//   Frost Advisory                   (Minor,   Future,    Likely)    ← bottom
+//
+// Ties on all three fields are extremely rare and would require two
+// alerts of identical severity AND urgency AND certainty to overlap on
+// screen — at which point the paint order between them is genuinely
+// irrelevant.
+function paintOrderAscending(a: GeoJSON.Feature, b: GeoJSON.Feature): number {
+  const ap = a.properties as AlertProps | null;
+  const bp = b.properties as AlertProps | null;
+
+  const sa = SEVERITY_RANK[(ap?.severity ?? 'Unknown') as Severity] ?? 0;
+  const sb = SEVERITY_RANK[(bp?.severity ?? 'Unknown') as Severity] ?? 0;
+  if (sa !== sb) return sa - sb;
+
+  const ua = URGENCY_RANK[(ap?.urgency ?? 'Unknown') as Urgency] ?? 0;
+  const ub = URGENCY_RANK[(bp?.urgency ?? 'Unknown') as Urgency] ?? 0;
+  if (ua !== ub) return ua - ub;
+
+  const ca = CERTAINTY_RANK[(ap?.certainty ?? 'Unknown') as Certainty] ?? 0;
+  const cb = CERTAINTY_RANK[(bp?.certainty ?? 'Unknown') as Certainty] ?? 0;
+  return ca - cb;
 }
 
 function decisionsEqual(a: Map<string, string>, b: Map<string, string>): boolean {
@@ -524,7 +578,11 @@ function buildPopupHtml(props: AlertProps | null): string {
   const accent = relativeLuminance(colour) < 0.7 ? colour : '#444';
 
   // properties.uri is sometimes null in practice; fall back to the alerts
-  // index page so the link always works (even if it's not as deep).
+  // index page so the link always works (even if it's not as deep). The
+  // scheme check blocks javascript: URIs, but does NOT block HTML
+  // attribute breakouts — if NWS ever returns a uri containing " or >,
+  // we still need to escape it before interpolating into href="…". The
+  // escapeHtml(linkUrl) at the call site below handles that.
   const linkUrl = props?.uri && /^https?:\/\//.test(props.uri)
     ? props.uri
     : 'https://www.weather.gov/alerts';
@@ -538,7 +596,7 @@ function buildPopupHtml(props: AlertProps | null): string {
       <div><b>${escapeHtml(localize('ui.alerts.expires'))}:</b> ${escapeHtml(expires)}</div>
       ${description ? `<div style="margin-top:6px;white-space:pre-line;max-height:240px;overflow:auto">${escapeHtml(truncate(description, 1500))}</div>` : ''}
       <div style="margin-top:6px;font-size:10px;color:#a00;font-weight:bold">${escapeHtml(localize('ui.alerts.disclaimer'))} <a href="${DOCS_ALERTS_URL}" target="_blank" rel="noopener noreferrer" style="color:#a00;text-decoration:underline">${escapeHtml(localize('ui.alerts.see_readme'))}</a>.</div>
-      <div style="margin-top:4px"><a href="${linkUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.alerts.more_info'))}</a></div>
+      <div style="margin-top:4px"><a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.alerts.more_info'))}</a></div>
     </div>
   `;
 }
@@ -574,9 +632,10 @@ export { ALL_ALERT_CATEGORIES, NWS_ALERT_DEFAULT_COLOR };
 export {
   featureKey,
   decisionsEqual,
-  severityAscending,
+  paintOrderAscending,
   relativeLuminance,
   formatDateTime,
+  buildPopupHtml,
   readZoneFromLocalStorage,
   writeZoneToLocalStorage,
   ZONE_LS_KEY_PREFIX,

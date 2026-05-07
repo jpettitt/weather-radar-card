@@ -419,8 +419,15 @@ function buildPopupHtml(
       linkSlug = candidates.find((c) => inciwebSlugs.has(c)) ?? null;
     }
   }
+  // linkSlug is currently safe-by-construction — always one of
+  // [baseSlug, baseSlug + '-fire'] where baseSlug derives from
+  // slugify() which strips everything outside [a-z0-9-]. The InciWeb
+  // RSS-parsed slugs are only consulted via Set.has() (a key check),
+  // never substituted into HTML. Defensive escapeHtml here protects
+  // against a future refactor that breaks the safe-by-construction
+  // guarantee.
   const linkHtml = linkSlug
-    ? `<div style="margin-top:4px"><a href="https://inciweb.wildfire.gov/incident-information/${linkSlug}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.wildfire.more_info'))}</a></div>`
+    ? `<div style="margin-top:4px"><a href="https://inciweb.wildfire.gov/incident-information/${escapeHtml(linkSlug)}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.wildfire.more_info'))}</a></div>`
     : '';
 
   // Inline-styled HTML — the popup renders inside Leaflet's own container,
