@@ -95,7 +95,9 @@
       "forecast_off": "Off",
       "yaml_suffix": "(YAML)",
       "helper": "≈ {n} frames at {interval}-min intervals",
-      "helper_stride": "≈ {n} frames at 1-frame-per-{stride}-min (YAML stride)"
+      "helper_stride": "≈ {n} frames at 1-frame-per-{stride}-min (YAML stride)",
+      "past_off": "Off (static frame, no animation)",
+      "helper_static": "Static frame — no animation, refreshes every 5 min"
     },
     "location": {
       "centre_latitude": "Centre Latitude",

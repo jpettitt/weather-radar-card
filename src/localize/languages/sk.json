@@ -95,7 +95,9 @@
       "forecast_off": "Vypnuté",
       "yaml_suffix": "(YAML)",
       "helper": "≈ {n} snímok v intervaloch {interval} min",
-      "helper_stride": "≈ {n} snímok, 1 za {stride} min (krok YAML)"
+      "helper_stride": "≈ {n} snímok, 1 za {stride} min (krok YAML)",
+      "past_off": "Vyp. (statický snímok, bez animácie)",
+      "helper_static": "Statický snímok — bez animácie, obnovuje sa každých 5 min"
     },
     "location": {
       "centre_latitude": "Zemepisná šírka stredu",

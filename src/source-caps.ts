@@ -110,8 +110,14 @@ export function getEffectiveTimeRange(cfg: WeatherRadarCardConfig): EffectiveTim
     strideMin = Math.max(1, k) * caps.intervalMin;
   }
 
+  // frameCount = (history span / stride) + 1, floored at 1 — past_minutes=0
+  // (and forecast_minutes=0) gives a single static frame, which the player
+  // shows without ever entering the animation loop (_scheduleNext returns
+  // early when loaded slots < 2). The periodic 5-min refresh still updates
+  // the single frame so it doesn't go stale. Pre-3.6.0 the floor was 2,
+  // which silently turned a "no animation" config into a 2-frame loop.
   const totalMin = pastMin + forecastMin;
-  const frameCount = Math.max(2, Math.floor(totalMin / strideMin) + 1);
+  const frameCount = Math.max(1, Math.floor(totalMin / strideMin) + 1);
 
   return { pastMin, forecastMin, strideMin, frameCount };
 }

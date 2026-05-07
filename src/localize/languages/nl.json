@@ -95,7 +95,9 @@
       "forecast_off": "Uit",
       "yaml_suffix": "(YAML)",
       "helper": "≈ {n} frames met {interval}-min interval",
-      "helper_stride": "≈ {n} frames, 1 per {stride} min (YAML-stap)"
+      "helper_stride": "≈ {n} frames, 1 per {stride} min (YAML-stap)",
+      "past_off": "Uit (statisch beeld, geen animatie)",
+      "helper_static": "Statisch beeld — geen animatie, vernieuwt elke 5 min"
     },
     "location": {
       "centre_latitude": "Middenbreedtegraad",

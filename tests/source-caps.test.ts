@@ -97,9 +97,23 @@ describe('getEffectiveTimeRange', () => {
     expect(r.strideMin).toBe(10);
   });
 
-  it('always returns at least 2 frames so the animation loop has something to switch between', () => {
+  it('past_minutes=0 with no forecast returns a single static frame (3.6+ — was floored at 2 pre-3.6)', () => {
     const r = getEffectiveTimeRange({ ...base, data_source: 'RainViewer', past_minutes: 0 });
-    expect(r.frameCount).toBe(2);
+    expect(r.frameCount).toBe(1);
+  });
+
+  it('past_minutes=0 with forecast on DWD still produces a multi-frame loop (the forecast frames give it something to animate)', () => {
+    const r = getEffectiveTimeRange({
+      ...base, data_source: 'DWD', past_minutes: 0, forecast_minutes: 60,
+    });
+    expect(r.frameCount).toBe(13); // 60/5 + 1
+  });
+
+  it('frameCount floor is 1, not 0 — defensive against zero / negative span configurations', () => {
+    // Hypothetical: stride way bigger than total span. Math.floor(0/strideMin) + 1 = 1 anyway,
+    // but pin it so a future regression that drops the floor too low (e.g. to 0) is caught.
+    const r = getEffectiveTimeRange({ ...base, data_source: 'RainViewer', past_minutes: 0, forecast_minutes: 0 });
+    expect(r.frameCount).toBeGreaterThanOrEqual(1);
   });
 
   it('handles forecast-only ranges (past=0, forecast=120 on DWD)', () => {

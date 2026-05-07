@@ -95,7 +95,9 @@
       "forecast_off": "Aus",
       "yaml_suffix": "(YAML)",
       "helper": "≈ {n} Bilder, alle {interval} Min.",
-      "helper_stride": "≈ {n} Bilder, alle {stride} Min. (YAML-Schrittweite)"
+      "helper_stride": "≈ {n} Bilder, alle {stride} Min. (YAML-Schrittweite)",
+      "past_off": "Aus (statisches Bild, keine Animation)",
+      "helper_static": "Statisches Bild — keine Animation, Aktualisierung alle 5 Min"
     },
     "location": {
       "centre_latitude": "Breitengrad des Mittelpunkts",

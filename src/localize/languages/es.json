@@ -95,7 +95,9 @@
       "forecast_off": "Desactivado",
       "yaml_suffix": "(YAML)",
       "helper": "≈ {n} fotogramas en intervalos de {interval} min",
-      "helper_stride": "≈ {n} fotogramas a 1 por {stride} min (paso YAML)"
+      "helper_stride": "≈ {n} fotogramas a 1 por {stride} min (paso YAML)",
+      "past_off": "Apagado (cuadro estático, sin animación)",
+      "helper_static": "Cuadro estático — sin animación, se actualiza cada 5 min"
     },
     "location": {
       "centre_latitude": "Latitud del centro",

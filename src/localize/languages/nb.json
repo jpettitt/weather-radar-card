@@ -95,7 +95,9 @@
       "forecast_off": "Av",
       "yaml_suffix": "(YAML)",
       "helper": "≈ {n} bilder med {interval}-min mellomrom",
-      "helper_stride": "≈ {n} bilder, 1 per {stride} min (YAML-steg)"
+      "helper_stride": "≈ {n} bilder, 1 per {stride} min (YAML-steg)",
+      "past_off": "Av (statisk bilde, ingen animasjon)",
+      "helper_static": "Statisk bilde — ingen animasjon, oppdateres hvert 5. min"
     },
     "location": {
       "centre_latitude": "Sentrumsbreddegrad",

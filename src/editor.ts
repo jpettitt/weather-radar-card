@@ -905,15 +905,20 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
 
     // Helper text: "≈ N frames at X-min intervals", flagged when a
     // YAML-only stride override is in effect so the user knows the
-    // editor isn't the source of truth for that knob.
+    // editor isn't the source of truth for that knob. Single-frame
+    // case (past_minutes=0 + no forecast) gets a distinct line — the
+    // generic helper would read "≈ 1 frames at 5-min intervals" which
+    // is both grammatically wrong and misleading.
     const isStrideOverride = range.strideMin !== caps.intervalMin;
-    const helper = isStrideOverride
-      ? localize('editor.time_range.helper_stride')
-        .replace('{n}', String(range.frameCount))
-        .replace('{stride}', String(range.strideMin))
-      : localize('editor.time_range.helper')
-        .replace('{n}', String(range.frameCount))
-        .replace('{interval}', String(caps.intervalMin));
+    const helper = range.frameCount === 1
+      ? localize('editor.time_range.helper_static')
+      : isStrideOverride
+        ? localize('editor.time_range.helper_stride')
+          .replace('{n}', String(range.frameCount))
+          .replace('{stride}', String(range.strideMin))
+        : localize('editor.time_range.helper')
+          .replace('{n}', String(range.frameCount))
+          .replace('{interval}', String(caps.intervalMin));
 
     return html`
       <div class="side-by-side">
@@ -941,15 +946,20 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
   }
 
   // Builds the past-time dropdown options from PAST_PRESETS_MIN,
-  // filtered to ≤ editor cap. If the configured raw value isn't
-  // in the preset list (either > cap or just an off-grid YAML value),
-  // appends it as a "(YAML)" entry at the bottom so the user sees their
-  // actual current value rather than a wrong display.
+  // filtered to ≤ editor cap. Prepends a 0 / Off entry for users who
+  // want a static current frame with no animation loop. If the
+  // configured raw value isn't in the preset list (either > cap or
+  // just an off-grid YAML value), appends it as a "(YAML)" entry at
+  // the bottom so the user sees their actual current value rather
+  // than a wrong display.
   private _buildPastOptions(rawValue: number | undefined, editorCap: number): { value: string; label: string }[] {
-    const opts = PAST_PRESETS_MIN
+    const opts: { value: string; label: string }[] = [
+      { value: '0', label: localize('editor.time_range.past_off') },
+    ];
+    opts.push(...PAST_PRESETS_MIN
       .filter(m => m <= editorCap)
-      .map(m => ({ value: String(m), label: formatDuration(m) }));
-    if (rawValue !== undefined && !PAST_PRESETS_MIN.includes(rawValue)) {
+      .map(m => ({ value: String(m), label: formatDuration(m) })));
+    if (rawValue !== undefined && rawValue !== 0 && !PAST_PRESETS_MIN.includes(rawValue)) {
       opts.push({
         value: String(rawValue),
         label: `${formatDuration(rawValue)} ${localize('editor.time_range.yaml_suffix')}`,

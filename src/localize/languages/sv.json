@@ -95,7 +95,9 @@
       "forecast_off": "Av",
       "yaml_suffix": "(YAML)",
       "helper": "≈ {n} bilder med {interval}-min intervall",
-      "helper_stride": "≈ {n} bilder, 1 per {stride} min (YAML-steg)"
+      "helper_stride": "≈ {n} bilder, 1 per {stride} min (YAML-steg)",
+      "past_off": "Av (statisk bild, ingen animation)",
+      "helper_static": "Statisk bild — ingen animation, uppdateras var 5:e min"
     },
     "location": {
       "centre_latitude": "Centrums latitud",

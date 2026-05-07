@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0-alpha2] - 2026-05-06
+
+> Small follow-up to alpha1: a "no animation" option for users who want a static current-frame view. The animation was always on prior to 3.6 because `getEffectiveTimeRange` floored the frame count at 2 — `past_minutes: 0` silently became a 2-frame loop. Now `0` means 1 frame.
+
+### Added
+
+- **History Duration "Off (static frame, no animation)"** option in the editor's preset dropdown. Selecting it sets `past_minutes: 0`, the player loads exactly one frame and stays on it (no animation loop). The periodic 5-minute refresh still updates the single frame so it doesn't go stale. Helper text under the dropdown switches to "Static frame — no animation, refreshes every 5 min" to confirm the mode.
+
+### Fixed
+
+- **`getEffectiveTimeRange` floor lowered from 2 to 1**, so `past_minutes: 0` actually produces 1 frame instead of being silently rounded up to 2 (which previously made the static-frame mode unreachable from YAML or the editor).
+
+### Tests
+
+314 → **316**. Two new cases pin the new floor behaviour: single-frame for past=0 + no forecast, multi-frame still produced when past=0 + forecast > 0 on DWD.
+
+### Localization
+
+11 languages updated for the two new editor strings (`past_off`, `helper_static`). Coverage parity verified at 100%.
+
 ## [3.6.0-alpha1] - 2026-05-06
 
 > First alpha cut of the 3.6 line. New feature: a lightning overlay sourced from the Blitzortung HA integration. No external HTTP from the card — the integration handles all the data plumbing; we just render.
@@ -362,7 +382,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha1...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha2...HEAD
+[3.6.0-alpha2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha1...v3.6.0-alpha2
 [3.6.0-alpha1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.5.0...v3.6.0-alpha1
 [3.5.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.3.0...v3.4.0

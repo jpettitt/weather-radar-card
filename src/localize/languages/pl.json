@@ -95,7 +95,9 @@
       "forecast_off": "Wyłącz",
       "yaml_suffix": "(YAML)",
       "helper": "≈ {n} klatek co {interval} min",
-      "helper_stride": "≈ {n} klatek, 1 na {stride} min (krok YAML)"
+      "helper_stride": "≈ {n} klatek, 1 na {stride} min (krok YAML)",
+      "past_off": "Wył. (statyczna klatka, bez animacji)",
+      "helper_static": "Statyczna klatka — bez animacji, odświeżana co 5 min"
     },
     "location": {
       "centre_latitude": "Szerokość geograficzna środka",
