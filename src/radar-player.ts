@@ -50,25 +50,33 @@ const DWD_LAG_MS = 5 * 60 * 1000;
 // the same RGB neighbourhood, so we whitelist palette entries by exact
 // triple — the legend only has a handful and they're stable per layer.
 // Anything else with G low and R, B both bright is treated as outline.
-const WN_PALETTE_PURPLES = new Set<number>([
+// Exported for unit-test access — same pattern as nearestFrameIndex
+// above. Not part of the public API; consumers should use
+// makeDwdMaskFilter / makeDwdMaskOnlyFilter instead.
+export const WN_PALETTE_PURPLES = new Set<number>([
   (153 << 16) | (0 << 8) | 153,
   (255 << 16) | (51 << 8) | 255,
 ]);
-const RV_PALETTE_PURPLES = new Set<number>([
+export const RV_PALETTE_PURPLES = new Set<number>([
   (204 << 16) | (0 << 8) | 152,
   (102 << 16) | (0 << 8) | 203,
 ]);
 
-function dwdPaletteFor(layerName: string): Set<number> {
+export function dwdPaletteFor(layerName: string): Set<number> {
   return layerName.startsWith('Radar_wn-') ? WN_PALETTE_PURPLES : RV_PALETTE_PURPLES;
 }
 
-type DwdPixelKind = 'data' | 'grey' | 'outline';
+export type DwdPixelKind = 'data' | 'grey' | 'outline';
 
 // Classify a single pixel. Shared by the data filter (drops everything
 // that isn't 'data') and the mask-only filter (drops 'data', recolours
 // the rest).
-function classifyDwdPixel(
+//
+// Exported for testability — the classifier is the most fragile piece
+// of the DWD mask-stripping pipeline (RGB-indistinguishable palette
+// purples vs outline blends, exact-triple whitelist) and worth pinning
+// against DWD palette drift.
+export function classifyDwdPixel(
   r: number, g: number, b: number, a: number,
   paletteKeys: Set<number>,
 ): DwdPixelKind {
