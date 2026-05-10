@@ -72,6 +72,7 @@
       "animation": "Animatie",
       "appearance": "Uiterlijk",
       "overlays": "Risicolagen",
+      "wind_overlay": "Windlaag",
       "markers_and_overlays": "Markeringen en lagen"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Verberg inslagen ouder dan (minuten)",
       "lightning_max_age_minutes_helper": "Kaart-zijdige begrenzing. Standaard 30. Verandert de max-leeftijd-instelling van de Blitzortung-integratie niet.",
       "lightning_label": "Bliksem"
+    },
+    "wind": {
+      "back": "Terug naar instellingen",
+      "header": "Windlaag (DWD ICON 10m)",
+      "description": "10m wind uit het ICON-voorspellingsmodel. Kies een statische stijl en/of geanimeerde stroomlijnen.",
+      "style_label": "Stijl",
+      "style_off": "Uit",
+      "style_barbs": "Windveren (meteorologisch)",
+      "style_arrows": "Windpijlen (in windrichting)",
+      "density_label": "Dichtheid",
+      "density_helper": "Hoger = meer pijlen op het scherm",
+      "size_label": "Grootte",
+      "size_helper": "Hoger = grotere pijlen",
+      "flow_label": "Geanimeerde stroomlijnen",
+      "summary_off": "Uit",
+      "summary_barbs": "Veren",
+      "summary_arrows": "Pijlen",
+      "summary_flow": "Stroom"
     }
   }
 }

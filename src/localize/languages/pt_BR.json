@@ -72,6 +72,7 @@
       "animation": "Animação",
       "appearance": "Aparência",
       "overlays": "Camadas de risco",
+      "wind_overlay": "Camada de vento",
       "markers_and_overlays": "Marcadores e camadas"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Ocultar raios mais antigos que (minutos)",
       "lightning_max_age_minutes_helper": "Limite no lado do cartão. Padrão 30. Não altera a configuração de idade máxima da integração Blitzortung.",
       "lightning_label": "Raios"
+    },
+    "wind": {
+      "back": "Voltar às configurações",
+      "header": "Camada de vento (DWD ICON 10m)",
+      "description": "Vento a 10 m do modelo de previsão ICON. Escolha um estilo estático e/ou linhas de fluxo animadas.",
+      "style_label": "Estilo",
+      "style_off": "Desativado",
+      "style_barbs": "Barbas (meteorológicas)",
+      "style_arrows": "Setas (na direção do vento)",
+      "density_label": "Densidade",
+      "density_helper": "Maior = mais setas na tela",
+      "size_label": "Tamanho",
+      "size_helper": "Maior = setas maiores",
+      "flow_label": "Linhas de fluxo animadas",
+      "summary_off": "Desativado",
+      "summary_barbs": "Barbas",
+      "summary_arrows": "Setas",
+      "summary_flow": "Fluxo"
     }
   }
 }

@@ -72,6 +72,7 @@
       "animation": "Animasjon",
       "appearance": "Utseende",
       "overlays": "Faresoner",
+      "wind_overlay": "Vindlag",
       "markers_and_overlays": "Markører og overlegg"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Skjul nedslag eldre enn (minutter)",
       "lightning_max_age_minutes_helper": "Kort-side begrensning. Standard 30. Endrer ikke maks-alder-innstillingen til Blitzortung-integrasjonen.",
       "lightning_label": "Lyn"
+    },
+    "wind": {
+      "back": "Tilbake til innstillinger",
+      "header": "Vindlag (DWD ICON 10m)",
+      "description": "10 m vind fra ICON-prognosemodellen. Velg en statisk stil og/eller animerte strømlinjer.",
+      "style_label": "Stil",
+      "style_off": "Av",
+      "style_barbs": "Vindbarber (meteorologiske)",
+      "style_arrows": "Vindpiler (medvinds)",
+      "density_label": "Tetthet",
+      "density_helper": "Høyere = flere piler på skjermen",
+      "size_label": "Størrelse",
+      "size_helper": "Høyere = større piler",
+      "flow_label": "Animerte strømlinjer",
+      "summary_off": "Av",
+      "summary_barbs": "Barber",
+      "summary_arrows": "Piler",
+      "summary_flow": "Strøm"
     }
   }
 }

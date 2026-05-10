@@ -72,6 +72,7 @@
       "animation": "Animacja",
       "appearance": "Wygląd",
       "overlays": "Warstwy zagrożeń",
+      "wind_overlay": "Warstwa wiatru",
       "markers_and_overlays": "Znaczniki i warstwy"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Ukryj uderzenia starsze niż (minuty)",
       "lightning_max_age_minutes_helper": "Limit po stronie karty. Domyślnie 30. Nie zmienia ustawienia maksymalnego wieku integracji Blitzortung.",
       "lightning_label": "Pioruny"
+    },
+    "wind": {
+      "back": "Powrót do ustawień",
+      "header": "Warstwa wiatru (DWD ICON 10m)",
+      "description": "Wiatr na wysokości 10 m z modelu prognostycznego ICON. Wybierz styl statyczny i/lub animowane linie prądu.",
+      "style_label": "Styl",
+      "style_off": "Wyłączone",
+      "style_barbs": "Barby (meteorologiczne)",
+      "style_arrows": "Strzałki (zgodnie z wiatrem)",
+      "density_label": "Gęstość",
+      "density_helper": "Wyższa = więcej strzałek na ekranie",
+      "size_label": "Rozmiar",
+      "size_helper": "Większy = większe strzałki",
+      "flow_label": "Animowane linie prądu",
+      "summary_off": "Wyłączone",
+      "summary_barbs": "Barby",
+      "summary_arrows": "Strzałki",
+      "summary_flow": "Przepływ"
     }
   }
 }

@@ -72,6 +72,7 @@
       "animation": "Animación",
       "appearance": "Apariencia",
       "overlays": "Capas de riesgo",
+      "wind_overlay": "Capa de viento",
       "markers_and_overlays": "Marcadores y capas"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Ocultar rayos más antiguos que (minutos)",
       "lightning_max_age_minutes_helper": "Límite del lado de la tarjeta. Predeterminado 30. No cambia la configuración de antigüedad máxima de la integración Blitzortung.",
       "lightning_label": "Rayos"
+    },
+    "wind": {
+      "back": "Volver a la configuración",
+      "header": "Capa de viento (DWD ICON 10m)",
+      "description": "Viento a 10 m del modelo de pronóstico ICON. Elige un estilo estático y/o líneas de flujo animadas.",
+      "style_label": "Estilo",
+      "style_off": "Desactivado",
+      "style_barbs": "Barbas (meteorológicas)",
+      "style_arrows": "Flechas (en sentido del viento)",
+      "density_label": "Densidad",
+      "density_helper": "Mayor = más flechas en pantalla",
+      "size_label": "Tamaño",
+      "size_helper": "Mayor = flechas más grandes",
+      "flow_label": "Líneas de flujo animadas",
+      "summary_off": "Desactivado",
+      "summary_barbs": "Barbas",
+      "summary_arrows": "Flechas",
+      "summary_flow": "Flujo"
     }
   }
 }

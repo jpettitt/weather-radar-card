@@ -72,6 +72,7 @@
       "animation": "Animazione",
       "appearance": "Aspetto",
       "overlays": "Sovrapposizioni di rischio",
+      "wind_overlay": "Layer del vento",
       "markers_and_overlays": "Marcatori e sovrapposizioni"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Nascondi fulmini più vecchi di (minuti)",
       "lightning_max_age_minutes_helper": "Limite lato scheda. Predefinito 30. Non modifica l’impostazione di età massima dell’integrazione Blitzortung.",
       "lightning_label": "Fulmini"
+    },
+    "wind": {
+      "back": "Torna alle impostazioni",
+      "header": "Layer del vento (DWD ICON 10m)",
+      "description": "Vento a 10 m dal modello di previsione ICON. Scegli uno stile statico e/o linee di flusso animate.",
+      "style_label": "Stile",
+      "style_off": "Disattivato",
+      "style_barbs": "Barbe (meteorologiche)",
+      "style_arrows": "Frecce (sottovento)",
+      "density_label": "Densità",
+      "density_helper": "Maggiore = più frecce sullo schermo",
+      "size_label": "Dimensione",
+      "size_helper": "Maggiore = frecce più grandi",
+      "flow_label": "Linee di flusso animate",
+      "summary_off": "Disattivato",
+      "summary_barbs": "Barbe",
+      "summary_arrows": "Frecce",
+      "summary_flow": "Flusso"
     }
   }
 }

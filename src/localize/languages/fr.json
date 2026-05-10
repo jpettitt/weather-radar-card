@@ -72,6 +72,7 @@
       "animation": "Animation",
       "appearance": "Apparence",
       "overlays": "Calques de risque",
+      "wind_overlay": "Couche vent",
       "markers_and_overlays": "Marqueurs et calques"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Masquer les impacts plus anciens que (minutes)",
       "lightning_max_age_minutes_helper": "Limite côté carte. Par défaut 30. Ne modifie pas le paramètre d’âge maximal de l’intégration Blitzortung.",
       "lightning_label": "Foudre"
+    },
+    "wind": {
+      "back": "Retour aux paramètres",
+      "header": "Couche vent (DWD ICON 10m)",
+      "description": "Vent à 10 m du modèle de prévision ICON. Choisissez un style statique et/ou des lignes de flux animées.",
+      "style_label": "Style",
+      "style_off": "Désactivé",
+      "style_barbs": "Barbules (météorologiques)",
+      "style_arrows": "Flèches (sous le vent)",
+      "density_label": "Densité",
+      "density_helper": "Plus élevé = plus de flèches à l'écran",
+      "size_label": "Taille",
+      "size_helper": "Plus élevé = flèches plus grandes",
+      "flow_label": "Lignes de flux animées",
+      "summary_off": "Désactivé",
+      "summary_barbs": "Barbules",
+      "summary_arrows": "Flèches",
+      "summary_flow": "Flux"
     }
   }
 }

@@ -72,6 +72,7 @@
       "animation": "Animation",
       "appearance": "Utseende",
       "overlays": "Riskskikt",
+      "wind_overlay": "Vindlager",
       "markers_and_overlays": "Markörer och skikt"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Dölj nedslag äldre än (minuter)",
       "lightning_max_age_minutes_helper": "Begränsning på kortets sida. Standard 30. Ändrar inte Blitzortung-integrationens egen max-ålderinställning.",
       "lightning_label": "Blixtar"
+    },
+    "wind": {
+      "back": "Tillbaka till inställningar",
+      "header": "Vindlager (DWD ICON 10m)",
+      "description": "10 m vind från ICON-prognosmodellen. Välj en statisk stil och/eller animerade strömlinjer.",
+      "style_label": "Stil",
+      "style_off": "Av",
+      "style_barbs": "Vindfjädrar (meteorologiska)",
+      "style_arrows": "Vindpilar (medvinds)",
+      "density_label": "Täthet",
+      "density_helper": "Högre = fler pilar på skärmen",
+      "size_label": "Storlek",
+      "size_helper": "Högre = större pilar",
+      "flow_label": "Animerade strömlinjer",
+      "summary_off": "Av",
+      "summary_barbs": "Fjädrar",
+      "summary_arrows": "Pilar",
+      "summary_flow": "Flöde"
     }
   }
 }

@@ -72,6 +72,7 @@
       "animation": "Animácia",
       "appearance": "Vzhľad",
       "overlays": "Vrstvy nebezpečenstiev",
+      "wind_overlay": "Vrstva vetra",
       "markers_and_overlays": "Značky a vrstvy"
     },
     "map": {
@@ -212,6 +213,24 @@
       "lightning_max_age_minutes": "Skryť údery staršie ako (minúty)",
       "lightning_max_age_minutes_helper": "Obmedzenie na strane karty. Predvolené 30. Nemení nastavenie maximálneho veku integrácie Blitzortung.",
       "lightning_label": "Blesky"
+    },
+    "wind": {
+      "back": "Späť na nastavenia",
+      "header": "Vrstva vetra (DWD ICON 10m)",
+      "description": "Vietor v 10 m z predpovedného modelu ICON. Vyberte statický štýl a/alebo animované prúdnice.",
+      "style_label": "Štýl",
+      "style_off": "Vypnuté",
+      "style_barbs": "Praporčeky (meteorologické)",
+      "style_arrows": "Šípky (po vetre)",
+      "density_label": "Hustota",
+      "density_helper": "Vyššia = viac šípok na obrazovke",
+      "size_label": "Veľkosť",
+      "size_helper": "Vyššia = väčšie šípky",
+      "flow_label": "Animované prúdnice",
+      "summary_off": "Vypnuté",
+      "summary_barbs": "Praporčeky",
+      "summary_arrows": "Šípky",
+      "summary_flow": "Prúdenie"
     }
   }
 }
