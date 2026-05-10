@@ -57,6 +57,12 @@ export class WindFlowOverlay {
   private _onMoveStart: () => void;
   private _onMoveEnd: () => void;
   private _onResize: () => void;
+  // prefers-reduced-motion: spinning particles 30×/s on lower-end devices is
+  // exactly the kind of work the OS-level setting asks us to skip. We watch
+  // the media query so toggling it in System Settings takes effect without
+  // a card reload.
+  private _reducedMotionMql: MediaQueryList | null = null;
+  private _onReducedMotionChange: ((e: MediaQueryListEvent) => void) | null = null;
 
   constructor(map: L.Map, opts: WindFlowOverlayOptions = {}) {
     this._map = map;
@@ -84,6 +90,12 @@ export class WindFlowOverlay {
     map.on('moveend zoomend', this._onMoveEnd);
     map.on('resize', this._onResize);
 
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      this._reducedMotionMql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this._onReducedMotionChange = (): void => { void this._restart(); };
+      this._reducedMotionMql.addEventListener('change', this._onReducedMotionChange);
+    }
+
     void this._restart();
   }
 
@@ -93,6 +105,9 @@ export class WindFlowOverlay {
     this._map.off('movestart zoomstart', this._onMoveStart);
     this._map.off('moveend zoomend', this._onMoveEnd);
     this._map.off('resize', this._onResize);
+    if (this._reducedMotionMql && this._onReducedMotionChange) {
+      this._reducedMotionMql.removeEventListener('change', this._onReducedMotionChange);
+    }
     if (this._canvas.parentNode) this._canvas.parentNode.removeChild(this._canvas);
   }
 
@@ -110,6 +125,11 @@ export class WindFlowOverlay {
     this._canvas.width = size.x;
     this._canvas.height = size.y;
     this._ctx.clearRect(0, 0, size.x, size.y);
+
+    // Honour OS-level reduced-motion. The streamlines layer is purely
+    // decorative — barbs/arrows still convey direction & speed — so we
+    // disable the animation entirely rather than rendering a static frame.
+    if (this._reducedMotionMql?.matches) return;
 
     await this._fetchGrid();
     if (myGen !== this._gen) return;
@@ -207,24 +227,10 @@ export class WindFlowOverlay {
   }
 
   private _interpolate(lat: number, lon: number): { u: number; v: number } {
-    if (this._gridRows === 0) return { u: 0, v: 0 };
-    const step = this._gridStep;
-    const r = (lat - this._gridLatMin) / step;
-    const c = (lon - this._gridLonMin) / step;
-    const r0 = Math.floor(r);
-    const c0 = Math.floor(c);
-    if (r0 < 0 || r0 + 1 >= this._gridRows || c0 < 0 || c0 + 1 >= this._gridCols) {
-      return { u: 0, v: 0 };
-    }
-    const fr = r - r0;
-    const fc = c - c0;
-    const a = this._grid[r0][c0];
-    const b = this._grid[r0][c0 + 1];
-    const cc = this._grid[r0 + 1][c0];
-    const d = this._grid[r0 + 1][c0 + 1];
-    const u = (1 - fr) * ((1 - fc) * a.u + fc * b.u) + fr * ((1 - fc) * cc.u + fc * d.u);
-    const v = (1 - fr) * ((1 - fc) * a.v + fc * b.v) + fr * ((1 - fc) * cc.v + fc * d.v);
-    return { u, v };
+    return bilinearUV(
+      this._grid, this._gridLatMin, this._gridLonMin, this._gridStep,
+      this._gridRows, this._gridCols, lat, lon,
+    );
   }
 
   private _tick = (): void => {
@@ -276,4 +282,33 @@ export class WindFlowOverlay {
     ctx.stroke();
     this._animFrame = requestAnimationFrame(this._tick);
   };
+}
+
+// Bilinear interpolation of a regular lat/lon U/V grid. Pure: no DOM, no
+// Leaflet, no class state — caller passes the grid + axis params + sample
+// point. Out-of-grid samples and empty grids return (0,0) so the streamline
+// loop draws nothing rather than crashing.
+export function bilinearUV(
+  grid: ReadonlyArray<ReadonlyArray<{ u: number; v: number }>>,
+  latMin: number, lonMin: number, step: number,
+  rows: number, cols: number,
+  lat: number, lon: number,
+): { u: number; v: number } {
+  if (rows === 0 || cols === 0) return { u: 0, v: 0 };
+  const r = (lat - latMin) / step;
+  const c = (lon - lonMin) / step;
+  const r0 = Math.floor(r);
+  const c0 = Math.floor(c);
+  if (r0 < 0 || r0 + 1 >= rows || c0 < 0 || c0 + 1 >= cols) {
+    return { u: 0, v: 0 };
+  }
+  const fr = r - r0;
+  const fc = c - c0;
+  const a = grid[r0][c0];
+  const b = grid[r0][c0 + 1];
+  const cc = grid[r0 + 1][c0];
+  const d = grid[r0 + 1][c0 + 1];
+  const u = (1 - fr) * ((1 - fc) * a.u + fc * b.u) + fr * ((1 - fc) * cc.u + fc * d.u);
+  const v = (1 - fr) * ((1 - fc) * a.v + fc * b.v) + fr * ((1 - fc) * cc.v + fc * d.v);
+  return { u, v };
 }

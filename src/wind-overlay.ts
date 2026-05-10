@@ -196,11 +196,7 @@ function barbIcon(u: number, v: number, speedMps: number, size: number): L.DivIc
   // Wind FROM direction: opposite of "to" direction (atan2(u, v) is "to").
   const angleDeg = (Math.atan2(u, v) * 180) / Math.PI + 180;
 
-  const k5 = Math.round(knots / 5) * 5;
-  let remaining = k5;
-  const pennants = Math.floor(remaining / 50); remaining -= pennants * 50;
-  const fullFeathers = Math.floor(remaining / 10); remaining -= fullFeathers * 10;
-  const halfFeather = remaining >= 5 ? 1 : 0;
+  const { pennants, fullFeathers, halfFeather } = decomposeBarbKnots(knots);
 
   // Staff: from origin (12,12) up to (12,2). Feathers attach starting at the tip
   // and walk down the staff. Northern Hemisphere convention puts feathers on the
@@ -241,7 +237,7 @@ function barbIcon(u: number, v: number, speedMps: number, size: number): L.DivIc
   });
 }
 
-function speedColour(mps: number): string {
+export function speedColour(mps: number): string {
   // Beaufort-ish bands: calm/light/moderate/fresh/strong/gale.
   if (mps < 1.5) return '#88a';
   if (mps < 3.5) return '#3a7';
@@ -249,4 +245,18 @@ function speedColour(mps: number): string {
   if (mps < 8) return '#d80';
   if (mps < 11) return '#c40';
   return '#a00';
+}
+
+// Round speed to the nearest 5 kt and decompose into glyph counts. WMO
+// convention: pennant = 50 kt, full feather = 10 kt, half feather = 5 kt.
+// Pure: speed in → glyph counts out, no DOM, no SVG.
+export function decomposeBarbKnots(knots: number): {
+  k5: number; pennants: number; fullFeathers: number; halfFeather: 0 | 1;
+} {
+  const k5 = Math.round(knots / 5) * 5;
+  let r = k5;
+  const pennants = Math.floor(r / 50); r -= pennants * 50;
+  const fullFeathers = Math.floor(r / 10); r -= fullFeathers * 10;
+  const halfFeather: 0 | 1 = r >= 5 ? 1 : 0;
+  return { k5, pennants, fullFeathers, halfFeather };
 }
