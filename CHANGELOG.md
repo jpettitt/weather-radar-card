@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0-beta1] - 2026-05-10
+
+> Promotes the 3.6 alpha line to beta and folds in @genericJE's [DWD wind overlay (PR #133)](https://github.com/Makin-Things/weather-radar-card/pull/133): wind barbs, arrows, and animated streamlines, all sampled from the same ICON-D2 10 m wind layer DWD's WarnWetter app uses. Beta scope freeze — no new features after this; bugfix-only path to 3.6.0.
+
+### Added
+
+- **DWD wind overlay** — three independent styles, all client-rendered from DWD's `Icon_reg025_fd_sl_UV10M` WMS layer (10 m wind from ICON-D2):
+  - `dwd_wind: 'barbs'` — meteorological wind barbs in northern-hemisphere convention (feathers CCW of staff). Calm cells render as open circles.
+  - `dwd_wind: 'arrows'` — discrete downwind arrows colour-coded by Beaufort-ish bands (calm grey → light green → fresh teal → orange → storm red).
+  - `dwd_wind_flow: true` — animated streamlines à la the DWD WarnWetter app / earth.nullschool.net. Canvas2D with alpha-fade trails, ~1500 particles. Stacks with barbs/arrows.
+
+  Both static modes honour `dwd_time_override` and `forecast_minutes`, so the wind layer follows the radar's current playback anchor. `dwd_wind_density` (0.25–4, default 1) tunes the on-screen grid; `dwd_wind_size` (0.5–2, default 1) is an independent multiplier on icon size — the two parameters used to be coupled (size = base / √density), but that bundled "more arrows" with "smaller arrows" and made one slider do two jobs. Editor exposes a new "Wind Overlay" subpage under MARKERS AND OVERLAYS, only shown when `data_source: DWD`.
+
+  Streamlines respect OS-level `prefers-reduced-motion` (the animation is purely decorative — barbs/arrows still convey direction & speed), with a live matchMedia listener so toggling System Settings takes effect without a card reload.
+
+  Example config:
+
+  ```yaml
+  type: custom:weather-radar-card
+  data_source: DWD
+  dwd_wind: arrows
+  dwd_wind_flow: true
+  dwd_wind_density: 1.0
+  dwd_wind_size: 1.0
+  ```
+
+  Contributed by [@genericJE](https://github.com/genericJE).
+
+### Changed
+
+- **Map z-index constants** centralised in `const.ts` (`Z_BASEMAP`, `Z_LABELS`, `Z_RADAR_BASE`) so the layer stack is documented in one place. Wind overlays sit above tilePane (200) and below markerPane (600); the streamline canvas explicitly at z=500.
+
+### Tests
+
+347 → **370**. New: 23 cases for the wind overlay's pure helpers — `speedColour` (all 6 Beaufort band boundaries), `decomposeBarbKnots` (rounding to nearest 5 kt; pennant → full → half decomposition order including the 55-kt = 1 pennant + 1 half edge case), `bilinearUV` (empty grid, out-of-bbox samples, exact corner sampling, single-axis interpolation, full bilinear blend, off-zero origin + non-1 step). Lifted out of class-state methods so the most fragile new code is unit-testable in isolation.
+
+### Cumulative since 3.5.0
+
+This beta consolidates everything from the 3.6 alpha line:
+
+- **DWD as a fully-supported data source** with regional WMS layers, NIFC wildfires, lightning markers, and the new wind overlay (3.6.0-alpha1)
+- **NWS alert paint order** is now a lex sort over (severity, urgency, certainty), not single-key severity (3.6.0-alpha3)
+- **Static-frame mode** via History Duration "Off" / `past_minutes: 0` (3.6.0-alpha2)
+- **DWD coverage-mask cross-fade pulse fix** — strip the server-baked grey wash + magenta outline at fetch time, re-render the boundary as a snap-switched overlay (3.6.0-alpha4)
+- **XSS-hardening pass** on three popup `href` interpolations (3.6.0-alpha3)
+
 ## [3.6.0-alpha4] - 2026-05-10
 
 > Lands @genericJE's DWD coverage-overlay fix (originally [PR #132](https://github.com/Makin-Things/weather-radar-card/pull/132), brought across as [PR #141](https://github.com/Makin-Things/weather-radar-card/pull/141)) — the per-frame snap-switched mask that kills the cross-fade pulse on the DWD coverage outline.
@@ -421,7 +467,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha4...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta1...HEAD
+[3.6.0-beta1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha4...v3.6.0-beta1
 [3.6.0-alpha4]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha3...v3.6.0-alpha4
 [3.6.0-alpha3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha2...v3.6.0-alpha3
 [3.6.0-alpha2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha1...v3.6.0-alpha2
