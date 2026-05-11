@@ -117,6 +117,63 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   Order: land #133 first (DWD-only baseline), then this PR adds the
   source abstraction without changing the EU experience.
 
+- **Wind source registry — tiered alternatives to ICON-D2** — design note
+  for after the bulk-fetch (`feat/wind-bulk-fetch`) lands. The new
+  `WindGrid` abstraction in `src/wind-grid-fetcher.ts` already accepts a
+  `coverageId` and a swappable `fetchImpl`, so adding sources is mostly
+  registry + UI work, not a rewrite.
+
+  **Tier 1 — drop-in (one config string):**
+
+  - `dwd__Aicon_reg025_fd_sl_UV10M` — DWD AICON, AI-augmented variant
+    of ICON, same 0.25° global grid, same WCS endpoint, same parser.
+    Reportedly more accurate for short-range. Confirmed plug-compatible
+    by `DescribeCoverage`.
+
+  **Tier 2 — same fetcher, small adapter (~30 lines):**
+
+  - `dwd__Icon_reg025_fd_pl_UV` — ICON pressure levels (250/500/700/850/925
+    hPa). Needs an `elevation` subset axis.
+  - `dwd__BRD_1km_winddaten_10m` — Germany-only, **1 km** native (~25× finer
+    than ICON-D2). Big visual win for German users, but uses a projected CRS
+    in metres with `X/Y` axes — needs lat/lon → projected transform on the
+    request side. Highest impact-per-effort if German UX matters.
+  - DWD ICON-EU UV — currently only T / QFF / TOTPREC are exposed; revisit
+    when DWD adds the wind coverage.
+
+  **Tier 3 — different provider, new fetch impl + parser (~100 lines):**
+
+  - NOAA NOMADS / NCSS — NetCDF Subset Service for GFS / HRRR returns CSV
+    for a bbox. Same `WindGrid` downstream, new URL builder + CSV parser.
+  - MET Norway THREDDS — same shape via OPeNDAP / NetCDF subset.
+  - ECMWF Open Data — GRIB files; heavier (GRIB parser non-trivial in browser).
+
+  **Tier 4 — bad fit (avoid):**
+
+  - Open-Meteo — per-point only, no bbox API. Would undo the bulk-fetch
+    win. The Open-Meteo backlog item above pre-dates the bulk-fetch
+    refactor; revisit only if Open-Meteo adds a bbox endpoint.
+
+  **Architecture sketch:**
+
+  ```ts
+  type WindSource = 'dwd_icon' | 'dwd_aicon' | 'dwd_brd1km' | 'noaa_gfs';
+  interface WindSourceDef {
+    label: string;          // i18n key
+    resolution: string;     // "0.25° / ~28 km"
+    coverage: string;       // "Global hourly to +48 h"
+    fetch: (opts) => Promise<WindGrid>;
+  }
+  ```
+
+  Cache key in `WindGridFetcher` already includes `coverageId` — gets `source`
+  for free. Editor adds a dropdown above Style/Density/Size; the cadence
+  note becomes per-source. Both overlays continue consuming `WindGrid`
+  unchanged — the value of the abstraction.
+
+  **Recommended order:** Tier 1 (AICON) in 3.7 as a two-option dropdown.
+  BRD 1km in 3.8 if German UX warrants. Tier 3 deferred unless asked.
+
 - **Real-time per-user layer control** with persistent state — target 3.7.
   The card now ships radar + wildfires + NWS alerts + lightning + DWD
   coverage outline + three wind modes — too many for the editor to

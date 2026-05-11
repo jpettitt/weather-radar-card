@@ -18,7 +18,6 @@ vi.mock('leaflet', () => {
 });
 
 import { speedColour, decomposeBarbKnots } from '../src/wind-overlay';
-import { bilinearUV } from '../src/wind-flow-overlay';
 
 // ── speedColour ────────────────────────────────────────────────────────────
 //
@@ -136,67 +135,10 @@ describe('decomposeBarbKnots', () => {
   });
 });
 
-// ── bilinearUV ─────────────────────────────────────────────────────────────
-//
-// Pure bilinear interpolation of a regular lat/lon U/V grid. Out-of-grid
-// samples and empty grids must return (0,0) so the streamline loop draws
-// nothing rather than crashing.
-
-describe('bilinearUV', () => {
-  // Tiny 2×2 grid covering lat ∈ [50, 51], lon ∈ [10, 11], step 1°.
-  // Layout: grid[row][col] where row 0 is latMin, col 0 is lonMin.
-  //
-  //     lon=10   lon=11
-  // lat=50  (10,0)  (20,0)
-  // lat=51  (10,5)  (20,5)
-  const grid2x2: ReadonlyArray<ReadonlyArray<{ u: number; v: number }>> = [
-    [{ u: 10, v: 0 }, { u: 20, v: 0 }],
-    [{ u: 10, v: 5 }, { u: 20, v: 5 }],
-  ];
-
-  it('returns (0, 0) on an empty grid', () => {
-    expect(bilinearUV([], 0, 0, 1, 0, 0, 50.5, 10.5)).toEqual({ u: 0, v: 0 });
-  });
-
-  it('returns (0, 0) for samples outside the grid bbox', () => {
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 49.5, 10.5)).toEqual({ u: 0, v: 0 }); // south
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 52, 10.5)).toEqual({ u: 0, v: 0 });   // north
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 50.5, 9)).toEqual({ u: 0, v: 0 });    // west
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 50.5, 12)).toEqual({ u: 0, v: 0 });   // east
-  });
-
-  it('returns the corner value when sampled exactly on a grid node', () => {
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 50, 10)).toEqual({ u: 10, v: 0 });
-    // Top-right (lat=51, lon=11) is *outside* the [r0+1<rows] guard since
-    // r0 = 1 makes r0+1 = 2 which equals rows. (0,0) is correct.
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 51, 11)).toEqual({ u: 0, v: 0 });
-  });
-
-  it('linearly interpolates along the lon axis at a grid-row latitude', () => {
-    // At lat=50, half-way between lon=10 and lon=11: u should be (10+20)/2 = 15.
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 50, 10.5)).toEqual({ u: 15, v: 0 });
-  });
-
-  it('linearly interpolates along the lat axis at a grid-col longitude', () => {
-    // At lon=10, half-way between lat=50 and lat=51: v should be (0+5)/2 = 2.5.
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 50.5, 10)).toEqual({ u: 10, v: 2.5 });
-  });
-
-  it('bilinear-blends along both axes simultaneously', () => {
-    // Centre of the cell — equal weights on all four corners.
-    // u = (10 + 20 + 10 + 20) / 4 = 15; v = (0 + 0 + 5 + 5) / 4 = 2.5.
-    expect(bilinearUV(grid2x2, 50, 10, 1, 2, 2, 50.5, 10.5)).toEqual({ u: 15, v: 2.5 });
-  });
-
-  it('respects an off-zero grid origin and a non-1 step', () => {
-    // Grid covers lat ∈ [40, 40.5], lon ∈ [-5, -4.5], step 0.5.
-    const grid: ReadonlyArray<ReadonlyArray<{ u: number; v: number }>> = [
-      [{ u: 1, v: 1 }, { u: 3, v: 1 }],
-      [{ u: 1, v: 9 }, { u: 3, v: 9 }],
-    ];
-    // Centre of the cell.
-    const got = bilinearUV(grid, 40, -5, 0.5, 2, 2, 40.25, -4.75);
-    expect(got.u).toBeCloseTo(2, 6);
-    expect(got.v).toBeCloseTo(5, 6);
-  });
-});
+// (bilinearUV's standalone tests were dropped when the streamline overlay
+// migrated to sampleWindGridBilinear from wind-grid-fetcher. The two had
+// subtly different anchor conventions — bilinearUV treated values as
+// node-anchored, sampleWindGridBilinear as cell-centre-anchored — and
+// the WCS data is cell-centre. Equivalent coverage of the bilinear
+// path lives in tests/wind-grid-fetcher.test.ts under
+// "sampleWindGridBilinear".)

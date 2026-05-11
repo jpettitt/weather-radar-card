@@ -218,6 +218,7 @@
       "back": "Tilbake til innstillinger",
       "header": "Vindlag (DWD ICON 10m)",
       "description": "10 m vind fra ICON-prognosemodellen. Velg en statisk stil og/eller animerte strømlinjer.",
+      "cadence_note": "Kilde: DWD ICON-D2-varsel (globalt 0,25°). Oppdateres ved hver hele time; nye modellkjøringer hver 3. time.",
       "style_label": "Stil",
       "style_off": "Av",
       "style_barbs": "Vindbarber (meteorologiske)",

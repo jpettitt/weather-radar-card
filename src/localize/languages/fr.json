@@ -218,6 +218,7 @@
       "back": "Retour aux paramètres",
       "header": "Couche vent (DWD ICON 10m)",
       "description": "Vent à 10 m du modèle de prévision ICON. Choisissez un style statique et/ou des lignes de flux animées.",
+      "cadence_note": "Source : prévision DWD ICON-D2 (global 0,25°). Mise à jour à chaque heure pile ; nouveaux runs du modèle toutes les 3 h.",
       "style_label": "Style",
       "style_off": "Désactivé",
       "style_barbs": "Barbules (météorologiques)",

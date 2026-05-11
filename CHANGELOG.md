@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0-beta2] - 2026-05-10
+
+> Wind overlay rework: replaces the per-cell GetFeatureInfo burst with a single bulk WCS GetCoverage call (often **60–290× fewer requests per refresh**), makes the overlay available regardless of `data_source`, and adds substantial visual tuning. No new user-facing config; existing wind YAML keeps working unchanged.
+
+### Added
+
+- **Wind overlay no longer requires `data_source: DWD`.** The ICON-D2 model is global, so the same overlay now stacks usefully on RainViewer / NOAA radar too. Editor's Wind Overlay subpage is shown for all sources. `dwd_time_override` and `forecast_minutes` anchoring is still DWD-only (those concepts don't exist for the other sources).
+- **Cadence note in the editor's Wind Overlay subpage** — italic line under the description identifying the source (DWD ICON-D2 forecast, global 0.25°) and refresh cadence (top of each clock hour; new model runs every 3 h). Translated into all 11 supported languages.
+
+### Changed
+
+- **Bulk fetch via WCS instead of N parallel WMS GetFeatureInfo calls.** The wind overlay used to fire one `GetFeatureInfo` request per visual icon position (60–290 per refresh, capped at 400). Now one `GetCoverage` request returns the entire visible bbox as a `text/plain` U/V grid that's parsed locally and indexed by both overlays. **Massive HTTP reduction** with no visual change for the user. When both wind overlays (icons + streamlines) are active on the same map, a request-coalescing cache (60 sec TTL) means they share a single fetch instead of duplicating.
+- **Adaptive WCS Scaling for huge bboxes.** Continental and world-scale viewports (z ≤ 4 on wide panels) ask for ~50 000-cell grids via the standard WCS Scaling extension, so the response stays bounded (~2 MB max) instead of exploding to ~25 MB at native resolution. Smaller bboxes still get native 0.25° data. Earlier versions silently rendered nothing at low zoom because the bbox tripped a hard cell cap.
+- **Streamline animation: zoom-aware speed + constant on-screen streak length.** Previously the per-frame pixel speed was fixed across zooms — fast at low zoom, crawling at high zoom. Now we compute pixels-per-(m/s) from the map's current centre/zoom (clamped 0.01–0.3 px/(m/s)/frame) so motion is roughly proportional to ground speed at every zoom. Particle lifetime and trail fade auto-recalibrate per refresh to keep the visible ribbon ~40 px regardless of zoom — slower particles live longer and trail more gently.
+- **Zoom-detail multiplier** (~0.09 at z3 → ~1.37 at z12, linearly interpolated) drives BOTH particle count AND lifetime. Continental views get fewer, shorter-lived streaks (so the ocean doesn't get painted into a uniform texture); city views get more, longer-lived ones.
+- **Hour-aligned refresh** instead of fixed-interval polling. The overlay now self-schedules a refresh at HH:00:30 of each clock hour — exactly when the underlying ICON model's hour bucket changes (or when DWD publishes a fresher run for the same hour). One fetch per hour per overlay, vs. the old 30-min interval that would fetch identical data twice per hour.
+- **Streak canvas now lives in Leaflet's `overlayPane`** (z-index 400) instead of being a child of the map container. Two payoffs: marker icons / popups / NWS / wildfire layers now render ABOVE the streaks (was the reverse — wind canvas was overlaying everything because it sat outside `mapPane`'s stacking context); and the canvas inherits Leaflet's per-frame drag transform automatically, so streaks drift smoothly with the cursor instead of "jumping" on moveend.
+- **Bilinear sampling consolidated.** Both overlays now share `sampleWindGridBilinear`, with cell-centre-anchored semantics that match the WCS data layout. The streamline overlay was previously using a node-anchored variant that introduced a half-cell systematic offset (~14 km at native).
+
+### Fixed
+
+- **Wind silently rendering nothing at low zoom + wide viewports.** Three independent failure modes resolved: (a) bbox cell count exceeding the previous hard cap → fixed by switching to adaptive WCS Scaling; (b) Leaflet's `getBounds()` returning lat/lon outside `[-90, 90] / [-180, 180]` on wide panels at low zoom → fixed by clamping the WCS subset to layer extent; (c) WCS Scaling returning a grid where lon-step ≠ lat-step but the parser using one step for both axes → fixed by reading `elt_0_0` and `elt_1_1` separately.
+- **WCS XML exception bodies in HTTP 200 responses** are now detected explicitly and surfaced with a descriptive error (`WCS returned exception — <text>`). Previously they bubbled up as a useless `parseWcsTextGrid: missing Grid bounds line` message that obscured the real cause.
+- **Wind icons (barbs/arrows) waiting behind the radar tile burst on every map move.** The static-icon overlay now debounces moves at 50 ms (down from 250 ms) — the WCS request fires before the radar player's 100 ms post-moveend tile fetch saturates the browser's per-origin connection pool.
+
+### Tests
+
+370 → **399**. Net change after dropping 7 standalone `bilinearUV` tests (the function was deleted and the streamline overlay now shares `sampleWindGridBilinear`'s coverage in `wind-grid-fetcher.test.ts`). New cases pin: the WCS text parser (8 cases — bounds/dimensions, row-flip, band-split, bad-input rejection, single-cell grid, non-square cells under WCS Scaling); `sampleWindGridNearest` and `sampleWindGridBilinear` (10 cases — exact-cell, half-cell-blend, both-axis-blend, bbox-edge clamping, out-of-bbox, empty grid); `fetchWindGrid` URL building (8 cases — multi-subset format, time-quoting, scaleSize add/skip, layer-extent clamp, 5xx error, XML exception detection); `WindGridFetcher` coalescing (7 cases — concurrent share, TTL expiry, key separation by bbox/time, jitter snap, retry-on-failure).
+
+### Known issues
+
+Two visual issues we know about and intend to address before 3.6.0 stable:
+
+- **Wind streaks render above markers and popups.** The streak canvas lives in `map.getContainer()` (outside Leaflet's `mapPane` stacking context), so its z-index puts it above marker/popup panes regardless of value. Putting the canvas inside any `mapPane` child produced a positioning bug — the canvas content offset by ~half the viewport and drifted relative to the map during scroll. The proper fix is to subclass `L.Layer` and participate in Leaflet's renderer-bounds + setPosition lifecycle (mirrors what L.Canvas does for its shape rendering). Marker/popup *clicks* are unaffected — `pointer-events: none` lets them through; this is purely a visual layering issue.
+- **No dateline wrap on the wind layer.** When a low-zoom view's bbox crosses the antimeridian (e.g., a Pacific-centred view that shows -200° to +160° lon), the fetcher clamps to `[-180, 180]` and the wrapped strip on one edge renders without wind data. Splitting into two WCS requests at the dateline and stitching the results would fix it; deferred because it complicates the cache key and adds a synchronisation point. Affects the small fraction of users who centre their map at high or low longitude.
+
 ## [3.6.0-beta1] - 2026-05-10
 
 > Promotes the 3.6 alpha line to beta and folds in @genericJE's [DWD wind overlay (PR #133)](https://github.com/Makin-Things/weather-radar-card/pull/133): wind barbs, arrows, and animated streamlines, all sampled from the same ICON-D2 10 m wind layer DWD's WarnWetter app uses. Beta scope freeze — no new features after this; bugfix-only path to 3.6.0.
@@ -467,7 +503,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta1...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta2...HEAD
+[3.6.0-beta2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta1...v3.6.0-beta2
 [3.6.0-beta1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha4...v3.6.0-beta1
 [3.6.0-alpha4]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha3...v3.6.0-alpha4
 [3.6.0-alpha3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha2...v3.6.0-alpha3

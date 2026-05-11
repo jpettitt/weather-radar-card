@@ -218,6 +218,7 @@
       "back": "Volver a la configuración",
       "header": "Capa de viento (DWD ICON 10m)",
       "description": "Viento a 10 m del modelo de pronóstico ICON. Elige un estilo estático y/o líneas de flujo animadas.",
+      "cadence_note": "Fuente: pronóstico DWD ICON-D2 (global 0,25°). Se actualiza al inicio de cada hora; nuevas ejecuciones del modelo cada 3 h.",
       "style_label": "Estilo",
       "style_off": "Desactivado",
       "style_barbs": "Barbas (meteorológicas)",

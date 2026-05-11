@@ -613,13 +613,20 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupWindOverlay(): void {
     if (!this._map) return;
     const cfg = this._config;
-    if (cfg.data_source !== 'DWD') return;
+    // Wind overlay is data-source-independent: ICON-D2 (10 m wind) is a
+    // global product, so it stacks usefully on RainViewer / NOAA radars too.
+    // The dwd_time_override / forecast_minutes anchors are still honoured
+    // when DWD radar is the source; for other sources the wind shows live.
 
     // Anchor matches the radar's latest playback frame: override (or now) plus forecast.
-    const forecastMs = (cfg.forecast_minutes ?? 0) * 60_000;
-    const baseMs = cfg.dwd_time_override ? new Date(cfg.dwd_time_override).getTime() : Date.now();
+    // Override + forecast only meaningful when DWD radar is selected; otherwise live.
+    const isDwdRadar = cfg.data_source === 'DWD';
+    const forecastMs = isDwdRadar ? (cfg.forecast_minutes ?? 0) * 60_000 : 0;
+    const baseMs = isDwdRadar && cfg.dwd_time_override
+      ? new Date(cfg.dwd_time_override).getTime()
+      : Date.now();
     const anchorMs = baseMs + forecastMs;
-    const useAnchor = cfg.dwd_time_override != null || forecastMs > 0;
+    const useAnchor = isDwdRadar && (cfg.dwd_time_override != null || forecastMs > 0);
     const timeMs = useAnchor ? anchorMs : undefined;
 
     const mode = cfg.dwd_wind ?? 'off';

@@ -1,8 +1,8 @@
-# Hazard Overlays (US-only)
+# Hazard & Layer Overlays
 
-Two optional overlay layers for US users: active wildfire perimeters from NIFC and active NWS watches & warnings. Both are off by default, both pull from public US government feeds, and both carry strong life-safety disclaimers — they are **informational only** and not a substitute for official emergency channels.
+Optional overlays that stack on top of the radar. Three are US-only and carry strong life-safety disclaimers (Wildfires, NWS Alerts, Lightning); one is global (Wind).
 
-For non-US instances, the card surfaces a banner reminding the user that the data is US-only when either overlay is enabled with `hass.config.country !== 'US'`.
+For non-US instances, the card surfaces a banner reminding the user that the data is US-only when either of the US-specific overlays is enabled with `hass.config.country !== 'US'`.
 
 ## Wildfires
 
@@ -93,3 +93,41 @@ The toggle in the editor's Hazard Overlays subpage is greyed out when the Blitzo
 
 > [!WARNING]
 > Blitzortung is a community-run, free, best-effort lightning detection network. Coverage and accuracy vary regionally. **Not for life-safety decisions** — use NOAA Weather Radio, official storm warnings, or your local emergency channels for those.
+
+## Wind
+
+When `dwd_wind` is set to `barbs` or `arrows`, or `dwd_wind_flow: true` is set, the card overlays 10 m wind from DWD's [ICON-D2 forecast model](https://www.dwd.de/EN/research/weatherforecasting/num_modelling/01_num_weather_prediction_modells/icon_description.html). The model is global at 0.25° resolution (~28 km cells) and updates every 3 hours; the card always shows the freshest run available for the current hour.
+
+The wind overlay is **not coupled to the radar source** — ICON is a global model, so the wind layer stacks usefully on RainViewer / NOAA / DWD radars alike. (For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time as the radar playback frame; for the other sources the wind always shows live.)
+
+### Three styles
+
+`dwd_wind` picks one of two static-icon styles, and `dwd_wind_flow` independently enables or disables the animated streamline layer. The two stack — barbs/arrows + flow is a valid combination.
+
+- **`dwd_wind: 'barbs'`** — meteorological wind barbs in WMO/Northern-Hemisphere convention (feathers on the CCW side of the staff). Pennants = 50 kt, full feathers = 10 kt, half feathers = 5 kt. Calm cells (< 2.5 kt) draw an open circle.
+- **`dwd_wind: 'arrows'`** — discrete downwind arrows colour-coded by Beaufort-ish bands (calm grey → light green → moderate teal → fresh orange → strong red-orange → gale red). Calm cells are suppressed.
+- **`dwd_wind_flow: true`** — animated Canvas2D streamlines, ~1500 particles drifting along the local wind vector with alpha-fade trails. Visually similar to the DWD WarnWetter app and earth.nullschool.net. Particle density and trail length scale with map zoom so continental views don't get painted-over and city views remain detailed.
+
+### Refresh cadence
+
+The overlay schedules a self-rescheduling timer that wakes shortly after each clock hour (HH:00:30) — exactly when the underlying ICON hour bucket changes (or when DWD publishes a fresher run for the same hour). One fetch per hour per overlay; no fixed-interval polling.
+
+### Reduced motion
+
+The streamline layer respects the OS-level `prefers-reduced-motion` setting. When the user has reduced motion enabled, the streamline animation is disabled entirely (the static barbs/arrows still convey direction & speed). The matchMedia listener is live, so toggling the system setting takes effect without a card reload.
+
+### Wind knobs
+
+| Field               | Default        | Description                                                                                                                                            |
+|---------------------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `dwd_wind`          | `'off'`        | One of `off`, `barbs`, `arrows`. Picks the static-icon style.                                                                                          |
+| `dwd_wind_flow`     | `false`        | Enable the animated streamline layer. Stacks with `dwd_wind`.                                                                                          |
+| `dwd_wind_density`  | `1`            | Density of static icons. Range 0.25–4. Higher = more icons. Capped at the native ICON grid (0.25°).                                                    |
+| `dwd_wind_size`     | `1`            | Icon size multiplier. Range 0.5–2 (default 22 px). Independent of density.                                                                             |
+
+### Architecture note
+
+Both wind overlays consume a shared `WindGrid` produced by a single bulk WCS GetCoverage request per refresh, replacing what was a 60–290-call WMS GetFeatureInfo burst per visual icon. Continental and world-scale views use the WCS Scaling extension to downsample server-side so the response stays ~2 MB max regardless of zoom.
+
+> [!NOTE]
+> ICON-D2 is a forecast model — values represent the model's prediction for the snapshotted hour, not direct measurement. Surface winds in particular can differ noticeably from station observations (terrain channelling, urban canyons, etc.). Use this as a synoptic overview, not a backyard wind reading.

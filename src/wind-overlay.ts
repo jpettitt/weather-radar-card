@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as L from 'leaflet';
+import { windGridFetcher, sampleWindGridBilinear, type WindGrid } from './wind-grid-fetcher';
 
-const WMS_URL = 'https://maps.dwd.de/geoserver/dwd/wms';
-const WMS_LAYER = 'Icon_reg025_fd_sl_UV10M';
 const ICON_GRID_DEG = 0.25;
 const MAX_POINTS = 400;
+// No cell cap here — the fetcher's adaptive WCS Scaling downsamples
+// large bboxes server-side instead of skipping.
 // Min step sizes (in ICON grid units) per zoom — keeps screen density roughly constant
 // at density=1. Higher density divides this; lower multiplies it. Native floor is 1.
 const MIN_STEP_BY_ZOOM: Record<number, number> = {
@@ -12,6 +13,17 @@ const MIN_STEP_BY_ZOOM: Record<number, number> = {
 };
 const BASE_ICON_PX = 22;
 const MIN_ICON_PX = 10;
+// Short debounce on map move — long enough to coalesce a flurry of pointer
+// events into one refetch, short enough that the wind WCS request fires
+// BEFORE the radar player's 100 ms post-moveend tile-burst saturates the
+// browser's per-origin connection pool. (The bulk fetcher's request cache
+// dedupes anything redundant the debounce would otherwise filter.)
+const MOVE_DEBOUNCE_MS = 50;
+// Refresh anchored to the top of each clock hour. Our "current" time is
+// hour-bucketed already, so the displayed data only changes at the hour
+// rollover or when DWD publishes a fresher ICON-D2 run for the same hour
+// — top-of-hour catches both. 30 sec offset gives DWD a publish window.
+const HOURLY_REFRESH_OFFSET_MS = 30_000;
 
 export type WindStyle = 'barbs' | 'arrows';
 
@@ -25,8 +37,6 @@ export interface WindOverlayOptions {
   timeMs?: number;
 }
 
-interface Sample { lat: number; lon: number; u: number; v: number; }
-
 export class WindOverlay {
   private _map: L.Map;
   private _layer: L.LayerGroup;
@@ -37,6 +47,7 @@ export class WindOverlay {
   private _gen = 0;
   private _moveHandler: () => void;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(map: L.Map, opts: WindOverlayOptions) {
     this._map = map;
@@ -58,17 +69,31 @@ export class WindOverlay {
     this._layer = L.layerGroup().addTo(map);
     this._moveHandler = (): void => {
       if (this._debounceTimer) clearTimeout(this._debounceTimer);
-      this._debounceTimer = setTimeout(() => this._refresh(), 250);
+      this._debounceTimer = setTimeout(() => this._refresh(), MOVE_DEBOUNCE_MS);
     };
     map.on('moveend', this._moveHandler);
+    this._scheduleHourlyRefresh();
     void this._refresh();
   }
 
   destroy(): void {
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     this._map.off('moveend', this._moveHandler);
     this._layer.remove();
     this._gen++;
+  }
+
+  // Self-rescheduling timer that wakes shortly after each clock hour to
+  // pick up the new hour bucket / model run. Independent of map events.
+  private _scheduleHourlyRefresh(): void {
+    const now = Date.now();
+    const nextHour = Math.ceil(now / 3_600_000) * 3_600_000;
+    const delay = nextHour - now + HOURLY_REFRESH_OFFSET_MS;
+    this._refreshTimer = setTimeout(() => {
+      void this._refresh();
+      this._scheduleHourlyRefresh();
+    }, delay);
   }
 
   private get _iconSize(): number {
@@ -82,16 +107,42 @@ export class WindOverlay {
       this._layer.clearLayers();
       return;
     }
-    const samples = await Promise.all(points.map(p => this._fetchPoint(p.lat, p.lon)));
+
+    // One bulk WCS fetch for the whole visible bbox; each visual icon
+    // position is then a local table lookup. Replaces N parallel
+    // GetFeatureInfo calls (one per icon).
+    const b = this._map.getBounds();
+    const pad = ICON_GRID_DEG;
+    const south = b.getSouth() - pad;
+    const north = b.getNorth() + pad;
+    const west = b.getWest() - pad;
+    const east = b.getEast() + pad;
+    let grid: WindGrid;
+    try {
+      grid = await windGridFetcher.fetch({
+        south, west, north, east,
+        timeIso: this._timeIso,
+      });
+    } catch (err) {
+      console.warn('WindOverlay: WCS fetch failed, skipping refresh', err);
+      return;
+    }
     if (myGen !== this._gen) return;
+
     this._layer.clearLayers();
     const size = this._iconSize;
-    for (const s of samples) {
-      if (!s) continue;
+    for (const p of points) {
+      // Bilinear-sample to match what the old per-point GetFeatureInfo
+      // path produced (GeoServer interpolates server-side by default), so
+      // dense icon grids stay smooth across cell boundaries instead of
+      // stepping discretely. (0, 0) means the point fell outside the
+      // fetched grid; arrowIcon already suppresses calm, barbIcon draws
+      // a calm-circle.
+      const s = sampleWindGridBilinear(grid, p.lat, p.lon);
       const speed = Math.hypot(s.u, s.v);
       const icon = this._style === 'barbs' ? barbIcon(s.u, s.v, speed, size) : arrowIcon(s.u, s.v, speed, size);
       if (!icon) continue;
-      const marker = L.marker([s.lat, s.lon], { icon, interactive: false, keyboard: false });
+      const marker = L.marker([p.lat, p.lon], { icon, interactive: false, keyboard: false });
       this._layer.addLayer(marker);
     }
   }
@@ -127,36 +178,6 @@ export class WindOverlay {
     return points;
   }
 
-  private async _fetchPoint(lat: number, lon: number): Promise<Sample | null> {
-    const half = ICON_GRID_DEG / 4;
-    const params = new URLSearchParams({
-      service: 'WMS',
-      version: '1.3.0',
-      request: 'GetFeatureInfo',
-      layers: WMS_LAYER,
-      query_layers: WMS_LAYER,
-      styles: '',
-      crs: 'EPSG:4326',
-      // WMS 1.3.0 with EPSG:4326 expects lat,lon order
-      bbox: `${lat - half},${lon - half},${lat + half},${lon + half}`,
-      width: '2',
-      height: '2',
-      i: '1',
-      j: '1',
-      info_format: 'application/json',
-    });
-    if (this._timeIso) params.set('TIME', this._timeIso);
-    try {
-      const res = await fetch(`${WMS_URL}?${params}`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      const props = data?.features?.[0]?.properties;
-      if (!props || typeof props.u !== 'number' || typeof props.v !== 'number') return null;
-      return { lat, lon, u: props.u, v: props.v };
-    } catch {
-      return null;
-    }
-  }
 }
 
 function arrowIcon(u: number, v: number, speed: number, size: number): L.DivIcon | null {

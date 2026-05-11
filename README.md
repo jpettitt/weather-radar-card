@@ -26,8 +26,9 @@ For the full release history see [CHANGELOG](https://github.com/Makin-Things/wea
 
 ## Roadmap
 
-- **Real-time lightning strikes** when the [Blitzortung integration](https://www.home-assistant.io/integrations/blitzortung/) is installed — target 3.6
-- **Wind overlay** (DWD, Germany only — target 3.6; global via [Open-Meteo](https://open-meteo.com/) — target 3.7)
+- **Real-time lightning strikes** when the [Blitzortung integration](https://www.home-assistant.io/integrations/blitzortung/) is installed — shipped in 3.6.0
+- **Wind overlay** — barbs, arrows, animated streamlines from DWD's ICON-D2 model (global 0.25° grid). Shipped in 3.6.0-beta. See [Hazard & Layer Overlays](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md#wind).
+- **Wind source choice** (AICON / BRD-1km / NOAA NCSS) — target 3.7. See [todo.md](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/todo.md).
 - **Per-user / per-card layer visibility control** — target 3.7
 
 Full backlog: [docs/todo.md](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/todo.md).
@@ -38,12 +39,13 @@ Full backlog: [docs/todo.md](https://github.com/Makin-Things/weather-radar-card/
 | --- | --- |
 | [Configuration](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/configuration.md) | Full options table, Map Style choices, Animation knobs, Double-tap action, sections-grid behaviour |
 | [Data Sources](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/data-sources.md) | RainViewer / NOAA / DWD specifics, per-source caps, NOAA & DWD notes, DWD forecast leading-edge note |
-| [Hazard Overlays](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md) | US wildfire perimeters and NWS watches & warnings — usage, knobs, **safety disclaimers** |
+| [Hazard & Layer Overlays](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md) | US wildfire perimeters, NWS watches & warnings, lightning (Blitzortung), and global wind — usage, knobs, **safety disclaimers** |
 | [Markers](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/markers.md) | The `markers[]` schema, track-resolution rules, default home marker, migration from the legacy single-marker fields |
 | [Examples](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/examples.md) | Sample YAMLs for common setups (basic, dense DWD loop, NOAA, OSM, mobile-only, person tracking, hazard overlays) |
 | [Animation architecture](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/animation.md) | Internal: layer z-stack, two-slot crossfade, opacity ownership, dynamic tile size, pause behaviour, invariants |
 | [Wildfire feature design](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/wildfire-feature-design.md) | Internal: NIFC WFIGS feed, render decisions, InciWeb gating, refresh cadence |
 | [NWS alerts feature design](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/nws-alerts-feature-design.md) | Internal: api.weather.gov polling, zone resolution + caching, severity sort, popup chrome |
+| [Wind feature design](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/wind-feature-design.md) | Internal: bulk WCS fetch + adaptive scaling, coalescing cache, zoom-aware streamlines, layering |
 | [Backlog / TODO](https://github.com/Makin-Things/weather-radar-card/blob/master/docs/todo.md) | Open and shipped features |
 | [Contributing](https://github.com/Makin-Things/weather-radar-card/blob/master/CONTRIBUTING.md) | Local dev setup including the Docker HA testbed (`npm run ha:up`) |
 

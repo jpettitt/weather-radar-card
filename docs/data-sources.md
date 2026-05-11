@@ -28,6 +28,14 @@ NOAA's `mapservices.weather.noaa.gov` advertises 4 h of history but in practice 
 
 This is an experimental feature using a public government service with no documented rate limits. It is US-only. Radar tiles are fetched at a maximum of zoom 7 (the native 1 km MRMS resolution) and upscaled for display.
 
+## Wind overlay
+
+The optional wind overlay (`dwd_wind` / `dwd_wind_flow`) pulls from a SECOND DWD endpoint — the WCS coverage `dwd__Icon_reg025_fd_sl_UV10M` (10 m wind from the ICON-D2 forecast model, global at 0.25°). It is **independent of `data_source`** — the same wind layer stacks usefully on RainViewer / NOAA / DWD radars alike, since ICON's coverage is global.
+
+For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time bucket as the radar playback frame. Other sources always show live wind.
+
+See [Hazard & Layer Overlays — Wind](overlays.md#wind) for the user-facing knobs and [Wind feature design](wind-feature-design.md) for the bulk-fetch architecture and zoom-aware rendering.
+
 ## DWD note
 
 The default layer is `Niederschlagsradar` (precipitation rate, mm/h). Override via `dwd_layer`; `Radar_wn-product_1x1km_ger` gives reflectivity (dBZ) plus the 2-hour nowcast frames.

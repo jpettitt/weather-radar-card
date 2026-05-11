@@ -218,6 +218,7 @@
       "back": "Powrót do ustawień",
       "header": "Warstwa wiatru (DWD ICON 10m)",
       "description": "Wiatr na wysokości 10 m z modelu prognostycznego ICON. Wybierz styl statyczny i/lub animowane linie prądu.",
+      "cadence_note": "Źródło: prognoza DWD ICON-D2 (globalna 0,25°). Aktualizacja na początku każdej godziny; nowe biegi modelu co 3 h.",
       "style_label": "Styl",
       "style_off": "Wyłączone",
       "style_barbs": "Barby (meteorologiczne)",

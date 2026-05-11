@@ -218,6 +218,7 @@
       "back": "Back to settings",
       "header": "Wind Overlay (DWD ICON 10m)",
       "description": "10m wind from the ICON forecast model. Pick a static style and/or animated streamlines.",
+      "cadence_note": "Source: DWD ICON-D2 forecast (global 0.25°). Updates at the top of each hour; new model runs every 3 h.",
       "style_label": "Style",
       "style_off": "Off",
       "style_barbs": "Wind Barbs (meteorological)",

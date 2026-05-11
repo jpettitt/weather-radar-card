@@ -218,6 +218,7 @@
       "back": "Späť na nastavenia",
       "header": "Vrstva vetra (DWD ICON 10m)",
       "description": "Vietor v 10 m z predpovedného modelu ICON. Vyberte statický štýl a/alebo animované prúdnice.",
+      "cadence_note": "Zdroj: predpoveď DWD ICON-D2 (globálne 0,25°). Aktualizácia na začiatku každej hodiny; nové behy modelu každé 3 h.",
       "style_label": "Štýl",
       "style_off": "Vypnuté",
       "style_barbs": "Praporčeky (meteorologické)",

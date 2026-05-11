@@ -253,16 +253,14 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           <span class="subpage-nav-summary">${this._overlaysSummary(config)}</span>
           <span class="subpage-nav-chevron">›</span>
         </button>
-        ${config.data_source === 'DWD' ? html`
-          <button
-            class="subpage-nav-row"
-            @click=${() => this._setView('wind')}
-          >
-            <span class="subpage-nav-label">${localize('editor.section.wind_overlay')}</span>
-            <span class="subpage-nav-summary">${this._windSummary(config)}</span>
-            <span class="subpage-nav-chevron">›</span>
-          </button>
-        ` : ''}
+        <button
+          class="subpage-nav-row"
+          @click=${() => this._setView('wind')}
+        >
+          <span class="subpage-nav-label">${localize('editor.section.wind_overlay')}</span>
+          <span class="subpage-nav-summary">${this._windSummary(config)}</span>
+          <span class="subpage-nav-chevron">›</span>
+        </button>
 
         <!-- DISPLAY -->
         <h3 class="section-header">${localize('editor.section.display')}</h3>
@@ -493,6 +491,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
 
         <h3 class="section-header">${localize('editor.wind.header')}</h3>
         <p class="section-description">${localize('editor.wind.description')}</p>
+        <p class="section-description" style="font-size:0.78em;font-style:italic;margin-top:-8px">${localize('editor.wind.cadence_note')}</p>
 
         <ha-selector
           .hass=${this.hass}

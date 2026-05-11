@@ -218,6 +218,7 @@
       "back": "Zurück zu den Einstellungen",
       "header": "Wind-Overlay (DWD ICON 10m)",
       "description": "10-m-Wind aus dem ICON-Vorhersagemodell. Wähle einen statischen Stil und/oder animierte Stromlinien.",
+      "cadence_note": "Quelle: DWD ICON-D2-Vorhersage (global 0,25°). Aktualisierung zur vollen Stunde; neue Modellläufe alle 3 h.",
       "style_label": "Stil",
       "style_off": "Aus",
       "style_barbs": "Windfähnchen (meteorologisch)",

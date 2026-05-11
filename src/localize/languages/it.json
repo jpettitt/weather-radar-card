@@ -218,6 +218,7 @@
       "back": "Torna alle impostazioni",
       "header": "Layer del vento (DWD ICON 10m)",
       "description": "Vento a 10 m dal modello di previsione ICON. Scegli uno stile statico e/o linee di flusso animate.",
+      "cadence_note": "Fonte: previsione DWD ICON-D2 (globale 0,25°). Si aggiorna ad ogni ora esatta; nuove esecuzioni del modello ogni 3 h.",
       "style_label": "Stile",
       "style_off": "Disattivato",
       "style_barbs": "Barbe (meteorologiche)",

@@ -218,6 +218,7 @@
       "back": "Tillbaka till inställningar",
       "header": "Vindlager (DWD ICON 10m)",
       "description": "10 m vind från ICON-prognosmodellen. Välj en statisk stil och/eller animerade strömlinjer.",
+      "cadence_note": "Källa: DWD ICON-D2-prognos (global 0,25°). Uppdateras varje hel timme; nya modellkörningar var 3:e timme.",
       "style_label": "Stil",
       "style_off": "Av",
       "style_barbs": "Vindfjädrar (meteorologiska)",

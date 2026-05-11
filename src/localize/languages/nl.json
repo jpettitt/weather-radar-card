@@ -218,6 +218,7 @@
       "back": "Terug naar instellingen",
       "header": "Windlaag (DWD ICON 10m)",
       "description": "10m wind uit het ICON-voorspellingsmodel. Kies een statische stijl en/of geanimeerde stroomlijnen.",
+      "cadence_note": "Bron: DWD ICON-D2-voorspelling (globaal 0,25°). Vernieuwt aan het begin van elk uur; nieuwe modelruns elke 3 uur.",
       "style_label": "Stijl",
       "style_off": "Uit",
       "style_barbs": "Windveren (meteorologisch)",
