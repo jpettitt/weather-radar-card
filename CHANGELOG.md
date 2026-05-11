@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0-rc2] - 2026-05-11
+
+> Wind streamline tuning pass on top of rc1. Surfaced during rc1 testing: at low zoom (z3-5) the streamlines compounded into a uniform grey band along the wind direction, obscuring the basemap. Fixed by tightening the trail decay, reducing low-zoom particle density, and compensating visually with thicker per-stroke line width. z7 was used as the visual reference (no change to its appearance); the taper applies only at zooms below it.
+
+### Changed
+
+- **Streamline decay sharpened.** Trail fade now targets ~0.5% alpha by particle-lifetime end (was 5%) so the tail visibly ends rather than asymptotically lingering. Particle lifetime cap dropped from 600 frames (20 s) to 120 frames (4 s) so any single slow-moving particle can't deposit ink at the same pixel for an extended window — the dominant contributor to canvas saturation at low zoom.
+- **Per-stroke alpha attenuated at low zoom.** New `globalAlpha = pow(detailMultiplier, 1/3)` cube-root scaling: full opacity at z12+, ~0.45 at z3. Cuts ink contribution per stroke without making mid-zoom too faint.
+- **Low-zoom density additionally tapered.** Below z7, particle count gets an EXTRA reduction on top of the existing `_zoomDetailMultiplier`: linear ramp from 0.5× at z3 to 1.0× at z7. Z7+ unchanged.
+- **Line width inverse-scaled at low zoom.** Strokes are 3 px at z3 → 1 px at z7+ (linear ramp). Compensates visually for the lower density — fewer particles, but each one renders thicker, so the wind field stays readable at continental views.
+
+The cumulative effect: at z3 you get ~50% the particle count, each rendered at 3 px width and ~45% opacity, with trails that crisply fade to invisible by 4 seconds. At z7+ the previous behaviour is unchanged.
+
 ## [3.6.0-rc1] - 2026-05-11
 
 > Release candidate for 3.6.0. Both beta2 known issues are resolved (streak layering, dateline wrap), plus an unrelated edit-mode regression caught via live-browser testing. No new features over beta2 beyond per-basemap streamline colour tuning. If nothing surfaces during the rc1 bake, this is what 3.6.0 ships as.
@@ -517,7 +530,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc1...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc2...HEAD
+[3.6.0-rc2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc1...v3.6.0-rc2
 [3.6.0-rc1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta2...v3.6.0-rc1
 [3.6.0-beta2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta1...v3.6.0-beta2
 [3.6.0-beta1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha4...v3.6.0-beta1

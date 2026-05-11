@@ -30,10 +30,18 @@ const TYPICAL_MPS_FOR_STREAK = 5;
 // extreme zooms; ceiling keeps trails from accumulating into a smudge
 // when particles barely move.
 const MIN_PARTICLE_LIFETIME_FRAMES = 30;
-const MAX_PARTICLE_LIFETIME_FRAMES = 600;
+// Cap on particle lifetime to prevent ink accumulation at low zoom.
+// 120 frames = 4 sec at 30 fps. Tighter cap = less time for any single
+// slow-moving particle to deposit ink at the same pixel and contribute
+// to canvas saturation.
+const MAX_PARTICLE_LIFETIME_FRAMES = 120;
 // Bounds: per-frame alpha decay. Floor avoids ghost trails that outlast
 // the wind they represent; ceiling avoids instant flash + disappear.
-const MIN_FADE_PER_FRAME = 0.005;
+// Floor on per-frame alpha decay. The new fade calibration (target
+// 0.5% alpha by lifetime end) naturally produces fade values around
+// 0.04-0.07 at the lifetime cap of 120 frames, so this floor only
+// catches degenerate cases where the calc would underflow.
+const MIN_FADE_PER_FRAME = 0.02;
 const MAX_FADE_PER_FRAME = 0.15;
 // Zoom-based detail scaling. Applied to BOTH particle lifetime AND particle
 // count. Without it, low zooms looked over-busy in two ways: trails lingered
@@ -246,11 +254,16 @@ export class WindFlowOverlay {
       MIN_PARTICLE_LIFETIME_FRAMES,
       Math.min(MAX_PARTICLE_LIFETIME_FRAMES, Math.round(scaled)),
     );
-    // Fade chosen so a segment painted at frame 0 has decayed to ~5%
-    // alpha by the time the particle dies — the ribbon then has a
-    // smooth full-to-faint gradient end-to-end. Math.pow(0.05, 1/N) is
-    // the per-frame multiplier; (1 - that) is the destination-out alpha.
-    const targetFade = 1 - Math.pow(0.05, 1 / this._particleLifetimeFrames);
+    // Fade calibrated so a segment painted at frame 0 has decayed to
+    // ~0.5% alpha by the time the particle dies — visually
+    // indistinguishable from zero against any basemap, so the ribbon
+    // ends crisply rather than asymptotically lingering. The
+    // destination-out blend is mathematically multiplicative (alpha
+    // can never reach 0), but a 0.5% endpoint gives the closest
+    // perceptible-to-linear shape we can get without per-pixel age
+    // tracking. Math.pow(0.005, 1/N) is the per-frame alpha multiplier;
+    // (1 - that) is the destination-out alpha each tick applies.
+    const targetFade = 1 - Math.pow(0.005, 1 / this._particleLifetimeFrames);
     this._fadePerFrame = Math.max(MIN_FADE_PER_FRAME, Math.min(MAX_FADE_PER_FRAME, targetFade));
 
     // Honour OS-level reduced-motion. The streamlines layer is purely
@@ -321,11 +334,19 @@ export class WindFlowOverlay {
   }
 
   private _spawnParticles(w: number, h: number): void {
-    // Same low-zoom detail multiplier we use for lifetime: thinning the
-    // particle population at low zoom is what stops the canvas getting
-    // painted-over by uniform streaks when each particle covers a wide
-    // ground area.
-    const density = PARTICLE_DENSITY * this._zoomDetailMultiplier();
+    // Density takes the lifetime/detail multiplier and applies an
+    // EXTRA reduction below z7 (the visually-calibrated reference
+    // zoom). Above z7 → no change. Below z7 → linear ramp down to
+    // 50% extra reduction at z3. Combined with the inverse line-width
+    // scaling in _tick (thicker strokes at low zoom), this keeps the
+    // wind field readable at low zoom without the smudge that comes
+    // from too many slow-moving particles depositing ink at the same
+    // pixel for many frames.
+    const z = this._map.getZoom();
+    // Linear ramp: 0.5x extra density reduction at z3 (-50%) → 1.0x at z7+
+    // (z7 is the visually-calibrated reference; above it stays unchanged).
+    const lowZoomDensityFactor = z >= 7 ? 1 : Math.max(0.5, 0.5 + (z - 3) * 0.125);
+    const density = PARTICLE_DENSITY * this._zoomDetailMultiplier() * lowZoomDensityFactor;
     const count = Math.min(PARTICLE_CAP, Math.round(w * h * density));
     this._particleCount = count;
     this._particles = new Float32Array(count * 3);
@@ -354,8 +375,22 @@ export class WindFlowOverlay {
     ctx.fillRect(0, 0, w, h);
 
     ctx.globalCompositeOperation = 'source-over';
+    // Attenuate per-stroke alpha at low zoom. Even with the detail
+    // multiplier thinning particle COUNT, slow-moving particles deposit
+    // ink at almost the same pixel for many frames in a row — at full
+    // alpha the canvas saturates into a band along the wind direction.
+    // Cube-root scaling pulls only the very low end down without
+    // dimming the mid range too much (z3: ~0.45, z6: ~0.80,
+    // z12+: 1.0). Keeps user-configured stroke colour intact at high
+    // zoom where there's no compounding.
+    ctx.globalAlpha = Math.min(1, Math.pow(this._zoomDetailMultiplier(), 1 / 3));
     ctx.strokeStyle = this._color;
-    ctx.lineWidth = 1;
+    // Line width compensates for the lower density at low zoom — fewer
+    // particles each rendered thicker so the wind field stays readable.
+    // Linear ramp: 3 px at z3 → 1 px at z7+ (z7 was identified as the
+    // visual reference point). At native pixels.
+    const z = this._map.getZoom();
+    ctx.lineWidth = Math.max(1, Math.min(3, 3 - (z - 3) * 0.5));
     ctx.beginPath();
 
     for (let p = 0; p < this._particleCount; p++) {
@@ -388,6 +423,10 @@ export class WindFlowOverlay {
     }
 
     ctx.stroke();
+    // Reset globalAlpha so it doesn't carry over into next frame's fade
+    // fillRect (which uses fillStyle's alpha as the destination-out
+    // amount; multiplied by a non-1 globalAlpha would slow fade).
+    ctx.globalAlpha = 1;
     this._animFrame = requestAnimationFrame(this._tick);
   };
 }
