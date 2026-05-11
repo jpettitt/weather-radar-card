@@ -98,7 +98,6 @@ export class WindFlowOverlay {
   private _timeIso: string | null = null;
   private _color: string;
   private _onMoveStart: () => void;
-  private _onMove: () => void;
   private _onMoveEnd: () => void;
   private _onZoomStart: () => void;
   private _onZoomEnd: () => void;
@@ -127,39 +126,37 @@ export class WindFlowOverlay {
       this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
     }
 
+    // Canvas lives in a custom Leaflet pane between tilePane (200) and
+    // overlayPane (400) so streaks sit directly on top of the radar /
+    // basemap and EVERYTHING else (wildfire perimeters, NWS polygons,
+    // marker shadows, markers, popups) renders above them. The pane is a
+    // child of mapPane, so the canvas inherits Leaflet's per-frame drag
+    // transform automatically: no manual translate-mirroring needed.
+    //
+    // Critical positioning detail: mapPane has a translate3d offset of
+    // roughly (W/2, H/2) — the layer-point coordinate system anchors at
+    // the map centre, not at viewport (0, 0). A canvas at left:0,top:0
+    // inside any pane therefore renders shifted by +W/2,+H/2 (only the
+    // bottom-right quadrant visible) — the bug we hit in two earlier
+    // in-pane attempts. The fix matches what L.Canvas does for shape
+    // rendering: setPosition the canvas to containerPointToLayerPoint(0,0),
+    // which is approximately (-W/2, -H/2). That cancels mapPane's offset
+    // and the canvas's own (0, 0) lands at viewport (0, 0).
+    const PANE_NAME = 'wrcWindFlow';
+    let pane = map.getPane(PANE_NAME);
+    if (!pane) {
+      pane = map.createPane(PANE_NAME);
+      pane.style.zIndex = '250';
+      pane.style.pointerEvents = 'none';
+    }
     this._canvas = L.DomUtil.create('canvas', 'wrc-wind-flow') as HTMLCanvasElement;
-    Object.assign(this._canvas.style, {
-      position: 'absolute',
-      pointerEvents: 'none',
-      left: '0',
-      top: '0',
-      zIndex: '500',                    // above tilePane (200), below markerPane (600)
-    } satisfies Partial<CSSStyleDeclaration>);
-    map.getContainer().appendChild(this._canvas);
+    this._canvas.style.pointerEvents = 'none';
+    pane.appendChild(this._canvas);
     this._ctx = this._canvas.getContext('2d')!;
 
-    // Drag tracking via manual transform mirroring. The canvas lives outside
-    // mapPane (in map.getContainer) so Leaflet's per-frame transform doesn't
-    // reach it; we read mapPane's CSS position on every 'move' and apply the
-    // same translate3d so streaks visibly drift with the cursor instead of
-    // freezing until moveend "jumps" them. Zoom is handled separately —
-    // pinch/scroll changes the projection entirely, so we hide during the
-    // zoom animation and rebuild on zoomend.
-    //
-    // Layering caveat: this places the canvas above mapPane and therefore
-    // above markers/popups. An earlier attempt to put the canvas inside
-    // overlayPane (the natural fix) produced a position offset bug — the
-    // streak content rendered shifted by roughly half the viewport. Until
-    // that's understood, the visual layering trade-off stays.
     this._onMoveStart = (): void => this._stopLoop();
-    this._onMove = (): void => {
-      if (this._isZooming) return;
-      const pos = L.DomUtil.getPosition(this._map.getPanes().mapPane);
-      this._canvas.style.transform = `translate3d(${pos.x}px, ${pos.y}px, 0)`;
-    };
     this._onMoveEnd = (): void => {
       if (this._isZooming) return; // zoomend handles the redraw
-      this._canvas.style.transform = '';
       void this._restart();
     };
     this._onZoomStart = (): void => {
@@ -170,12 +167,10 @@ export class WindFlowOverlay {
     this._onZoomEnd = (): void => {
       this._isZooming = false;
       this._canvas.style.opacity = '';
-      this._canvas.style.transform = '';
       void this._restart();
     };
     this._onResize = (): void => { void this._restart(); };
     map.on('movestart', this._onMoveStart);
-    map.on('move', this._onMove);
     map.on('moveend', this._onMoveEnd);
     map.on('zoomstart', this._onZoomStart);
     map.on('zoomend', this._onZoomEnd);
@@ -208,7 +203,6 @@ export class WindFlowOverlay {
     this._gen++;
     if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     this._map.off('movestart', this._onMoveStart);
-    this._map.off('move', this._onMove);
     this._map.off('moveend', this._onMoveEnd);
     this._map.off('zoomstart', this._onZoomStart);
     this._map.off('zoomend', this._onZoomEnd);
@@ -233,6 +227,12 @@ export class WindFlowOverlay {
     this._canvas.width = size.x;
     this._canvas.height = size.y;
     this._ctx.clearRect(0, 0, size.x, size.y);
+    // Anchor the canvas to the layer-point coordinate system so its (0, 0)
+    // pixel lands at viewport (0, 0) regardless of mapPane's current
+    // translate3d offset (which Leaflet sets to roughly (W/2, H/2) so
+    // layer-point (0, 0) corresponds to the map centre). Without this,
+    // canvas content rendered shifted by half the viewport in each axis.
+    L.DomUtil.setPosition(this._canvas, this._map.containerPointToLayerPoint([0, 0]));
     this._pxPerMpsPerFrame = this._computePxPerMps();
     // Streak-length compensation: at slow pixel speeds, particles need to
     // live longer to trace out the same on-screen ribbon, and the fade

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **No dateline wrap on the wind layer** (one of the two beta2 known issues). Pacific-centred low-zoom views previously left the wrapped strip on one side of the antimeridian without wind data because `fetchWindGrid` clamped lon to `[-180, 180]`. Now the fetcher detects when the requested bbox extends past ±180° and expands to the full world; the samplers (`sampleWindGridNearest` / `sampleWindGridBilinear`) wrap the queried lon so coords like `-200` correctly resolve to the cell at lon `160`. Costs ~2 MB on the wire (the adaptive-scaling cap), but only triggers on viewports that actually wrap.
+- **Wind streaks render above markers and popups** (the second beta2 known issue, now resolved). The streamline canvas now lives in a custom Leaflet pane (z-index 250) — directly above the radar/basemap tile pane and below everything else (wildfire perimeters, NWS polygons, marker shadows, markers, popups). Two earlier in-pane attempts produced a half-viewport offset bug because Leaflet's `mapPane` is intentionally translated to `(W/2, H/2)` to anchor its layer-point coordinate system at the map centre; the fix mirrors what `L.Canvas` does for shape rendering: `L.DomUtil.setPosition(canvas, containerPointToLayerPoint([0, 0]))` cancels that offset so the canvas's `(0, 0)` lands at viewport `(0, 0)`. Side benefit: the manual `_onMove` transform mirror is gone — the pane inherits `mapPane`'s drag transform automatically.
 
 ## [3.6.0-beta2] - 2026-05-10
 
