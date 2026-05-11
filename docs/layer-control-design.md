@@ -22,7 +22,7 @@ A small **`mdi:layers` button** as a custom Leaflet control in the top-right cor
 
 Vertical list anchored under the button, sliding in from the right edge:
 
-```
+```text
 ┌─ Layers ─────────────┐
 │ ☑ Radar              │
 │ ☑ Wildfires      (5) │
@@ -73,10 +73,10 @@ Same panel; near-full-width on narrow cards. `<ha-switch>` is touch-friendly out
 
 Dashboard YAML curates **which** layers are available; user UI controls whether each available layer is currently visible. **Layers the YAML doesn't enable do not appear in the panel.**
 
-| YAML state                        | Panel behaviour                                       |
-| --------------------------------- | ----------------------------------------------------- |
-| `show_wildfires: true`            | Wildfires row visible, switch on by default           |
-| `show_wildfires: false` or unset  | Wildfires row absent — no opportunity for the user to enable |
+| YAML state                       | Panel behaviour                                              |
+| -------------------------------- | ------------------------------------------------------------ |
+| `show_wildfires: true`           | Wildfires row visible, switch on by default                  |
+| `show_wildfires: false` or unset | Wildfires row absent (no opportunity for the user to enable) |
 
 Radar is special — there's no `show_radar` config and the card always renders the radar layer, so the Radar toggle is **always** present in the panel.
 
@@ -107,24 +107,70 @@ await hass.callWS({
 
 Server-side, per-user, syncs across the user's browsers and devices. Same API HA's own frontend uses for sidebar state and view bookmarks.
 
-### Storage key
+### Card identity
 
+Storage is keyed off an explicit, card-stored identity rather than a hash of the live config. Two-field shape stored in YAML:
+
+```yaml
+type: custom:weather-radar-card
+data_source: RainViewer
+viewer_layer_control: true              # admin toggle (gates the feature)
+_layer_state_id:                        # auto-managed; users don't edit
+  dash: '/weather-test/panel-test'      # dashboard path at mint time
+  nonce: 'a8f2c3'                       # short random ID
 ```
-wrc-overlays:{configHash}:{dashboardPath}
+
+**`viewer_layer_control` (admin):** boolean editor toggle. When OFF (default), the on-map layers button doesn't render and no identity is stored. When ON, the runtime panel is exposed AND the card auto-mints `_layer_state_id` on the next `setConfig` (which fires inside the editor where `config-changed` actually writes back to YAML — no in-memory-only failure mode).
+
+**`_layer_state_id` (auto-managed):** the storage key. The card never asks the user to edit this. Includes:
+
+- **`dash`** — `window.location.pathname` at mint time. Used as a copy-detection check (see below), not as part of the storage key itself.
+- **`nonce`** — short random string. THE storage key (`wrc-overlays:{nonce}`).
+
+### Detection rules
+
+On every `setConfig`, evaluate the identity in three cases:
+
+| Config state                                                                | Action                                                                                  |
+|-----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| `viewer_layer_control` off                                                  | No identity, no storage. Toggle state (if any) is per-page-load only.                   |
+| `viewer_layer_control` on, no `_layer_state_id`                             | Mint `{ dash: currentPath, nonce: randomUUID() }`, dispatch `config-changed`.           |
+| `viewer_layer_control` on, `_layer_state_id.dash` ≠ current path            | Card was copied or moved to a new dashboard. Re-mint, dispatch `config-changed`.        |
+| `viewer_layer_control` on, `_layer_state_id.dash` === current path          | Use `nonce` as storage key. No write-back.                                              |
+
+### Live-collision detection (option 2)
+
+The dash-mismatch check catches **cross-dashboard** copy-paste, but a copy-paste **within the same dashboard** produces two cards with identical `_layer_state_id` (same dash, same nonce) — they'd quietly share state. Belt-and-braces: a module-scoped `Map<nonce, WeatherRadarCard>` of live instances. On `setConfig`:
+
+```ts
+const existing = liveCardsByNonce.get(id.nonce);
+if (existing && existing !== this) {
+  // Two cards claiming the same nonce → we were copy-pasted (or a stale
+  // instance is hanging around). Mint a fresh nonce + dispatch
+  // config-changed so the YAML reflects the new identity.
+  const fresh = { dash: currentPath, nonce: randomUUID() };
+  this.dispatchEvent(new CustomEvent('config-changed', {
+    detail: { config: { ...config, _layer_state_id: fresh } },
+    bubbles: true, composed: true,
+  }));
+  return;
+}
+liveCardsByNonce.set(id.nonce, this);
 ```
 
-- **`configHash`** — short SHA-1 of a stable subset of the card config:
-  ```ts
-  hash({
-    data_source:    cfg.data_source,
-    center_latitude: cfg.center_latitude,
-    center_longitude: cfg.center_longitude,
-    zoom_level:     cfg.zoom_level,
-  })
-  ```
-  Excludes timing / animation / opacity / layer-specific knobs — those change frequently during dashboard tuning and shouldn't invalidate the user's layer-visibility preferences. The same card config edited from `frame_delay: 500` to `frame_delay: 600` keeps the user's hidden-wildfires choice intact.
+`disconnectedCallback` removes the entry. ~10 lines, eliminates the within-dashboard collision case.
 
-- **`dashboardPath`** — `window.location.pathname` (e.g. `/lovelace/0` or `/dashboard-radar/main`). The same card config can appear on two dashboards (one user's main radar dashboard and a separate "weather wall"); the user's toggle choices belong to the dashboard they're looking at, not to the card config in the abstract.
+### What this design buys
+
+| Scenario                                                          | Behaviour                                                                                                                                |
+|-------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| Drag card to new section/pane in the same dashboard               | Path unchanged, nonce unchanged. **Identity preserved.** ✓                                                                               |
+| Edit a YAML field (any field other than `_layer_state_id` itself) | Path unchanged, nonce unchanged. **Identity preserved.** ✓                                                                               |
+| Copy card to a different dashboard                                | Path mismatch on the new card → re-mint. Independent state. ✓                                                                            |
+| Copy card next to itself on the same dashboard                    | Live-collision detected → re-mint on the second instance. ✓                                                                              |
+| Move card to a different dashboard (intent: "moved")              | Path mismatch → re-mint. **Overrides reset** — acceptable trade-off; recoverable by toggling the admin switch off + on.                  |
+| Dashboard rename (URL path changes)                               | All cards on the dashboard see path mismatch → all re-mint → all overrides reset. Rare; could mitigate later with a stable dashboard ID. |
+| Cold copy-paste (delete original, paste later)                    | No live collision possible; pasted card "inherits" the original's state. Semantically a "move". Not detected.                            |
 
 ### Sparse storage
 
