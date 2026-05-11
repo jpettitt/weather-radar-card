@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0-rc1] - 2026-05-11
+
+> Release candidate for 3.6.0. Both beta2 known issues are resolved (streak layering, dateline wrap), plus an unrelated edit-mode regression caught via live-browser testing. No new features over beta2 beyond per-basemap streamline colour tuning. If nothing surfaces during the rc1 bake, this is what 3.6.0 ships as.
+
 ### Added
 
 - **Per-basemap streamline colour defaults + YAML overrides.** The streamline stroke colour was previously a single dark-vs-light branch — satellite shared the dark Carto map's near-white, which got lost on bright terrain. Satellite now has its own brighter pure-white default. Light basemaps also get a deeper default (`rgb(25,30,45)` was `rgb(50,55,75)`) for crisper contrast on OSM / Carto-light tiles. New YAML-only override keys `dwd_wind_flow_color_light`, `_dark`, and `_sat` accept any CSS colour string for theming or custom basemap palettes (editor doesn't expose them).
@@ -513,7 +517,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta2...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc1...HEAD
+[3.6.0-rc1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta2...v3.6.0-rc1
 [3.6.0-beta2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta1...v3.6.0-beta2
 [3.6.0-beta1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha4...v3.6.0-beta1
 [3.6.0-alpha4]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha3...v3.6.0-alpha4

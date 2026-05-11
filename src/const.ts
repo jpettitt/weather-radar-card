@@ -1,4 +1,4 @@
-export const CARD_VERSION = '3.6.0-beta2';
+export const CARD_VERSION = '3.6.0-rc1';
 // Replaced at build time by rollup with the ISO build timestamp. Lets the
 // card's console signon show *which build* loaded — useful for confirming
 // a fresh bundle has replaced a cached one in the browser.
