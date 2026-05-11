@@ -438,11 +438,12 @@ export class WindFlowOverlay {
       const y = this._particles[idx + 1];
       const age = this._particles[idx + 2];
 
-      // Respawn once the particle has fully aged through its lifetime
-      // AND the fade-out window. (Off-canvas particles also respawn
-      // immediately — they've stopped contributing visual ink.)
-      const offCanvas = x < 0 || x > w || y < 0 || y > h;
-      if (age >= this._particleLifetimeFrames + FADE_OUT_FRAMES || offCanvas) {
+      // Respawn only when the particle has fully aged through its
+      // lifetime AND the fade-out window. Off-canvas no longer triggers
+      // immediate respawn — the trail's on-canvas portion still draws
+      // and we just bump age into the fade window so it dissipates
+      // smoothly instead of cutting at the edge.
+      if (age >= this._particleLifetimeFrames + FADE_OUT_FRAMES) {
         const rx = Math.random() * w;
         const ry = Math.random() * h;
         this._particles[idx] = rx;
@@ -461,9 +462,19 @@ export class WindFlowOverlay {
       const nx = x + wind.u * stepPxPerMps;
       const ny = y - wind.v * stepPxPerMps; // pixel y goes down; v is northward
 
+      // If the particle just left (or is leaving) the canvas while
+      // still in its alive phase, jump age into the fade window so the
+      // visible (on-canvas) portion of the trail fades out instead of
+      // disappearing instantly.
+      let nextAge = age + 1;
+      const offCanvas = nx < 0 || nx > w || ny < 0 || ny > h;
+      if (offCanvas && nextAge < this._particleLifetimeFrames) {
+        nextAge = this._particleLifetimeFrames;
+      }
+
       this._particles[idx] = nx;
       this._particles[idx + 1] = ny;
-      this._particles[idx + 2] = age + 1;
+      this._particles[idx + 2] = nextAge;
       const newHead = (this._trailHeads[p] + 1) % TRAIL_LENGTH;
       this._trails[trailBase + newHead * 2] = nx;
       this._trails[trailBase + newHead * 2 + 1] = ny;
