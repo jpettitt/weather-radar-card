@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0-rc4] - 2026-05-11
+
+> Two bug fixes caught during the rc3 bake — both visible regressions from earlier rc work.
+
+### Fixed
+
+- **Radar layer disappears after first pan in static-frame mode.** When `past_minutes: 0` (one frame, no animation), `_initRadar` showed the static preview but never called `_startLoop` (which requires ≥ 2 loaded slots), so the player's `_prev1Slot` tracker stayed at its initial `-1`. On the first pan/zoom, `onNavPaused` → `_stopLoop` → `_settleVisibility` looped through all loaded radar layers and set `opacity: 0` on every slot whose index didn't match `-1` (i.e., all of them, including the only visible one). The radar precipitation overlay vanished until a full re-init was forced (e.g., a config change). Fixed by initialising `_prev1Slot` to the visible-slot index when the static preview goes up — animated mode unaffected (its `_startLoop` overwrites the value one iteration later).
+- **Wind streamlines jump as long line-segments after tab returns from hidden.** Browsers throttle `requestAnimationFrame` to ~1 Hz on background tabs (or pause it entirely). When the tab became visible again, the wind overlay's motion-compensation math (`motionScale = elapsedMs / 33.33`) saw a multi-second gap and scaled per-frame motion by hundreds, producing massive single-frame jumps that drew very long streak segments across the canvas. Fixed by capping the motion-comp `dt` at 2× the target frame interval (~133 ms / motionScale max 4) so any single frame can move at most 4× the per-frame distance (vs. ~2× normal at 15 fps). Particles "lose" the hidden time but resume at a sensible pace on visibility return.
+
 ## [3.6.0-rc3] - 2026-05-11
 
 > Continuing rc-line tuning: replaces the `destination-out` accumulation rendering of the wind streamline overlay with explicit per-particle trail buffers, drops the animation rate to 15 fps (with motion compensation) for ~4× lower CPU, and adds a smooth fade-out at end-of-life and at the canvas edge. No new features; pure rendering rework. If nothing surfaces during the rc3 bake, this is what 3.6.0 ships as.
@@ -547,7 +556,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc3...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc4...HEAD
+[3.6.0-rc4]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc3...v3.6.0-rc4
 [3.6.0-rc3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc2...v3.6.0-rc3
 [3.6.0-rc2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc1...v3.6.0-rc2
 [3.6.0-rc1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta2...v3.6.0-rc1
