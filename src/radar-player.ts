@@ -1078,6 +1078,14 @@ export class RadarPlayer {
           if (maskEl) maskEl.style.opacity = '1';
           this._setTimestamp(fi);
           this._highlightSegment(fi);
+          // Track this as the visible slot so _settleVisibility (called
+          // from _stopLoop on every pan / zoom / hide) can restore the
+          // correct layer's opacity. In static mode (frameCount = 1)
+          // _startLoop is never called — it requires ≥ 2 loaded slots —
+          // so _prev1Slot would otherwise stay at its initial -1 and
+          // _settleVisibility would set the only visible layer to
+          // opacity 0 on the first pan.
+          this._prev1Slot = this._loadedSlots.indexOf(fi);
         }
 
         if (this._loadedSlots.length >= 2) {
