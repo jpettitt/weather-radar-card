@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-05-12
+
+> **DWD wind overlay**: barbs, arrows, and animated streamlines sampled from the same ICON-D2 10 m wind layer DWD's WarnWetter app uses. Available regardless of `data_source` (the model is global). Also: bulk WCS fetch architecture (60–290× fewer HTTP requests per refresh vs. the alpha line), edit-mode regression fix, dateline wrap, and a long tuning pass on the streamline visuals.
+>
+> See the [3.6.0-beta1] entry for the original feature ship and config example, [3.6.0-beta2] for the bulk-fetch rework, and [3.6.0-rc1] / [3.6.0-rc2] / [3.6.0-rc3] / [3.6.0-rc4] for the iterative streamline tuning. This entry is what changed since rc4.
+
+### Fixed
+
+- **Wind streak density and length plateau at z8.** Previously `_zoomDetailMultiplier` ramped from 0.09 at z3 to 1.37 at z12 and `MAX_PX_PER_MPS_PER_FRAME` was 0.30, so city zooms (z9+) ended up ~70% denser AND with ~3× longer streaks than the visually-calibrated z8 reference — the wind field over-painted the basemap at street level. Now the multiplier plateaus at the z8 value (`HIGH_ZOOM_DETAIL_MULT = 0.80`, `REFERENCE_DETAIL_ZOOM = 8` — same z3→z8 slope, just caps above) and `MAX_PX_PER_MPS_PER_FRAME` drops to 0.10 (the z8 reference). z3–z8 look identical; z9+ now match z8 in perceived density and streak length while still resolving finer wind detail (smaller bbox → finer grid samples).
+
+### Cumulative since 3.5.x
+
+A short index of what 3.6.0 actually delivers — full detail in the linked rc / beta entries.
+
+#### New features
+
+- **Lightning overlay** (`show_lightning: true`) — live Blitzortung strikes rendered as bolts that settle into a coloured + sign, ageing white → red over the configured window. Pure renderer; the [Blitzortung integration](https://www.home-assistant.io/integrations/blitzortung/) does the data plumbing ([3.6.0-alpha1]).
+- **DWD wind overlay** — barbs, arrows, animated streamlines (`dwd_wind`, `dwd_wind_flow`); editor subpage; works on RainViewer / NOAA / DWD; per-basemap colour defaults + YAML overrides ([3.6.0-beta1], [3.6.0-beta2], [3.6.0-rc1]).
+- **Bulk WCS GetCoverage architecture** — one request per refresh per overlay (was 60–290 per refresh) ([3.6.0-beta2]).
+- **Hour-aligned wind refresh** that wakes at HH:00:30 instead of polling on a fixed interval ([3.6.0-beta2]).
+- **Static-frame radar mode** (`past_minutes: 0` / "Off (static frame, no animation)" preset) — single-frame view that still refreshes every 5 minutes, no animation loop ([3.6.0-alpha2]).
+- **NWS alert paint order** is now lexicographic over (severity, urgency, certainty), so a Tornado Warning Observed correctly paints over a Tornado Warning Radar-Indicated, etc. ([3.6.0-alpha3]).
+- **CSS theme variables for the DWD coverage overlay** — `--dwd-coverage-dim-color` and `--dwd-coverage-outline-color` (set either to `transparent` to hide) ([3.6.0-alpha4]).
+
+#### Bug fixes
+
+- **DWD coverage-mask cross-fade pulse** — the grey "no-data" wash and magenta outline that DWD bakes into every tile were stacking during cross-fade, producing a visible pulse on the boundary every animation tick. Fixed by stripping the mask at fetch time and re-rendering the boundary as a snap-switched overlay on a dedicated pane. Contributed by [@genericJE](https://github.com/genericJE) ([3.6.0-alpha4]).
+- Edit-mode regression — radar tiles disappearing when entering Lovelace edit mode ([3.6.0-rc1]).
+- Dateline wrap on the wind layer ([3.6.0-rc1]).
+- Wind streaks render below markers / popups instead of above them ([3.6.0-rc1]).
+- Static-frame mode: radar layer no longer disappears on first pan when `past_minutes: 0` ([3.6.0-rc4]).
+- Wind streamlines no longer jump as long line segments after the tab returns from being hidden ([3.6.0-rc4]).
+- Wind streak density and length cap at z8 (this release).
+
+#### Security
+
+- Defensive `escapeHtml` on all three popup `href` interpolations (NWS, wildfire, lightning). Closes a theoretical attribute-breakout via NWS `props.uri`; wildfire / lightning were safe by construction but hardened against future refactors ([3.6.0-alpha3]).
+
+#### Streamline visual tuning (cumulative)
+
+- Explicit per-particle trail buffer instead of `destination-out` accumulation; 15 fps with motion compensation; cubic ease-in fade-out at end-of-life and at the canvas edge ([3.6.0-rc3]).
+- Low-zoom density taper, line-width compensation, sharper trail decay ([3.6.0-rc2]).
+
 ## [3.6.0-rc4] - 2026-05-11
 
 > Two bug fixes caught during the rc3 bake — both visible regressions from earlier rc work.
@@ -556,7 +599,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc4...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0...HEAD
+[3.6.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc4...v3.6.0
 [3.6.0-rc4]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc3...v3.6.0-rc4
 [3.6.0-rc3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc2...v3.6.0-rc3
 [3.6.0-rc2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc1...v3.6.0-rc2
