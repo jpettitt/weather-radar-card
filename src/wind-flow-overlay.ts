@@ -8,6 +8,7 @@
 // graphics). WebGL would only matter at 50k+ particles, full-screen.
 import * as L from 'leaflet';
 import { windGridFetcher, sampleWindGridBilinear, type WindGrid } from './wind-grid-fetcher';
+import { getWindSourceCaps, DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
 
 const ICON_GRID_DEG = 0.25;
 // No cell cap here — the fetcher's adaptive WCS Scaling downsamples
@@ -106,6 +107,8 @@ export interface WindFlowOverlayOptions {
   timeMs?: number;
   /** Stroke for new line segments. Defaults to a neutral grey that reads on light or dark maps. */
   particleColor?: string;
+  /** Wind data source. Defaults to ICON-D2 globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
+  source?: WindSource;
 }
 
 export class WindFlowOverlay {
@@ -135,6 +138,7 @@ export class WindFlowOverlay {
   private _running = false;
   private _timeIso: string | null = null;
   private _color: string;
+  private _source: WindSource;
   private _onMoveStart: () => void;
   private _onMoveEnd: () => void;
   private _onZoomStart: () => void;
@@ -158,6 +162,7 @@ export class WindFlowOverlay {
   constructor(map: L.Map, opts: WindFlowOverlayOptions = {}) {
     this._map = map;
     this._color = opts.particleColor ?? 'rgba(60,60,80,0.55)';
+    this._source = opts.source ?? DEFAULT_WIND_SOURCE;
     if (opts.timeMs != null) {
       const snapped = Math.trunc(opts.timeMs / 3_600_000) * 3_600_000;
       this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
@@ -347,6 +352,7 @@ export class WindFlowOverlay {
       this._grid = await windGridFetcher.fetch({
         south, west, north, east,
         timeIso: this._timeIso,
+        source: this._source,
       });
     } catch (err) {
       console.warn('WindFlowOverlay: WCS fetch failed, skipping refresh', err);
@@ -514,9 +520,19 @@ export class WindFlowOverlay {
     // the basemap with too many concurrent streaks (cube-root curve).
     const baseAlpha = Math.min(1, Math.pow(this._zoomDetailMultiplier(), 1 / 3));
     const lifetime = this._particleLifetimeFrames;
+    // Per-source visible-trail length cap. The ring buffer always
+    // records TRAIL_LENGTH frames; the draw loop only renders the
+    // freshest `drawSegments` of them. Sources with a finer native
+    // grid (NDFD at 2.5 km vs ICON-D2 at ~28 km) produce smoother
+    // particle paths that read as visibly longer ribbons even at the
+    // same per-frame pixel velocity, so they trim here. Particle motion
+    // (and therefore visual speed) is unaffected — only the rendered
+    // tail is shorter. Floor at 2 so we always draw at least one segment.
+    const trailMult = getWindSourceCaps(this._source).streakLengthMultiplier ?? 1;
+    const drawSegments = Math.max(2, Math.floor(TRAIL_LENGTH * trailMult));
 
     // Pass A: fully alive particles batched by segment age.
-    for (let segAge = 0; segAge < TRAIL_LENGTH - 1; segAge++) {
+    for (let segAge = 0; segAge < drawSegments - 1; segAge++) {
       const ageAlpha = (TRAIL_LENGTH - 1 - segAge) / (TRAIL_LENGTH - 1);
       ctx.globalAlpha = ageAlpha * baseAlpha;
       ctx.beginPath();
@@ -548,7 +564,7 @@ export class WindFlowOverlay {
       if (lifeFade <= 0) continue;
       const head = this._trailHeads[p];
       const trailBase = p * TRAIL_LENGTH * 2;
-      for (let segAge = 0; segAge < TRAIL_LENGTH - 1; segAge++) {
+      for (let segAge = 0; segAge < drawSegments - 1; segAge++) {
         const i0 = (head - segAge + TRAIL_LENGTH) % TRAIL_LENGTH;
         const i1 = (head - segAge - 1 + TRAIL_LENGTH) % TRAIL_LENGTH;
         const x0 = this._trails[trailBase + i0 * 2];

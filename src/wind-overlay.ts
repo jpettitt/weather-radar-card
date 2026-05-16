@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as L from 'leaflet';
 import { windGridFetcher, sampleWindGridBilinear, type WindGrid } from './wind-grid-fetcher';
+import { DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
 
 const ICON_GRID_DEG = 0.25;
 const MAX_POINTS = 400;
@@ -35,6 +36,8 @@ export interface WindOverlayOptions {
   size?: number;
   /** Anchor time in epoch ms. Snapped to the hourly ICON boundary. Omit for "current". */
   timeMs?: number;
+  /** Wind data source. Defaults to ICON-D2 globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
+  source?: WindSource;
 }
 
 export class WindOverlay {
@@ -44,6 +47,7 @@ export class WindOverlay {
   private _density: number;
   private _sizeMult: number;
   private _timeIso: string | null;
+  private _source: WindSource;
   private _gen = 0;
   private _moveHandler: () => void;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -66,6 +70,7 @@ export class WindOverlay {
     } else {
       this._timeIso = null;
     }
+    this._source = opts.source ?? DEFAULT_WIND_SOURCE;
     this._layer = L.layerGroup().addTo(map);
     this._moveHandler = (): void => {
       if (this._debounceTimer) clearTimeout(this._debounceTimer);
@@ -122,6 +127,7 @@ export class WindOverlay {
       grid = await windGridFetcher.fetch({
         south, west, north, east,
         timeIso: this._timeIso,
+        source: this._source,
       });
     } catch (err) {
       console.warn('WindOverlay: WCS fetch failed, skipping refresh', err);

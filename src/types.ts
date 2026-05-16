@@ -1,4 +1,5 @@
 import { LovelaceCardConfig } from 'custom-card-helpers';
+import type { WindSource } from './wind-source-caps';
 
 export interface Marker {
   entity?: string;
@@ -91,7 +92,18 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   dwd_layer?: string;
   /** @deprecated since 3.5: use forecast_minutes (source-agnostic). Auto-migrated by migrateConfig. */
   dwd_forecast_hours?: number;
-  /** DWD-only: 10m wind overlay from ICON. Both styles are client-rendered from the same U/V grid. */
+  /** Wind data source for the overlay grid. Defaults to 'dwd_aicon'
+   * (DWD's AI-augmented variant of ICON-D2 — same 0.25° global grid,
+   * same hourly cadence, AI post-processing improves short-range
+   * accuracy). Set to 'dwd_icon' for the raw ICON-D2 numerical model
+   * or 'ndfd_wind' for NWS NDFD (2.5 km, US regions only). Fresh
+   * installs in US locations get 'ndfd_wind' auto-set by getStubConfig;
+   * configs without this field resolve at runtime to DEFAULT_WIND_SOURCE
+   * ('dwd_aicon') — see src/wind-source-caps.ts. */
+  wind_source?: WindSource;
+  /** 10m wind overlay (barbs / arrows). The "dwd_" name predates the
+   * generalised wind source system in 3.7 — kept for config compatibility.
+   * Both styles are client-rendered from the WindSource U/V grid. */
   dwd_wind?: 'off' | 'barbs' | 'arrows';
   /** DWD-only: grid-density multiplier for the wind overlay (0.25–4). 1 = default. Higher = more arrows on screen. */
   dwd_wind_density?: number;
