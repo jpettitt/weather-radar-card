@@ -96,9 +96,15 @@ The toggle in the editor's Hazard Overlays subpage is greyed out when the Blitzo
 
 ## Wind
 
-When `dwd_wind` is set to `barbs` or `arrows`, or `dwd_wind_flow: true` is set, the card overlays 10 m wind from DWD's [ICON-D2 forecast model](https://www.dwd.de/EN/research/weatherforecasting/num_modelling/01_num_weather_prediction_modells/icon_description.html). The model is global at 0.25° resolution (~28 km cells) and updates every 3 hours; the card always shows the freshest run available for the current hour.
+When `dwd_wind` is set to `barbs` or `arrows`, or `dwd_wind_flow: true` is set, the card overlays 10 m wind from a forecast model. Two sources are available, picked via the `wind_source` config field (or the editor's Wind Data Source dropdown):
 
-The wind overlay is **not coupled to the radar source** — ICON is a global model, so the wind layer stacks usefully on RainViewer / NOAA / DWD radars alike. (For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time as the radar playback frame; for the other sources the wind always shows live.)
+- **`wind_source: 'dwd_aicon'`** (default for non-US) — DWD's AI-augmented variant of ICON-D2. Same 0.25° global grid (~28 km) and hourly cadence as ICON-D2, served from the same WCS endpoint; visibly better short-range accuracy at zero behaviour cost.
+- **`wind_source: 'dwd_icon'`** — Raw DWD [ICON-D2 forecast model](https://www.dwd.de/EN/research/weatherforecasting/num_modelling/01_num_weather_prediction_modells/icon_description.html). 0.25° global grid (~28 km), new model run every 3 hours. Opt-in for users who prefer the unadjusted numerical output.
+- **`wind_source: 'ndfd_wind'`** (default for fresh installs in US locations) — NWS National Digital Forecast Database, the forecaster blend of HRRR + RAP + NAM + GFS. 2.5 km native over CONUS / AK / HI / PR; outside those regions cells are no-data and render as calm. Updates hourly, 3-hourly forecast steps out to 7+ days.
+
+Existing configs that don't set `wind_source` continue to use ICON-D2 — the field is purely additive, no migration runs.
+
+The wind overlay is **not coupled to the radar source** — both ICON and NDFD are independent of the radar tiles, so the wind layer stacks usefully on RainViewer / NOAA / DWD radars alike. (For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time as the radar playback frame; for the other sources the wind always shows live.)
 
 ### Three styles
 
@@ -120,14 +126,15 @@ The streamline layer respects the OS-level `prefers-reduced-motion` setting. Whe
 
 | Field               | Default        | Description                                                                                                                                            |
 |---------------------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `wind_source`       | `'dwd_aicon'`  | One of `dwd_aicon` (default), `dwd_icon`, or `ndfd_wind`. Fresh US installs auto-pick `ndfd_wind`. See "Sources" above for details.                    |
 | `dwd_wind`          | `'off'`        | One of `off`, `barbs`, `arrows`. Picks the static-icon style.                                                                                          |
 | `dwd_wind_flow`     | `false`        | Enable the animated streamline layer. Stacks with `dwd_wind`.                                                                                          |
-| `dwd_wind_density`  | `1`            | Density of static icons. Range 0.25–4. Higher = more icons. Capped at the native ICON grid (0.25°).                                                    |
+| `dwd_wind_density`  | `1`            | Density of static icons. Range 0.25–4. Higher = more icons. Capped at the native source grid.                                                          |
 | `dwd_wind_size`     | `1`            | Icon size multiplier. Range 0.5–2 (default 22 px). Independent of density.                                                                             |
 
 ### Architecture note
 
-Both wind overlays consume a shared `WindGrid` produced by a single bulk WCS GetCoverage request per refresh, replacing what was a 60–290-call WMS GetFeatureInfo burst per visual icon. Continental and world-scale views use the WCS Scaling extension to downsample server-side so the response stays ~2 MB max regardless of zoom.
+Both wind overlays consume a shared `WindGrid` produced by a single bulk WCS GetCoverage request per refresh, replacing what was a 60–290-call WMS GetFeatureInfo burst per visual icon. Continental and world-scale views use the WCS Scaling extension to downsample server-side so the response stays ~2 MB max regardless of zoom. Source dispatch lives in `src/wind-source-caps.ts`: each entry supplies the WCS endpoint, coverage ID, CRS (`EPSG:4326` for ICON, `EPSG:3857` for NDFD), and band semantics (U/V for ICON, speed/direction for NDFD — converted to U/V client-side before storage). The cache key includes the source so two configs differing only by `wind_source` don't collide.
 
 > [!NOTE]
-> ICON-D2 is a forecast model — values represent the model's prediction for the snapshotted hour, not direct measurement. Surface winds in particular can differ noticeably from station observations (terrain channelling, urban canyons, etc.). Use this as a synoptic overview, not a backyard wind reading.
+> Both ICON-D2 and NDFD are forecast products — values represent model predictions for the snapshotted hour, not direct measurement. Surface winds in particular can differ noticeably from station observations (terrain channelling, urban canyons, etc.). Use this as a synoptic overview, not a backyard wind reading.

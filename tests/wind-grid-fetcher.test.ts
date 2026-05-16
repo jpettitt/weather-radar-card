@@ -1,14 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   parseWcsTextGrid,
+  parseNdfdWcsGrid,
   fetchWindGrid,
   sampleWindGridNearest,
   sampleWindGridBilinear,
   WindGridFetcher,
+  buildWindGridUrl,
+  resolveSourceForBbox,
   DEFAULT_WIND_COVERAGE,
   type WindGrid,
   type FetchWindGridOptions,
 } from '../src/wind-grid-fetcher';
+import { DEFAULT_WIND_SOURCE } from '../src/wind-source-caps';
 
 // ── parseWcsTextGrid ───────────────────────────────────────────────────────
 //
@@ -303,6 +307,10 @@ describe('fetchWindGrid', () => {
     await fetchWindGrid({
       south: 49.5, west: 10.0, north: 52.0, east: 12.5,
       timeIso: '2026-05-10T12:00:00Z',
+      // Pin the source explicitly so this test still passes if
+      // DEFAULT_WIND_SOURCE changes — it's a DWD-shape regression test,
+      // not a "default source" test.
+      source: 'dwd_icon',
       fetchImpl: fakeFetch,
     });
 
@@ -567,6 +575,289 @@ describe('WindGridFetcher coalescing', () => {
     await expect(fetcher.fetch(opts)).rejects.toThrow(/boom/);
     const g = await fetcher.fetch(opts); // retries upstream
     expect(g.cells[0][0].u).toBe(99);
+    expect(calls).toBe(2);
+  });
+
+  it('treats different sources as different cache keys (no DWD/NDFD collision)', async () => {
+    let calls = 0;
+    const upstream = vi.fn(async () => { calls++; return makeStubGrid(0); });
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream });
+    const bbox = { south: 40, west: -100, north: 41, east: -99 };
+    await fetcher.fetch({ ...bbox, source: 'dwd_icon' });
+    await fetcher.fetch({ ...bbox, source: 'ndfd_wind' });
+    expect(calls).toBe(2);
+  });
+});
+
+// ── buildWindGridUrl ───────────────────────────────────────────────────────
+// Pin per-source URL shape (axes, scaleSize, time format) so a regression
+// in the URL builder doesn't slip through unit-tests just because the
+// downstream parser is forgiving.
+
+describe('buildWindGridUrl', () => {
+  const bbox = { south: 49, west: 10, north: 51, east: 12 };
+
+  it('DWD: uses Lat/Long subset axes in degrees against the DWD WCS endpoint', () => {
+    const url = buildWindGridUrl({ ...bbox, source: 'dwd_icon' });
+    expect(url).toContain('https://maps.dwd.de/geoserver/dwd/wcs');
+    expect(url).toContain('coverageId=dwd__Icon_reg025_fd_sl_UV10M');
+    expect(url).toContain('Lat%2849%2C51%29');
+    expect(url).toContain('Long%2810%2C12%29');
+    expect(url).toContain('format=text%2Fplain');
+  });
+
+  it('NDFD: converts lat/lon to EPSG:3857 metres on X/Y subset axes', () => {
+    const url = buildWindGridUrl({ ...bbox, source: 'ndfd_wind' });
+    expect(url).toContain('https://mapservices.weather.noaa.gov/geoserver/ndfd/wind/wcs');
+    expect(url).toContain('coverageId=ndfd__wind');
+    // Mercator: lon 10° ≈ 1113195 m, lon 12° ≈ 1335834 m. Match the
+    // X axis prefix; exact value precision can drift with library, so
+    // pattern-match the shape, not the digits.
+    expect(url).toMatch(/X%28111\d{4,7}/);
+    expect(url).toMatch(/Y%2862\d{5,8}/);  // lat 49° ≈ 6275837 m
+  });
+
+  it('threads timeIso into the WCS time subset literal', () => {
+    const url = buildWindGridUrl({ ...bbox, source: 'dwd_icon', timeIso: '2026-05-15T12:00:00Z' });
+    // URLSearchParams encodes the quotes as %22.
+    expect(url).toContain('time%28%222026-05-15T12%3A00%3A00Z%22%29');
+  });
+
+  it('appends scaleSize when native cells exceed maxCells (DWD)', () => {
+    // 360°×180° at 0.25° native ≈ 1 036 800 cells, way over the 50 000 cap.
+    const url = buildWindGridUrl({
+      south: -90, west: -180, north: 90, east: 180, source: 'dwd_icon',
+    });
+    expect(url).toContain('scaleSize');
+    expect(url).toContain('axis%2FOGC%2F1%2Fi%28');  // i = column
+    expect(url).toContain('axis%2FOGC%2F1%2Fj%28');  // j = row
+  });
+
+  it('skips scaleSize for small NDFD bboxes that fit under maxCells', () => {
+    // 1°×1° at ~1428 m native ≈ ~7000 cells, under cap.
+    const url = buildWindGridUrl({
+      south: 40, west: -100, north: 41, east: -99, source: 'ndfd_wind',
+    });
+    expect(url).not.toContain('scaleSize');
+  });
+
+  it('expands wrap-prone bboxes to the full world (lon < -180 or > 180)', () => {
+    const url = buildWindGridUrl({
+      south: -10, west: -250, north: 10, east: -110, source: 'dwd_icon',
+    });
+    expect(url).toContain('Long%28-180%2C180%29');
+  });
+});
+
+// ── parseNdfdWcsGrid ───────────────────────────────────────────────────────
+// NDFD's text/plain output has the same layout as DWD's, but axes are X/Y
+// in EPSG:3857 metres and bands are wind speed (m/s) and wind direction
+// (degrees, meteorological "from"). The parser converts both to the
+// canonical lat/lon + U/V WindGrid the downstream samplers consume.
+
+// NDFD bounds order is (xMin, yMin) then (xMax, yMax). Mercator Y is
+// positive northward so yMax > yMin. Three columns × 1428.6 m step =
+// 4286 m span; same for rows.
+const NDFD_FIXTURE_3x3 = `Grid bounds: GeneralBounds[(-10800000.0, 4495714.0), (-10795714.0, 4500000.0)]
+Grid CRS: PROJCS["WGS 84 / Pseudo-Mercator", AUTHORITY["EPSG","3857"]]
+Grid range: GridEnvelope2D[0..2, 0..2]
+Grid to world: PARAM_MT["Affine",
+  PARAMETER["num_row", 3],
+  PARAMETER["num_col", 3],
+  PARAMETER["elt_0_0", 1428.6666666666667],
+  PARAMETER["elt_0_2", -10799285.71428571],
+  PARAMETER["elt_1_1", -1428.6666666666667],
+  PARAMETER["elt_1_2", 4499285.71428571]]
+Contents:
+Band 0:
+10.0 10.0 10.0
+0.0 0.0 0.0
+20.0 20.0 20.0
+Band 1:
+0.0 0.0 0.0
+90.0 90.0 90.0
+180.0 180.0 180.0
+`;
+
+describe('parseNdfdWcsGrid', () => {
+  const grid = parseNdfdWcsGrid(NDFD_FIXTURE_3x3);
+
+  it('decodes Mercator metres → lat/lon degrees', () => {
+    // X = -10800000m → lon ≈ -97° (US Plains region; Wichita-ish)
+    expect(grid.lonMin).toBeCloseTo(-97.0, 1);
+    // Y = 4495714m → lat ≈ 37.4°
+    expect(grid.latMin).toBeCloseTo(37.4, 1);
+  });
+
+  it('flips file rows so cells[0] is the SOUTH row', () => {
+    // File is top-down; band 0 row 0 = 10, row 2 = 20. After flip the
+    // SOUTH row (cells[0]) was the LAST row in the file (band 0 = 20,
+    // band 1 = 180°).
+    // South wind (180°): u = 0, v = -20.
+    expect(grid.cells[0][0].u).toBeCloseTo(0, 5);
+    expect(grid.cells[0][0].v).toBeCloseTo(20, 5);  // -(-20) since cos(180°)=-1
+    // Wait — for direction=180° meteorological ("from south, going north"):
+    //   u = -20 × sin(π) = 0
+    //   v = -20 × cos(π) = -20 × (-1) = +20  (positive = northward)
+  });
+
+  it('zero-speed cells produce zero U/V regardless of direction', () => {
+    // Middle file row has speed 0, dir 90. After row-flip cells[1] is
+    // the middle row. u = -0 × sin(π/2), v = -0 × cos(π/2). Use
+    // toBeCloseTo because Math produces -0 here and Object.is(-0, 0) === false.
+    expect(grid.cells[1][0].u).toBeCloseTo(0, 10);
+    expect(grid.cells[1][0].v).toBeCloseTo(0, 10);
+  });
+
+  it('north wind (direction=0°, meteorological "from north"): u=0, v<0', () => {
+    // The TOP file row (band 0 = 10, band 1 = 0°) becomes cells[2]
+    // after the south-up flip.
+    expect(grid.cells[2][0].u).toBeCloseTo(0, 5);
+    expect(grid.cells[2][0].v).toBeCloseTo(-10, 5);  // -10 × cos(0) = -10
+  });
+
+  it('treats NaN speed/direction as calm', () => {
+    const nanFixture = NDFD_FIXTURE_3x3.replace(
+      '10.0 10.0 10.0',
+      'NaN 10.0 10.0',
+    );
+    const g = parseNdfdWcsGrid(nanFixture);
+    // The NaN cell is in file row 0 (band 0) which becomes cells[2] after
+    // the south-up flip. Column 0.
+    expect(g.cells[2][0].u).toBe(0);
+    expect(g.cells[2][0].v).toBe(0);
+  });
+
+  it('treats NDFD 9999.0 fill sentinel as calm (covers no-data outside CONUS / AK / HI / PR)', () => {
+    // Production NDFD returns 9999.0 for both bands in cells outside
+    // coverage. The value is finite so Number.isFinite passes it; the
+    // sentinel guard is what catches it. Without this guard, particles
+    // teleport (speed × sin/cos with speed=9999 produces huge U/V) and
+    // draw spurious long diagonal streaks out of legit trail endpoints.
+    const fillFixture = NDFD_FIXTURE_3x3
+      .replace('10.0 10.0 10.0\n0.0 0.0 0.0\n20.0 20.0 20.0',
+        '9999.0 9999.0 9999.0\n9999.0 9999.0 9999.0\n9999.0 9999.0 9999.0')
+      .replace('0.0 0.0 0.0\n90.0 90.0 90.0\n180.0 180.0 180.0',
+        '9999.0 9999.0 9999.0\n9999.0 9999.0 9999.0\n9999.0 9999.0 9999.0');
+    const g = parseNdfdWcsGrid(fillFixture);
+    for (let r = 0; r < g.rows; r++) {
+      for (let c = 0; c < g.cols; c++) {
+        expect(g.cells[r][c].u).toBe(0);
+        expect(g.cells[r][c].v).toBe(0);
+      }
+    }
+  });
+
+  it('treats out-of-range direction (>360) as calm even when speed is plausible', () => {
+    // Mixed-sentinel case: NDFD has been observed returning 9999 for
+    // direction while speed is a real value (or vice-versa). Either side
+    // of the pair being a sentinel triggers the calm fallback.
+    const mixedFixture = NDFD_FIXTURE_3x3.replace(
+      '0.0 0.0 0.0\n90.0 90.0 90.0\n180.0 180.0 180.0',
+      '9999.0 9999.0 9999.0\n90.0 90.0 90.0\n180.0 180.0 180.0',
+    );
+    const g = parseNdfdWcsGrid(mixedFixture);
+    // File row 0 (cells[2] after flip) had direction 9999 → calm.
+    expect(g.cells[2][0].u).toBe(0);
+    expect(g.cells[2][0].v).toBe(0);
+    // File row 2 (cells[0] after flip) had direction 180 → real wind.
+    // South wind (180°): u = 0, v = +20 (positive northward).
+    expect(g.cells[0][0].v).toBeCloseTo(20, 5);
+  });
+});
+
+// ── resolveSourceForBbox (silent fallback) ────────────────────────────────
+// When wind_source is 'ndfd_wind' but the requested viewport centre is
+// outside CONUS / AK / HI / PR, the fetcher silently falls back to the
+// global default source so the user still sees real wind data. This is
+// the per-fetch dispatch decision — the user's configured source in the
+// card config is unchanged.
+
+describe('resolveSourceForBbox', () => {
+  it('NDFD configured + CONUS viewport: stays NDFD', () => {
+    // ~Kansas bbox.
+    const opts: FetchWindGridOptions = {
+      source: 'ndfd_wind', south: 38, west: -100, north: 40, east: -98,
+    };
+    expect(resolveSourceForBbox(opts)).toBe('ndfd_wind');
+  });
+
+  it('NDFD configured + Europe viewport: silent fallback to global default', () => {
+    // ~Germany bbox — clearly outside NDFD coverage.
+    const opts: FetchWindGridOptions = {
+      source: 'ndfd_wind', south: 50, west: 9, north: 52, east: 11,
+    };
+    expect(resolveSourceForBbox(opts)).toBe(DEFAULT_WIND_SOURCE);
+    // Pin the default so a future flip is loud, not silent.
+    expect(DEFAULT_WIND_SOURCE).toBe('dwd_aicon');
+  });
+
+  it('NDFD configured + Alaska viewport: stays NDFD (AK is in NDFD coverage)', () => {
+    const opts: FetchWindGridOptions = {
+      source: 'ndfd_wind', south: 61, west: -150, north: 62, east: -149,
+    };
+    expect(resolveSourceForBbox(opts)).toBe('ndfd_wind');
+  });
+
+  it('NDFD + boundary-straddling bbox uses centre to decide', () => {
+    // Bbox centred just inside the CONUS east edge (~-66.5° lon) but
+    // east edge spills past the bbox. Centre is what matters.
+    const insideCentre: FetchWindGridOptions = {
+      source: 'ndfd_wind', south: 40, west: -68, north: 41, east: -65,  // centre -66.5
+    };
+    expect(resolveSourceForBbox(insideCentre)).toBe('ndfd_wind');
+    // Same bbox shifted east — centre now -63 → outside CONUS bbox → fall back.
+    const outsideCentre: FetchWindGridOptions = {
+      source: 'ndfd_wind', south: 40, west: -64, north: 41, east: -62,  // centre -63
+    };
+    expect(resolveSourceForBbox(outsideCentre)).toBe(DEFAULT_WIND_SOURCE);
+  });
+
+  it('AICON / ICON configured: never falls back regardless of bbox', () => {
+    // Only NDFD has the US-only constraint. Other sources are global,
+    // so the dispatcher must never override a non-NDFD configured source.
+    const europe = { south: 50, west: 9, north: 52, east: 11 };
+    expect(resolveSourceForBbox({ ...europe, source: 'dwd_aicon' })).toBe('dwd_aicon');
+    expect(resolveSourceForBbox({ ...europe, source: 'dwd_icon' })).toBe('dwd_icon');
+    const conus = { south: 38, west: -100, north: 40, east: -98 };
+    expect(resolveSourceForBbox({ ...conus, source: 'dwd_aicon' })).toBe('dwd_aicon');
+  });
+
+  it('source omitted: uses DEFAULT_WIND_SOURCE, no fallback logic triggered', () => {
+    // Absent source resolves to DEFAULT (aicon), which is never subject
+    // to fallback. CONUS or non-CONUS, the answer is identical.
+    const conus: FetchWindGridOptions = { south: 38, west: -100, north: 40, east: -98 };
+    const europe: FetchWindGridOptions = { south: 50, west: 9, north: 52, east: 11 };
+    expect(resolveSourceForBbox(conus)).toBe(DEFAULT_WIND_SOURCE);
+    expect(resolveSourceForBbox(europe)).toBe(DEFAULT_WIND_SOURCE);
+  });
+});
+
+// Cache-key consequence of the silent fallback: two NDFD fetches for
+// bboxes on opposite sides of the US coast must NOT collide. Pinned
+// here so a regression that drops the resolved-source from the key is
+// caught even without a live network.
+describe('WindGridFetcher cache (silent fallback)', () => {
+  function makeStubGrid(u = 0): WindGrid {
+    return {
+      rows: 1, cols: 1, latMin: 0, lonMin: 0, step: 0.25,
+      cells: [[{ u, v: 0 }]],
+    };
+  }
+
+  it('NDFD-configured fetches on opposite sides of the coast cache distinctly', async () => {
+    let calls = 0;
+    const upstream = vi.fn(async () => { calls++; return makeStubGrid(0); });
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream });
+    // CONUS bbox: stays NDFD.
+    await fetcher.fetch({
+      source: 'ndfd_wind', south: 38, west: -100, north: 40, east: -98,
+    });
+    // Europe bbox with NDFD configured: silent-falls-back to AICON.
+    // Different resolved source → must not share a cache slot.
+    await fetcher.fetch({
+      source: 'ndfd_wind', south: 50, west: 9, north: 52, east: 11,
+    });
     expect(calls).toBe(2);
   });
 });

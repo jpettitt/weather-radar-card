@@ -8,6 +8,7 @@ import { localize } from './localize/localize';
 import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-categories';
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
+import { WIND_SOURCE_CAPS, getWindSourceCaps, DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
 import { customElement, property, state } from 'lit/decorators.js';
 
 // Curated past-time presets in minutes. Editor filters to ≤ source's
@@ -491,7 +492,24 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
 
         <h3 class="section-header">${localize('editor.wind.header')}</h3>
         <p class="section-description">${localize('editor.wind.description')}</p>
-        <p class="section-description" style="font-size:0.78em;font-style:italic;margin-top:-8px">${localize('editor.wind.cadence_note')}</p>
+        <p class="section-description" style="font-size:0.78em;font-style:italic;margin-top:-8px">
+          ${this._cadenceNoteForSource(config.wind_source)}
+        </p>
+
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{
+            select: {
+              mode: 'dropdown',
+              options: this._buildWindSourceOptions(),
+            },
+          }}
+          .value=${(config.wind_source ?? DEFAULT_WIND_SOURCE) as string}
+          .label=${localize('editor.wind.source_label')}
+          .helper=${localize('editor.wind.source_helper')}
+          .configValue=${'wind_source'}
+          @value-changed=${this._handleSelectorChanged}
+        ></ha-selector>
 
         <ha-selector
           .hass=${this.hass}
@@ -1037,6 +1055,28 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
   // just an off-grid YAML value), appends it as a "(YAML)" entry at
   // the bottom so the user sees their actual current value rather
   // than a wrong display.
+  // Wind-source dropdown options. Order is stable across the list so the
+  // user's pick lands on the same row each time. Labels come from the
+  // i18n table when present, with the registry's English label as fallback.
+  private _buildWindSourceOptions(): { value: string; label: string }[] {
+    return (Object.values(WIND_SOURCE_CAPS) as { id: WindSource; label: string }[])
+      .map(c => ({
+        value: c.id,
+        label: localize(`editor.wind.source_${c.id}`) || c.label,
+      }));
+  }
+
+  // Per-source cadence note shown under the source dropdown. Tries the
+  // i18n key first (`editor.wind.cadence_<id>`), falls back to the
+  // registry's English cadenceNote so a missing translation never blanks
+  // the UI. The legacy `editor.wind.cadence_note` (DWD-only wording) is
+  // intentionally not consulted — keeping that line in the locale files
+  // avoids breakage but it's superseded by the per-source line.
+  private _cadenceNoteForSource(source: WindSource | undefined): string {
+    const caps = getWindSourceCaps(source);
+    return localize(`editor.wind.cadence_${caps.id}`) || caps.cadenceNote;
+  }
+
   private _buildPastOptions(rawValue: number | undefined, editorCap: number): { value: string; label: string }[] {
     const opts: { value: string; label: string }[] = [
       { value: '0', label: localize('editor.time_range.past_off') },

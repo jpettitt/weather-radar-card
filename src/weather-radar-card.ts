@@ -17,6 +17,7 @@ import { localize } from './localize/localize';
 import { rainviewerLimiter, noaaLimiter, dwdLimiter } from './rate-limiters';
 import { FetchTileLayer } from './fetch-tile-layer';
 import { WindOverlay } from './wind-overlay';
+import { defaultWindSourceForLocation, DEFAULT_WIND_SOURCE } from './wind-source-caps';
 import { WindFlowOverlay } from './wind-flow-overlay';
 import { RadarToolbar } from './radar-toolbar';
 import { RadarPlayer } from './radar-player';
@@ -65,10 +66,21 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // representative of what the card normally does — RainViewer, home
   // marker (auto-created by migrateConfig from absent markers[]),
   // default crossfade. The user tunes from here.
-  public static getStubConfig(): Record<string, unknown> {
-    return {
-      height: '220px',
-    };
+  //
+  // wind_source is set here based on HA location so a fresh-install
+  // user in the US automatically gets NDFD (~2.5 km regional forecast)
+  // when they later turn the wind overlay on. Existing configs (which
+  // never went through this code path) lack wind_source entirely and
+  // fall back at runtime to ICON-D2 globally — see DEFAULT_WIND_SOURCE.
+  public static getStubConfig(hass?: HomeAssistant): Record<string, unknown> {
+    const stub: Record<string, unknown> = { height: '220px' };
+    if (hass?.config) {
+      const lat = hass.config.latitude;
+      const lon = hass.config.longitude;
+      const country = (hass.config as { country?: string }).country;
+      stub.wind_source = defaultWindSourceForLocation(lat, lon, country);
+    }
+    return stub;
   }
 
   // ── HA properties ────────────────────────────────────────────────────────
@@ -640,6 +652,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const useAnchor = isDwdRadar && (cfg.dwd_time_override != null || forecastMs > 0);
     const timeMs = useAnchor ? anchorMs : undefined;
 
+    const windSource = cfg.wind_source ?? DEFAULT_WIND_SOURCE;
     const mode = cfg.dwd_wind ?? 'off';
     if (mode === 'barbs' || mode === 'arrows') {
       this._windOverlay = new WindOverlay(this._map, {
@@ -647,6 +660,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         density: cfg.dwd_wind_density,
         size: cfg.dwd_wind_size,
         timeMs,
+        source: windSource,
       });
     }
     if (cfg.dwd_wind_flow === true) {
@@ -672,6 +686,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._windFlow = new WindFlowOverlay(this._map, {
         timeMs,
         particleColor: customColor ?? defaultColor,
+        source: windSource,
       });
     }
   }

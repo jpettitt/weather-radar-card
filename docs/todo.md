@@ -117,36 +117,59 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   Order: land #133 first (DWD-only baseline), then this PR adds the
   source abstraction without changing the EU experience.
 
-- **Wind source registry — tiered alternatives to ICON-D2** — design note
-  for after the bulk-fetch (`feat/wind-bulk-fetch`) lands. The new
-  `WindGrid` abstraction in `src/wind-grid-fetcher.ts` already accepts a
-  `coverageId` and a swappable `fetchImpl`, so adding sources is mostly
-  registry + UI work, not a rewrite.
+- **Wind source registry — tiered alternatives to ICON-D2** — partially
+  shipped. The `WindSource` registry in `src/wind-source-caps.ts` is
+  live; the cache key in `WindGridFetcher` includes `source`; the editor
+  has a Wind Data Source dropdown above Style/Density/Size; the cadence
+  helper line is per-source. Adding a new source is now: caps-table
+  entry + (if not WCS-text-plain) a parser variant.
 
-  **Tier 1 — drop-in (one config string):**
+  **Shipped (Unreleased):**
 
-  - `dwd__Aicon_reg025_fd_sl_UV10M` — DWD AICON, AI-augmented variant
-    of ICON, same 0.25° global grid, same WCS endpoint, same parser.
-    Reportedly more accurate for short-range. Confirmed plug-compatible
-    by `DescribeCoverage`.
+  - ✅ `ndfd_wind` — NWS NDFD (HRRR + RAP + NAM + GFS forecaster blend) at
+    2.5 km over CONUS / AK / HI / PR. Originally classified Tier 3 but
+    research showed the NDFD GeoServer at `mapservices.weather.noaa.gov`
+    serves WCS text/plain on the same shape as DWD's GeoServer — so it
+    only needed an EPSG:3857 → degrees conversion (Mercator math) and a
+    speed/direction → U/V band conversion. CORS open. Auto-defaults for
+    fresh installs whose `hass.config.country === 'US'` (or whose lat/lon
+    falls in the CONUS / AK / HI / PR bbox if country is unset).
+  - ✅ `dwd_aicon` — DWD's AI-augmented variant of ICON-D2. Plug-compatible
+    one-line caps-table addition (same WCS endpoint, same global 0.25°
+    grid, same U/V bands). Confirmed identical-shape via DescribeCoverage.
 
   **Tier 2 — same fetcher, small adapter (~30 lines):**
 
   - `dwd__Icon_reg025_fd_pl_UV` — ICON pressure levels (250/500/700/850/925
-    hPa). Needs an `elevation` subset axis.
-  - `dwd__BRD_1km_winddaten_10m` — Germany-only, **1 km** native (~25× finer
-    than ICON-D2). Big visual win for German users, but uses a projected CRS
-    in metres with `X/Y` axes — needs lat/lon → projected transform on the
-    request side. Highest impact-per-effort if German UX matters.
-  - DWD ICON-EU UV — currently only T / QFF / TOTPREC are exposed; revisit
-    when DWD adds the wind coverage.
+    hPa). Needs an `elevation` subset axis. Same 0.25° grid as ICON-D2.
+  - DWD wave-model winds (`dwd__Cwam_reg0013x0008_*` ~1.4 × 0.9 km North
+    Sea / Baltic; `dwd__Ewam_reg005x010_fd_sl_UV10M` ~5.5 × 11 km covering
+    NE Atlantic plus N Sea plus Baltic). **Marine-only** — no land
+    coverage. Useful only for sailing-focused dashboards; would need a
+    "this source has no land data" UX note to avoid confusing inland users.
 
-  **Tier 3 — different provider, new fetch impl + parser (~100 lines):**
+  **Tier 3 — no finer-than-ICON-D2 deterministic wind product over land
+  for Europe via DWD's public WCS.** Verified 2026-05-15:
 
-  - NOAA NOMADS / NCSS — NetCDF Subset Service for GFS / HRRR returns CSV
-    for a bbox. Same `WindGrid` downstream, new URL builder + CSV parser.
-  - MET Norway THREDDS — same shape via OPeNDAP / NetCDF subset.
-  - ECMWF Open Data — GRIB files; heavier (GRIB parser non-trivial in browser).
+  - ICON-EU (0.0625° native ~6.25 km) exposes Temp / QFF / TOTPREC but
+    **no UV10M or SP10M/DD10M coverages**.
+  - ICON-D2-EPS at native 0.02° (~2 km) exposes only ensemble probability
+    products (`pVMAX10MgtX`, `FP`, `FPW`) — no deterministic U/V.
+  - `dwd__BRD_1km_winddaten_10m` looked promising by name but is a **20-year
+    climatology** ("Mittlere jährliche Windgeschwindigkeiten … 1981-2000"):
+    static annual-mean field at 1 km for wind-turbine site planning, NOT
+    a real-time forecast or observation. Unusable for the streamline overlay.
+  - Conclusion: for finer-than-ICON-D2 real-time European wind we would
+    have to leave DWD entirely (Météo-France AROME 1.3 km, MET Norway MEPS
+    2.5 km Nordic, ECMWF HRES 0.1°). Each is ~100 lines of new fetch + parser.
+
+  **Tier 3 (US) — different provider, new fetch impl + parser (~100 lines):**
+
+  - NOAA HRRR direct (NCEP NOMADS, AWS Open Data, NCEI THREDDS) — finer
+    3 km native, hourly updates, but the formats are GeoTIFF/NetCDF/GRIB
+    (heavy in-browser parser). NDFD already gives 2.5 km CONUS via plain
+    WCS text; HRRR direct is only worth it for sub-3-hour temporal
+    resolution.
 
   **Tier 4 — bad fit (avoid):**
 
@@ -154,25 +177,10 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
     win. The Open-Meteo backlog item above pre-dates the bulk-fetch
     refactor; revisit only if Open-Meteo adds a bbox endpoint.
 
-  **Architecture sketch:**
-
-  ```ts
-  type WindSource = 'dwd_icon' | 'dwd_aicon' | 'dwd_brd1km' | 'noaa_gfs';
-  interface WindSourceDef {
-    label: string;          // i18n key
-    resolution: string;     // "0.25° / ~28 km"
-    coverage: string;       // "Global hourly to +48 h"
-    fetch: (opts) => Promise<WindGrid>;
-  }
-  ```
-
-  Cache key in `WindGridFetcher` already includes `coverageId` — gets `source`
-  for free. Editor adds a dropdown above Style/Density/Size; the cadence
-  note becomes per-source. Both overlays continue consuming `WindGrid`
-  unchanged — the value of the abstraction.
-
-  **Recommended order:** Tier 1 (AICON) in 3.7 as a two-option dropdown.
-  BRD 1km in 3.8 if German UX warrants. Tier 3 deferred unless asked.
+  **Recommended order:** ICON pressure levels next if anyone asks for upper-
+  level winds. Marine wave-model winds only with an explicit sailing-mode
+  UX. External-provider sources (AROME, ECMWF, HRRR direct) deferred
+  unless a user requests them.
 
 - **Real-time per-user layer control** with persistent state — target 3.7.
   The card now ships radar + wildfires + NWS alerts + lightning + DWD

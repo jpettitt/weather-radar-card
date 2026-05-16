@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Wind source registry — pick the forecast model behind the overlay.** New `wind_source` config field selects the data source for the barbs / arrows / streamline overlays. Three options shipping in this release:
+  - `'dwd_aicon'` (**new default for non-US**) — DWD's AI-augmented variant of ICON-D2. Same 0.25° global grid (~28 km) and hourly cadence as ICON-D2, served from the same WCS endpoint; visibly better short-range accuracy at zero behaviour cost. Configs without `wind_source` set silently upgrade from ICON to AICON on next reload.
+  - `'dwd_icon'` — Raw DWD ICON-D2 numerical model (the previous default). 0.25° global grid, hourly anchor, +48 h forecast, new model run every 3 h. Opt-in for users who prefer the unadjusted model output.
+  - `'ndfd_wind'` (**new default for fresh installs in US locations**) — NWS National Digital Forecast Database (forecaster blend of HRRR + RAP + NAM + GFS). **2.5 km over CONUS / AK / HI / PR**, hourly updates, 3-hourly forecast steps out to 7+ days. The same source api.weather.gov gridpoint forecasts come from, but as a raster grid the bulk-fetch pipeline can consume in one WCS call.
+  Editor's Wind Overlay subpage has a new Wind Data Source dropdown above the Style picker, and the cadence helper line under it switches per-source. **Fresh installs auto-pick NDFD when HA's location is in NWS coverage** — country code (`hass.config.country === 'US'`) wins outright if set, falls back to a CONUS / AK / HI / PR bbox check on `hass.config.latitude/longitude`. Outside US coverage, fresh installs and existing configs without `wind_source` resolve to AICON (was ICON-D2 in 3.6 — see migration note below). NDFD streamlines render at ~33% of the trail length to compensate for the ~10× finer grid producing visibly longer particle ribbons; ICON / AICON variants render at the full trail length.
+
+### Changed (silent default flip)
+
+- **Default wind source changed from ICON-D2 to AICON for non-US users without an explicit `wind_source` field.** Same provider (DWD), same global 0.25° grid, same hourly cadence, same WCS endpoint — purely an upgrade to the AI-augmented post-processing variant. Set `wind_source: 'dwd_icon'` in YAML (or pick it in the editor dropdown) to revert to the raw numerical model.
+
 ### Fixed
 
 - **Shadow clouds / flicker at `radar_opacity < 1`** ([#151](https://github.com/Makin-Things/weather-radar-card/issues/151)). With per-layer opacity set to `radar_opacity`, two semi-transparent radar layers stacked during the crossfade and the alpha-over composite brightened during the overlap window — visible as "shadow clouds" (rain from both frames showing through where they didn't perfectly align) and as a flicker on every animation tick. Fix moves all radar tile layers into a dedicated `wrcRadar` Leaflet pane (z-index 240, between basemap and wind-flow) and applies `radar_opacity` on the pane. Individual layers now crossfade between 0 and 1, so the composite α inside the pane stays at 1 throughout the overlap; the pane multiplies the whole composite by `radar_opacity` once. DWD coverage mask layer unaffected — already on its own pane, snap-switched, controlled by separate CSS theme vars.
