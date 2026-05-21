@@ -79,6 +79,19 @@ export class RadarToolbar extends L.Control {
     return this._speed;
   }
 
+  /**
+   * Called by the card when the playback-speed multiplier changes
+   * outside the button's cycle handler — typically because the user
+   * picked a new preset in the editor. Updates the button label so it
+   * stays in sync with the player's active speed.
+   */
+  setSpeed(multiplier: number): void {
+    this._speed = multiplier;
+    if (this._speedBtn) {
+      this._speedBtn.textContent = formatSpeed(multiplier);
+    }
+  }
+
   /** Called by the card when playback state changes externally (e.g. skip-step). */
   setPlaying(playing: boolean): void {
     this._playing = playing;

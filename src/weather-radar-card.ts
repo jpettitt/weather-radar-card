@@ -251,10 +251,33 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._syncMapViewIfNeeded();
       return;
     }
+    // playback_speed change with everything else equal: a pure runtime
+    // knob. No need to tear down the map or refetch tiles — just push
+    // the new multiplier into the player and update the toolbar's
+    // button label so it stays in sync with the active speed.
+    if (this._map && oldConfig && this._isOnlyPlaybackSpeedChange(oldConfig, this._config)) {
+      const speed = resolvePlaybackSpeed(null, this._config.playback_speed);
+      this._player?.setSpeedMultiplier(speed);
+      this._toolbar?.setSpeed(speed);
+      return;
+    }
     if (this._map) {
       this._teardown();
       this._initMap();
     }
+  }
+
+  private _isOnlyPlaybackSpeedChange(a: WeatherRadarCardConfig, b: WeatherRadarCardConfig): boolean {
+    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
+    let changed = false;
+    for (const k of keys) {
+      const av = JSON.stringify((a as Record<string, unknown>)[k]);
+      const bv = JSON.stringify((b as Record<string, unknown>)[k]);
+      if (av === bv) continue;
+      if (k !== 'playback_speed') return false;
+      changed = true;
+    }
+    return changed;
   }
 
   private _syncMapViewIfNeeded(): void {
