@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.6.1-rc1] - 2026-05-16
+## [3.6.1] - 2026-05-21
 
-> **Release candidate.** Bundles one stable bug fix (radar opacity, #151) with an experimental wind-source registry that adds NDFD over US regions and AICON globally. The wind work is the bake target — if nothing surfaces, 3.6.1 ships as-is; if edge cases turn up at viewport boundaries / low-zoom continental views / unusual locales we'll tune in rc2.
+> Two stable bug fixes (radar opacity #151, ghost trails on initial load #155), a build-time security bump for `serialize-javascript`, and an **experimental** wind-source registry that adds NDFD over US regions and AICON globally. Promoted from [3.6.1-rc1] (2026-05-16) after a short bake — the wind work keeps its **Experimental** tag for one more release while we gather feedback at viewport boundaries and unusual locales.
 >
-> If you want to pin the pre-3.6.1 wind behaviour, set `wind_source: 'dwd_icon'` in your card YAML (or pick it via the editor's new Wind Data Source dropdown). Existing configs with `dwd_wind` / `dwd_wind_flow` set keep working unchanged; only the wind *data* behind them changes.
+> **To pin the pre-3.6.1 wind behaviour**: set `wind_source: 'dwd_icon'` in your card YAML (or pick it via the editor's new Wind Data Source dropdown). Existing configs with `dwd_wind` / `dwd_wind_flow` set keep working unchanged; only the wind *data* behind them changes.
 
 ### Added — Experimental
 
@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Shadow clouds / flicker at `radar_opacity < 1`** ([#151](https://github.com/Makin-Things/weather-radar-card/issues/151)). With per-layer opacity set to `radar_opacity`, two semi-transparent radar layers stacked during the crossfade and the alpha-over composite brightened during the overlap window — visible as "shadow clouds" (rain from both frames showing through where they didn't perfectly align) and as a flicker on every animation tick. Fix moves all radar tile layers into a dedicated `wrcRadar` Leaflet pane (z-index 240, between basemap and wind-flow) and applies `radar_opacity` on the pane. Individual layers now crossfade between 0 and 1, so the composite α inside the pane stays at 1 throughout the overlap; the pane multiplies the whole composite by `radar_opacity` once. DWD coverage mask layer unaffected — already on its own pane, snap-switched, controlled by separate CSS theme vars.
+- **Ghost trails of stacked radar frames during initial load** ([#155](https://github.com/Makin-Things/weather-radar-card/pull/155)). While the card was still fetching frames on initial load, the playback showed a growing trail of overlapping past frames stacked under the current one — small rain cells looked smeared until the loop completed a full cycle and wrapped back to slot 0. Cause was a missing companion bump: when an older frame finished loading and was prepended to `_loadedSlots`, `_currentSlot` was bumped to keep the same physical frame visible, but `_prev1Slot` (also an index into `_loadedSlots`) was not — so on the next tick `_showSlot` faded out the wrong layer and the actually-visible previous frame stayed orphaned at active opacity until the loop wrapped. Fixed by shifting `_prev1Slot` alongside `_currentSlot`. Contributed by [@genericJE](https://github.com/genericJE).
+
+### Security
+
+- **Bumped `serialize-javascript` 6.0.2 → 7.0.5** to remediate two advisories: [GHSA-5c6j-r48x-rmvq](https://github.com/advisories/GHSA-5c6j-r48x-rmvq) (high, CVSS 8.1 — RCE via crafted `RegExp.flags` / `Date.toISOString`) and [GHSA-qj8w-gfj5-8c6v](https://github.com/advisories/GHSA-qj8w-gfj5-8c6v) (moderate, CVSS 5.9 — CPU-exhaustion DoS via crafted array-likes). Build-time dependency only (terser/rollup chain); the shipped card bundle never executed `serialize-javascript` so end users were not exposed. Implemented by removing the phantom direct-dependency entry (nothing in `src/` imported it) and adding a `^7.0.5` override that captures the transitive pull through `@rollup/plugin-terser`.
 
 ### Known limitations of the experimental wind work
 
@@ -630,7 +635,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.1-rc1...HEAD
+[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.1...HEAD
+[3.6.1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.1-rc1...v3.6.1
 [3.6.1-rc1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0...v3.6.1-rc1
 [3.6.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc4...v3.6.0
 [3.6.0-rc4]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc3...v3.6.0-rc4
