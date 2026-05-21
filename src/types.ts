@@ -67,6 +67,16 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * tuning the look of the crossfade.
    */
   smooth_overlap?: number;
+  /**
+   * Slide each radar layer by the estimated motion vector during the
+   * transition, so rain appears to drift between frames rather than
+   * appear at the new position while the old position fades. Motion is
+   * sampled from the same DWD ICON wind layer the arrow overlay uses;
+   * silently no-ops when data_source is not DWD or the wind sample
+   * fails. Pairs best with smooth_overlap: 0 (sequential timing) so the
+   * composite stays at full opacity through the slide.
+   */
+  motion_compensation?: boolean;
   center_longitude?: CoordinateConfig;
   center_latitude?: CoordinateConfig;
   zoom_level?: number;

@@ -7,6 +7,7 @@ import { FetchTileLayer, FetchWmsTileLayer, layerSettled } from './fetch-tile-la
 import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
 import { getEffectiveTimeRange } from './source-caps';
+import { findMotionSAD, smoothMotionVectors, type MotionVector } from './motion-estimator';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -259,6 +260,24 @@ export class RadarPlayer {
   // lower native zoom.
   private _pinnedNativeZoom = 0;
 
+  // Motion compensation: per-frame snapshots of the visible radar layer
+  // (downsampled alpha grids), cross correlated between consecutive
+  // frames to extract the actual pixel displacement of the rain field.
+  // _showSlot animates a translate of this many pixels on the outgoing
+  // layer (and the inverse on the incoming layer) during the transition,
+  // so the rain reads as drifting rather than appearing twice at
+  // separated positions. null entries mean "no snapshot captured yet"
+  // (frame still loading) or "no motion estimate available" (no rain in
+  // the visible area, or both consecutive frames not ready).
+  private _frameSnapshot: (Uint8Array | null)[] = [];
+  // Per-frame motion vector: how the rain moved between frame fi-1 and
+  // frame fi, in SCREEN pixels at the current map view. _frameMotion[fi]
+  // is the vector to USE when transitioning into showing frame fi.
+  private _frameMotion: (MotionVector | null)[] = [];
+  // Bumped on each map move / zoom so in-flight snapshot computations
+  // from the previous viewport don't pollute the new one.
+  private _snapshotGen = 0;
+
   constructor(opts: RadarPlayerOptions) {
     this._map = opts.map;
     this._shadowRoot = opts.shadowRoot;
@@ -272,6 +291,7 @@ export class RadarPlayer {
       this._sourceMaxNativeZoom(),
     );
     this._map.on('zoomend', this._onZoomEnd);
+    this._map.on('moveend', this._onMoveEnd);
   }
 
   private _sourceMaxNativeZoom(): number {
@@ -282,14 +302,130 @@ export class RadarPlayer {
   private _onZoomEnd = (): void => {
     if (!this._map) return;
     const newPin = Math.min(this._map.getZoom(), this._sourceMaxNativeZoom());
-    if (newPin <= this._pinnedNativeZoom) return;
-    this._pinnedNativeZoom = newPin;
-    // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
-    // option on existing layers is enough, no redraw needed.
-    for (const layer of this._radarImage) {
-      if (layer) (layer.options as any).minNativeZoom = newPin;
+    if (newPin > this._pinnedNativeZoom) {
+      this._pinnedNativeZoom = newPin;
+      // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
+      // option on existing layers is enough, no redraw needed.
+      for (const layer of this._radarImage) {
+        if (layer) (layer.options as any).minNativeZoom = newPin;
+      }
     }
+    // Tiles will re-fetch at the new viewport, so any cached frame
+    // snapshots are now stale (they were captured at the old position
+    // and pixel scale). Bump the generation and drop them; new
+    // snapshots get captured as the freshly loaded tiles settle.
+    this._invalidateSnapshots();
   };
+
+  private _onMoveEnd = (): void => {
+    // Pan loads different tiles into the same layers, so the cached
+    // snapshots no longer represent what's on screen. Reset and let
+    // snapshots regenerate on next layer settle.
+    this._invalidateSnapshots();
+  };
+
+  // Constants for the snapshot / cross correlation pipeline.
+  // SNAPSHOT_GRID is intentionally modest — 96 by 96 keeps the SAD inner
+  // loop under a few million ops per frame pair while preserving enough
+  // resolution to resolve sub-tile rain motion. MAX_MOTION_OFFSET caps
+  // the search window: 15 grid pixels on a 96 by 96 grid covering an
+  // 800ish pixel viewport works out to ~125 screen pixels per frame
+  // stride at typical zoom levels, well beyond any plausible
+  // synoptic-scale rain motion.
+  private static readonly SNAPSHOT_GRID = 96;
+  private static readonly MAX_MOTION_OFFSET = 15;
+
+  // Drop the per-frame snapshots and motion vectors and bump the
+  // generation so any pending captureFrameSnapshot calls bail out. New
+  // snapshots will be captured the next time tiles settle on each frame.
+  private _invalidateSnapshots(): void {
+    this._snapshotGen++;
+    this._frameSnapshot = new Array(this._frameSnapshot.length).fill(null);
+    this._frameMotion = new Array(this._frameMotion.length).fill(null);
+  }
+
+  // Capture the current visible state of a loaded radar frame's tiles to
+  // a downsampled alpha grid. The grid feeds the cross correlation that
+  // estimates rain motion between consecutive frames.
+  //
+  // Why render to canvas rather than read tile <img> pixels directly:
+  // FetchTileLayer serves tiles via blob URLs (so the canvas is
+  // same-origin and readable), but reading pixels per <img> would
+  // require one canvas allocation each. Building a single
+  // viewport-sized canvas and drawImage'ing every tile into it is
+  // simpler and only marginally more memory.
+  //
+  // Skips silently when the layer's container isn't mounted yet, no
+  // tiles have loaded, or canvas isn't available. Callers check the
+  // _frameSnapshot[fi] slot to know whether a snapshot exists.
+  private _captureFrameSnapshot(fi: number): void {
+    const layer = this._radarImage[fi];
+    if (!layer || !this._map) return;
+    const container = (layer as any).getContainer?.() as HTMLElement | undefined;
+    if (!container) return;
+    const tiles = container.querySelectorAll<HTMLImageElement>('img.leaflet-tile-loaded');
+    if (tiles.length === 0) return;
+    const mapSize = this._map.getSize();
+    const grid = RadarPlayer.SNAPSHOT_GRID;
+    const canvas = document.createElement('canvas');
+    canvas.width = grid;
+    canvas.height = grid;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const mapRect = this._map.getContainer().getBoundingClientRect();
+    const xScale = grid / mapSize.x;
+    const yScale = grid / mapSize.y;
+    for (const tileImg of Array.from(tiles)) {
+      if (!tileImg.complete || tileImg.naturalWidth === 0) continue;
+      const tr = tileImg.getBoundingClientRect();
+      const sx = (tr.left - mapRect.left) * xScale;
+      const sy = (tr.top - mapRect.top) * yScale;
+      const sw = tr.width * xScale;
+      const sh = tr.height * yScale;
+      try {
+        ctx.drawImage(tileImg, sx, sy, sw, sh);
+      } catch {
+        // Cross origin taint shouldn't happen with FetchTileLayer's
+        // blob URLs, but if it does we silently skip the tile rather
+        // than throw.
+      }
+    }
+    const imgData = ctx.getImageData(0, 0, grid, grid);
+    // Take the alpha channel as the rain intensity. The radar palettes
+    // already encode rain density via alpha plus colour saturation;
+    // alpha alone is the most stable cue across colour schemes.
+    const alpha = new Uint8Array(grid * grid);
+    for (let i = 0; i < alpha.length; i++) alpha[i] = imgData.data[i * 4 + 3];
+    this._frameSnapshot[fi] = alpha;
+  }
+
+  // After snapshotting frame fi, compute the motion vector that takes
+  // frame fi-1's rain field into frame fi's. Stored as the vector to
+  // animate when transitioning INTO frame fi. Skips if the previous
+  // snapshot doesn't exist yet (e.g. fi is the oldest frame, or its
+  // predecessor hasn't loaded).
+  private _computeMotionForFrame(fi: number): void {
+    const cur = this._frameSnapshot[fi];
+    const prev = this._frameSnapshot[fi - 1];
+    if (!cur || !prev) { this._frameMotion[fi] = null; return; }
+    const grid = RadarPlayer.SNAPSHOT_GRID;
+    const motionGrid = findMotionSAD(prev, cur, grid, grid, RadarPlayer.MAX_MOTION_OFFSET);
+    // Low confidence (flat SAD surface — usually means no clearly
+    // dominant rain feature) maps to "no compensation" rather than
+    // sliding by whatever the noise floor produced.
+    if (motionGrid.confidence < 0.05) { this._frameMotion[fi] = null; return; }
+    // findMotionSAD returns displacement in grid pixels. Scale up to
+    // screen pixels so _showSlot can apply it as a CSS translate.
+    if (!this._map) { this._frameMotion[fi] = null; return; }
+    const mapSize = this._map.getSize();
+    const xScale = mapSize.x / grid;
+    const yScale = mapSize.y / grid;
+    this._frameMotion[fi] = {
+      dx: motionGrid.dx * xScale,
+      dy: motionGrid.dy * yScale,
+      confidence: motionGrid.confidence,
+    };
+  }
 
   // ── Config helpers ───────────────────────────────────────────────────────
 
@@ -357,6 +493,7 @@ export class RadarPlayer {
     this._stopLoop();
     this._clearLayers();
     this._map?.off('zoomend', this._onZoomEnd);
+    this._map?.off('moveend', this._onMoveEnd);
     if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
     this._worker?.terminate();
     this._worker = null;
@@ -498,6 +635,10 @@ export class RadarPlayer {
       if (!el) continue;
       el.style.transition = 'none';
       el.style.opacity = (s === current) ? '1' : '0';
+      // Reset any mid-transition translate so a paused-then-resumed
+      // playback doesn't show the current frame still offset by the
+      // outgoing slide of the previous tick.
+      el.style.transform = '';
     }
   }
 
@@ -588,6 +729,34 @@ export class RadarPlayer {
     const prev1 = this._prev1Slot;
     const useChain = fade > 0;
 
+    // Motion compensation: slide layers in the wind direction over the
+    // full transition window (frame_delay). Outgoing layer translates by
+    // +(dx, dy) — it ends where the next frame's rain was actually
+    // captured. Incoming layer starts at -(dx, dy) — where its rain
+    // would have been at the previous frame's time — and slides to 0.
+    // At any t the two layers' rain positions overlap, so the
+    // composite reads as one drifting blob rather than two crossfading
+    // ones. Linear easing keeps drift speed constant.
+    // Motion vector is per-transition: _frameMotion[fi] is the
+    // displacement of the rain field from frame fi-1 into frame fi,
+    // estimated by cross correlating their snapshots. The new layer
+    // (s === slot) carries fi for THIS tick — so the vector we want
+    // for the slide is _frameMotion[fi of the new slot].
+    //
+    // Raw vectors can jitter when individual frame pairs land on
+    // low-confidence SAD peaks. smoothMotionVectors blends each
+    // measurement with its 2-tap neighbourhood weighted by confidence,
+    // so the slide direction stays stable across the loop. Cost is
+    // O(N * 5) per tick which is trivial for ~12 frames.
+    const newFi = this._loadedSlots[slot];
+    const smoothed = smoothMotionVectors(this._frameMotion);
+    const newMotion = newFi !== undefined ? smoothed[newFi] : null;
+    const mv = !opts?.snap && useChain && this._cfg.motion_compensation
+      ? newMotion
+      : null;
+    const translateDurMs = this._timeout;
+    const motionTransition = mv ? `, transform ${translateDurMs}ms linear` : '';
+
     for (let s = 0; s < n; s++) {
       const fi = this._loadedSlots[s];
       const layer = this._radarImage[fi];
@@ -599,12 +768,18 @@ export class RadarPlayer {
         el.style.zIndex = String(newZ);
         el.style.transition = 'none';
         el.style.opacity = '0';
+        // Stage the starting translate before the reflow so the
+        // transform transition has a "from" position to animate from.
+        // No motion: clear any stale translate left over from the
+        // layer's previous role as prev1.
+        el.style.transform = mv ? `translate(${-mv.dx}px, ${-mv.dy}px)` : '';
         // Forced reflow before re-assigning — without this the browser
         // coalesces the two opacity writes and skips the transition.
         // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         void el.offsetHeight;
-        el.style.transition = transition;
+        el.style.transition = transition + motionTransition;
         el.style.opacity = '1';
+        if (mv) el.style.transform = 'translate(0px, 0px)';
       } else if (useChain && s === prev1) {
         // Just-promoted previous current: delayed fade-out. The
         // `transition-delay` (the second time value) holds the layer
@@ -614,13 +789,17 @@ export class RadarPlayer {
         // mode delay is 75% of fade duration — the fade-out starts
         // before fade-in finishes, creating a brief overlap window
         // where the brightness composite stays close to constant.
-        el.style.transition = `opacity ${fade}ms ease-in-out ${fadeOutDelay}ms`;
+        // The transform animation runs the full window (no delay) so
+        // the slide ends in sync with the fade-out.
+        el.style.transition = `opacity ${fade}ms ease-in-out ${fadeOutDelay}ms${motionTransition}`;
         el.style.opacity = '0';
+        if (mv) el.style.transform = `translate(${mv.dx}px, ${mv.dy}px)`;
       } else if (!useChain) {
         // Snap mode / fade=0: every non-current slot snaps to 0
         // immediately so we never see two layers at opacity 1.
         el.style.transition = 'none';
         el.style.opacity = '0';
+        el.style.transform = '';
       }
       // useChain && older: don't touch. Their delayed fade-out from a
       // previous tick is either still finishing or already at 0.
@@ -1092,6 +1271,12 @@ export class RadarPlayer {
     }
     const dwdLayerName = dwdActive ? this._dwdLayerName() : '';
 
+    // Reset motion-compensation state for the fresh set of frames.
+    // _captureFrameSnapshot writes into these as each tile-settle
+    // completes below.
+    this._frameSnapshot = new Array(frameCount).fill(null);
+    this._frameMotion = new Array(frameCount).fill(null);
+
     let newestShown = false;
 
     for (let fi = frameCount - 1; fi >= 0; fi--) {
@@ -1124,6 +1309,19 @@ export class RadarPlayer {
       if (status === 'loaded') {
         const prevSlotCount = this._loadedSlots.length;
         this._loadedSlots.unshift(fi);
+
+        // Cross correlation prep: snapshot this frame, then compute the
+        // motion vector(s) we now have enough data for. Frames load
+        // newest first, so after fi snapshots we may be able to compute
+        // motion FROM fi INTO fi+1 (snapshotted last iteration).
+        // motion[fi] itself needs fi-1, which arrives next iteration.
+        if (this._cfg.motion_compensation) {
+          this._captureFrameSnapshot(fi);
+          this._computeMotionForFrame(fi);       // usually still null
+          if (fi + 1 < this._frameSnapshot.length) {
+            this._computeMotionForFrame(fi + 1);
+          }
+        }
 
         if (!newestShown) {
           // Show newest frame as a static preview before the loop starts.
@@ -1239,6 +1437,17 @@ export class RadarPlayer {
     this._radarTime[frameCount - 1] = newTime;
     this._radarPaths[frameCount - 1] = latestFrame;
     this._loadedSlots = this._loadedSlots.map(fi => fi - 1).filter(fi => fi >= 0);
+    // Shift motion-compensation state alongside the radar frames. The
+    // old frame 0 is dropped, so old motion[1] (which described the 0→1
+    // transition) is also dropped — its predecessor no longer exists.
+    // All later motion vectors stay valid because the pair they describe
+    // (old fi-1, old fi) survives intact as (new fi-2, new fi-1).
+    for (let i = 0; i < frameCount - 1; i++) {
+      this._frameSnapshot[i] = this._frameSnapshot[i + 1] ?? null;
+      this._frameMotion[i] = i === 0 ? null : (this._frameMotion[i + 1] ?? null);
+    }
+    this._frameSnapshot[frameCount - 1] = null;
+    this._frameMotion[frameCount - 1] = null;
     this._computeNowFrameIndex();
     this._applyNowMarker();
 
@@ -1256,7 +1465,16 @@ export class RadarPlayer {
       }
       const newStatus: FrameStatus = newLayer._tileFailed > 0 ? 'failed' : 'loaded';
       this._setSegment(frameCount - 1, newStatus);
-      if (newStatus === 'loaded') this._loadedSlots.push(frameCount - 1);
+      if (newStatus === 'loaded') {
+        this._loadedSlots.push(frameCount - 1);
+        // Snapshot the freshly loaded newest frame so its transition
+        // into view picks up motion compensation from the previous
+        // frame.
+        if (this._cfg.motion_compensation) {
+          this._captureFrameSnapshot(frameCount - 1);
+          this._computeMotionForFrame(frameCount - 1);
+        }
+      }
       // Restart loop at newest frame so new data shows immediately
       this._currentSlot = this._loadedSlots.length - 1;
       this._startLoop();
