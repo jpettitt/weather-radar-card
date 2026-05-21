@@ -424,6 +424,26 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             @value-changed=${this._handleSelectorChanged}
           ></ha-selector>
         ` : ''}
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{
+            select: {
+              mode: 'dropdown',
+              options: [
+                { value: 0.25, label: localize('editor.animation.playback_speed_quarter') },
+                { value: 0.5,  label: localize('editor.animation.playback_speed_half') },
+                { value: 1,    label: localize('editor.animation.playback_speed_normal') },
+                { value: 2,    label: localize('editor.animation.playback_speed_double') },
+                { value: 4,    label: localize('editor.animation.playback_speed_quad') },
+              ],
+            },
+          }}
+          .value=${config.playback_speed ?? 1}
+          .label=${localize('editor.animation.playback_speed')}
+          .helper=${localize('editor.animation.playback_speed_helper')}
+          .configValue=${'playback_speed'}
+          @value-changed=${this._handleSelectorChanged}
+        ></ha-selector>
 
         <!-- APPEARANCE -->
         <h3 class="section-header">${localize('editor.section.appearance')}</h3>

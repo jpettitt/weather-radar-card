@@ -24,21 +24,35 @@ import { RadarPlayer } from './radar-player';
 
 // localStorage key for the toolbar's playback-speed multiplier. Shared
 // across every weather-radar-card on the page so a user-set speed
-// preference applies wherever the card is embedded. Validated and
-// clamped on read; corrupt or out-of-range values fall back to 1×.
+// preference applies wherever the card is embedded.
 const PLAYBACK_SPEED_KEY = 'wrc-playback-speed';
 
-function parsePlaybackSpeed(raw: string | null): number {
-  if (raw == null) return 1;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return 1;
-  // Clamp to the SPEED_STEPS range; values outside it indicate a stale
-  // entry from a version with different presets.
+// Clamp to the SPEED_STEPS range. Values outside it indicate either a
+// stale localStorage entry from a future version with different presets
+// or a YAML config someone typed by hand. Either way the sensible
+// behaviour is to pin to the nearest supported preset rather than
+// freezing the loop at an extreme value.
+function clampSpeed(n: number): number {
   const lo = SPEED_STEPS[0];
   const hi = SPEED_STEPS[SPEED_STEPS.length - 1];
   if (n < lo) return lo;
   if (n > hi) return hi;
   return n;
+}
+
+// Resolve the effective starting playback speed. localStorage (the
+// user's button-click preference) wins if set, otherwise the card's
+// playback_speed config value, otherwise 1×. Each layer parses and
+// clamps independently so a corrupt entry doesn't poison the chain.
+function resolvePlaybackSpeed(stored: string | null, configDefault: number | undefined): number {
+  if (stored != null) {
+    const n = Number(stored);
+    if (Number.isFinite(n) && n > 0) return clampSpeed(n);
+  }
+  if (typeof configDefault === 'number' && Number.isFinite(configDefault) && configDefault > 0) {
+    return clampSpeed(configDefault);
+  }
+  return 1;
 }
 import {
   isMobileDevice,
@@ -961,10 +975,16 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (!showRecenter && !showPlayback) return;
     // Restore the user's previous playback speed (if any) before the
     // toolbar mounts so the button label and the player's effective
-    // frame_delay both start coherent. Single-key localStorage entry
-    // shared across all cards on the page — a per-card key is overkill
-    // for a UI preference that's expected to be the same everywhere.
-    const savedSpeed = parsePlaybackSpeed(localStorage.getItem(PLAYBACK_SPEED_KEY));
+    // frame_delay both start coherent. localStorage (set by a runtime
+    // button click) wins over the YAML default; the YAML default acts
+    // as a per-card factory value for new browsers or after the user
+    // clears localStorage. Single-key localStorage entry shared across
+    // all cards on the page — a per-card key is overkill for a UI
+    // preference that's expected to be the same everywhere.
+    const savedSpeed = resolvePlaybackSpeed(
+      localStorage.getItem(PLAYBACK_SPEED_KEY),
+      this._config.playback_speed,
+    );
     this._player?.setSpeedMultiplier(savedSpeed);
 
     this._toolbar = new RadarToolbar({

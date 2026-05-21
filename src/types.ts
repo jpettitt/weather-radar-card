@@ -67,6 +67,16 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * tuning the look of the crossfade.
    */
   smooth_overlap?: number;
+  /**
+   * Default playback-speed multiplier applied to frame_delay. The toolbar
+   * exposes a button that cycles through ¼×, ½×, 1×, 2×, 4×; this config
+   * value is the starting point a fresh card uses before the user has
+   * touched that button. Once the user does touch it, their choice is
+   * persisted to localStorage and takes precedence over this default on
+   * subsequent reloads, so the YAML setting acts as a per-card "factory"
+   * value rather than a hard override.
+   */
+  playback_speed?: number;
   center_longitude?: CoordinateConfig;
   center_latitude?: CoordinateConfig;
   zoom_level?: number;

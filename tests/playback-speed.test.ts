@@ -49,3 +49,52 @@ describe('SPEED_STEPS', () => {
     expect(SPEED_STEPS[SPEED_STEPS.length - 1]).toBeGreaterThan(1);  // at least one fast preset
   });
 });
+
+// Mirror of the private resolvePlaybackSpeed in weather-radar-card.ts.
+// Duplicated here rather than imported because the card module pulls in
+// Lit and the full DOM stack — the test would have to mock too many
+// things for ~10 lines of code. The mirror stays in sync via the
+// behaviour-locking tests below; if the card's logic changes, the
+// duplicated copy needs to track it.
+function resolvePlaybackSpeed(stored: string | null, configDefault: number | undefined): number {
+  const lo = SPEED_STEPS[0];
+  const hi = SPEED_STEPS[SPEED_STEPS.length - 1];
+  const clamp = (n: number): number => (n < lo ? lo : n > hi ? hi : n);
+  if (stored != null) {
+    const n = Number(stored);
+    if (Number.isFinite(n) && n > 0) return clamp(n);
+  }
+  if (typeof configDefault === 'number' && Number.isFinite(configDefault) && configDefault > 0) {
+    return clamp(configDefault);
+  }
+  return 1;
+}
+
+describe('resolvePlaybackSpeed', () => {
+  it('prefers localStorage over the YAML default', () => {
+    expect(resolvePlaybackSpeed('2', 0.5)).toBe(2);
+  });
+
+  it('falls back to the YAML default when localStorage is empty', () => {
+    expect(resolvePlaybackSpeed(null, 0.5)).toBe(0.5);
+  });
+
+  it('falls back to 1× when neither localStorage nor config is set', () => {
+    expect(resolvePlaybackSpeed(null, undefined)).toBe(1);
+  });
+
+  it('clamps an out-of-range localStorage value to the SPEED_STEPS bounds', () => {
+    expect(resolvePlaybackSpeed('100', undefined)).toBe(SPEED_STEPS[SPEED_STEPS.length - 1]);
+    expect(resolvePlaybackSpeed('0.001', undefined)).toBe(SPEED_STEPS[0]);
+  });
+
+  it('ignores garbage in localStorage and uses the YAML default', () => {
+    expect(resolvePlaybackSpeed('not-a-number', 2)).toBe(2);
+    expect(resolvePlaybackSpeed('-5', 2)).toBe(2);
+  });
+
+  it('ignores a non-positive config default and returns 1×', () => {
+    expect(resolvePlaybackSpeed(null, 0)).toBe(1);
+    expect(resolvePlaybackSpeed(null, -1)).toBe(1);
+  });
+});

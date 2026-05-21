@@ -171,7 +171,14 @@
       "transition_time_helper": "Standard: 40 % der Bildverzögerung — max: Bildverzögerung",
       "smooth_animation": "Sanfte Animation (kontinuierliche Überblendung)",
       "smooth_overlap": "Überblendungsüberlappung",
-      "smooth_overlap_helper": "Nur im Sanftmodus. 0 = sequentiell (kein Helligkeitsabfall, Bild gehalten). 1 = gleichzeitig (kurzer Helligkeitsabfall in der Mitte). Standard: 1"
+      "smooth_overlap_helper": "Nur im Sanftmodus. 0 = sequentiell (kein Helligkeitsabfall, Bild gehalten). 1 = gleichzeitig (kurzer Helligkeitsabfall in der Mitte). Standard: 1",
+      "playback_speed": "Wiedergabegeschwindigkeit",
+      "playback_speed_helper": "Multiplikator für die Frame-Verzögerung. Die Geschwindigkeitstaste in der Werkzeugleiste kann dies auch zur Laufzeit ändern; diese Laufzeitwahl wird pro Browser gespeichert und überschreibt diese Voreinstellung.",
+      "playback_speed_quarter": "¼× (langsamste)",
+      "playback_speed_half": "½× (langsamer)",
+      "playback_speed_normal": "1× (normal)",
+      "playback_speed_double": "2× (schneller)",
+      "playback_speed_quad": "4× (schnellste)"
     },
     "appearance": {
       "height": "Höhe",
