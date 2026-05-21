@@ -292,6 +292,7 @@ export class RadarPlayer {
     );
     this._map.on('zoomend', this._onZoomEnd);
     this._map.on('moveend', this._onMoveEnd);
+    this._map.on('resize', this._onResize);
   }
 
   private _sourceMaxNativeZoom(): number {
@@ -310,18 +311,27 @@ export class RadarPlayer {
         if (layer) (layer.options as any).minNativeZoom = newPin;
       }
     }
-    // Tiles will re-fetch at the new viewport, so any cached frame
-    // snapshots are now stale (they were captured at the old position
-    // and pixel scale). Bump the generation and drop them; new
-    // snapshots get captured as the freshly loaded tiles settle.
+    // Zoom changes pixel scale, so cached snapshots and the screen-
+    // pixel motion vectors derived from them are stale. Drop them and
+    // immediately recapture from whatever tiles are in the DOM at the
+    // new zoom level; _onLayerLoaded will run again if new tiles also
+    // arrive, overwriting with a fresher snapshot.
     this._invalidateSnapshots();
+    this._resnapshotAll();
   };
 
   private _onMoveEnd = (): void => {
-    // Pan loads different tiles into the same layers, so the cached
-    // snapshots no longer represent what's on screen. Reset and let
-    // snapshots regenerate on next layer settle.
+    // Pan changes which tiles are visible, but Leaflet only fires the
+    // layer-level 'load' event when it actually fetches NEW tiles. A
+    // small pan within the already-cached tile set just repositions
+    // existing tiles via CSS transform and never fires 'load' — which
+    // means _onLayerLoaded never runs and motion compensation would
+    // stay off indefinitely after a cached-pan. So we resnapshot here
+    // directly using whatever tiles are in the DOM right now; if a
+    // larger pan also triggers new tile fetches, _onLayerLoaded picks
+    // those up later and overwrites with the fresher snapshot.
     this._invalidateSnapshots();
+    this._resnapshotAll();
   };
 
   // Constants for the snapshot / cross correlation pipeline.
@@ -427,6 +437,56 @@ export class RadarPlayer {
     };
   }
 
+  // Handle a layer's Leaflet 'load' event by snapshotting just that
+  // layer and recomputing the motion vectors for the two pairs it
+  // participates in (the transition INTO it, and the transition OUT
+  // of it to the next-newer frame). Per-layer rather than a debounced
+  // global sweep, because Leaflet's 'load' fires the moment THIS
+  // layer's visible tiles are decoded, which is precisely when its
+  // pixel buffer is consistent. A global sweep timer can fire while
+  // a slower layer is still decoding, leaving a partial snapshot
+  // whose SAD result then drags the smoothed motion for that frame
+  // off course — visible as a jittery patch midway through the loop
+  // after a pan, zoom, or resize.
+  private _onLayerLoaded = (layer: FetchTileLayer | FetchWmsTileLayer): void => {
+    if (!this._cfg.motion_compensation) return;
+    const fi = this._radarImage.indexOf(layer);
+    if (fi < 0) return;
+    this._captureFrameSnapshot(fi);
+    this._computeMotionForFrame(fi);
+    if (fi + 1 < this._frameSnapshot.length) {
+      this._computeMotionForFrame(fi + 1);
+    }
+  };
+
+  // Map container size changed (window resize, parent reflow, theme
+  // switch, etc.). Leaflet's tile manager will re-fetch tiles for the
+  // new viewport and each layer will fire its own 'load' as its tiles
+  // settle, at which point _onLayerLoaded rebuilds its snapshot. Drop
+  // the cached snapshots and motion vectors now so the playback runs
+  // without compensation through the resize rather than animating
+  // with stale viewport data.
+  private _onResize = (): void => {
+    this._invalidateSnapshots();
+    this._resnapshotAll();
+  };
+
+  // Snapshot every currently attached radar layer and compute every
+  // adjacent-pair motion vector. Called after view changes (pan, zoom,
+  // resize) where Leaflet's 'load' event may not fire because the
+  // necessary tiles are already cached and only reposition. Per-layer
+  // 'load' still handles the case where new tiles do load and gives
+  // a fresher snapshot.
+  private _resnapshotAll(): void {
+    if (!this._cfg.motion_compensation) return;
+    for (let fi = 0; fi < this._radarImage.length; fi++) {
+      if (this._radarImage[fi]) this._captureFrameSnapshot(fi);
+    }
+    for (let fi = 1; fi < this._frameSnapshot.length; fi++) {
+      this._computeMotionForFrame(fi);
+    }
+  }
+
   // ── Config helpers ───────────────────────────────────────────────────────
 
   private get _cfg(): WeatherRadarCardConfig { return this._getConfig(); }
@@ -494,6 +554,7 @@ export class RadarPlayer {
     this._clearLayers();
     this._map?.off('zoomend', this._onZoomEnd);
     this._map?.off('moveend', this._onMoveEnd);
+    this._map?.off('resize', this._onResize);
     if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
     this._worker?.terminate();
     this._worker = null;
@@ -1149,8 +1210,18 @@ export class RadarPlayer {
     const { size: tileSize, zoomOffset } = this._radarTileSize();
     // Drive the spinner from each layer's load events, so pan/zoom edge
     // fetches on attached layers light it up too (not just frame status).
+    // The same 'load' event is also our cue to refresh that layer's
+    // motion-compensation snapshot: Leaflet fires it once a layer's
+    // visible tiles are all decoded, which is exactly the right moment
+    // to read pixels back. Per-layer rather than a global debounced
+    // sweep, because a debounce timer can fire while ONE late-loading
+    // layer is still decoding, leaving a partial snapshot whose SAD
+    // result then drags the smoothed motion vector for that frame off
+    // course — visible as a jittery patch midway through the loop
+    // after a pan.
     const wireSpinner = (l: FetchTileLayer | FetchWmsTileLayer): typeof l => {
       l.on('loading load', () => this._updateLoadingSpinner());
+      l.on('load', () => this._onLayerLoaded(l));
       return l;
     };
     if (dataSource === 'NOAA') {
