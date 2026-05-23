@@ -6,7 +6,7 @@ Current architecture as of **v3.5.0**. The original symmetric crossfade
 (both layers fade in/out at the same time) shipped through v3.3.0 — it
 produced a visible alpha dip at the midpoint where both layers sat at
 ~0.5 opacity. v3.4.0 replaced that with the **two-slot delayed-fadeout
-model** documented below ([#113](https://github.com/Makin-Things/weather-radar-card/pull/113)),
+model** documented below ([#113](https://github.com/jpettitt/weather-radar-card/pull/113)),
 and 3.4.0-beta2 / 3.5.0 added the `smooth_overlap` knob, dynamic
 tile size, pause-when-hidden, and the `past_minutes` /
 `forecast_minutes` / `frame_stride_minutes` time-range model

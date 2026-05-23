@@ -12,8 +12,11 @@
     "custom-cards"
   ],
   "module": "weather-radar-card.js",
-  "repository": "git@github.com:makin-things/weather-radar-card.git",
-  "author": "Simon Ratcliffe <simon@makin-things.com>",
+  "repository": "git@github.com:jpettitt/weather-radar-card.git",
+  "author": "Simon Ratcliffe",
+  "contributors": [
+    "John Pettitt"
+  ],
   "license": "MIT",
   "dependencies": {
     "@lit-labs/scoped-registry-mixin": "^1.0.0",

@@ -6,7 +6,7 @@ This design also introduces a **session-only layer-toggle menu** on the map for 
 
 ## Status — shipped in v3.5.0
 
-Both Phase 1 (polygon-only alerts) and Phase 2 (zone resolution) released in [v3.5.0](https://github.com/Makin-Things/weather-radar-card/releases/tag/v3.5.0). Tracking issue [#116](https://github.com/Makin-Things/weather-radar-card/issues/116) closed.
+Both Phase 1 (polygon-only alerts) and Phase 2 (zone resolution) released in [v3.5.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.5.0). Tracking issue [#116](https://github.com/jpettitt/weather-radar-card/issues/116) closed.
 
 **Implementation:** [src/nws-alerts-layer.ts](../src/nws-alerts-layer.ts), [src/nws-alert-colors.ts](../src/nws-alert-colors.ts), [src/nws-alert-categories.ts](../src/nws-alert-categories.ts). Shared helpers in [src/geo-utils.ts](../src/geo-utils.ts), [src/string-utils.ts](../src/string-utils.ts), [src/region-warning.ts](../src/region-warning.ts). Editor surface in the "Hazard Overlays" subpage of [src/editor.ts](../src/editor.ts). Tests in [tests/nws-alert-categories.test.ts](../tests/nws-alert-categories.test.ts), [tests/nws-alert-colors.test.ts](../tests/nws-alert-colors.test.ts), [tests/nws-alerts-helpers.test.ts](../tests/nws-alerts-helpers.test.ts), [tests/region-warning.test.ts](../tests/region-warning.test.ts).
 
@@ -53,7 +53,7 @@ https://api.weather.gov/alerts/active?status=actual&message_type=alert
 
 - **Coverage:** US + territories (PR, VI, GU, AS, MP) + coastal/marine zones.
 - **CORS:** enabled. No auth required.
-- **User-Agent header is required** by NWS — must include a contact identifier. Use `weather-radar-card (https://github.com/Makin-Things/weather-radar-card)`.
+- **User-Agent header is required** by NWS — must include a contact identifier. Use `weather-radar-card (https://github.com/jpettitt/weather-radar-card)`.
 - **Update cadence on NWS's side:** alerts are pushed within seconds of issuance. Polling at 60s is fine; we'll use 60s when alerts are visible, 5 min when none.
 - **Volume:** typically 200–800 active alerts nationwide. Each `Feature` has a polygon (or sometimes only zone references — see below) and a `properties.event` string like `"Tornado Warning"`.
 

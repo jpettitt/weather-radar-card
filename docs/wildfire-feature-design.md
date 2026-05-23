@@ -4,7 +4,7 @@ US wildfire perimeters as a toggleable map overlay, sourced from NIFC's WFIGS Ge
 
 ## Status — shipped in v3.5.0
 
-Released as part of [v3.5.0](https://github.com/Makin-Things/weather-radar-card/releases/tag/v3.5.0). Tracking issue [#115](https://github.com/Makin-Things/weather-radar-card/issues/115) closed.
+Released as part of [v3.5.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.5.0). Tracking issue [#115](https://github.com/jpettitt/weather-radar-card/issues/115) closed.
 
 **Implementation:** [src/wildfire-layer.ts](../src/wildfire-layer.ts), with shared helpers in [src/geo-utils.ts](../src/geo-utils.ts), [src/string-utils.ts](../src/string-utils.ts), and [src/region-warning.ts](../src/region-warning.ts). Editor surface in the new "Hazard Overlays" subpage of [src/editor.ts](../src/editor.ts). Tests in [tests/](../tests/) (geo helpers, string helpers, region-warning composition, plus the wildfire layer's internals via test-only exports).
 

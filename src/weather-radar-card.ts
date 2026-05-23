@@ -52,7 +52,7 @@ console.info(
   // description tile — no map. The card uses getStubConfig() below to
   // pick the preview / initial config.)
   preview: true,
-  documentationURL: 'https://github.com/Makin-Things/weather-radar-card',
+  documentationURL: 'https://github.com/jpettitt/weather-radar-card',
 });
 
 @customElement('weather-radar-card')

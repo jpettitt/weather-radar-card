@@ -15,7 +15,7 @@ import { escapeHtml, slugify } from './string-utils';
 // Rendered after the popup's safety disclaimer so users can reach the
 // full caveat with one click. The hash matches GitHub's auto-generated
 // anchor for the "## Wildfires" heading.
-const DOCS_WILDFIRES_URL = 'https://github.com/Makin-Things/weather-radar-card/blob/master/docs/overlays.md#wildfires';
+const DOCS_WILDFIRES_URL = 'https://github.com/jpettitt/weather-radar-card/blob/master/docs/overlays.md#wildfires';
 
 const NIFC_URL =
   'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/'

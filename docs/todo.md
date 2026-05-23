@@ -233,7 +233,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Investigated, won't pursue
 
-- **Custom HACS icon** ([#126](https://github.com/Makin-Things/weather-radar-card/issues/126)).
+- **Custom HACS icon** ([#126](https://github.com/jpettitt/weather-radar-card/issues/126)).
   HACS doesn't render custom icons for Lovelace plugins — verified
   empirically by checking the HACS frontend tab: zero plugins in the
   default store carry one, and the
@@ -314,9 +314,9 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - Time-based playback range (`past_minutes` / `forecast_minutes` / `frame_stride_minutes`) replacing `frame_count` — source-agnostic via SOURCE_CAPS table; auto-migrates legacy configs ✅ — 3.5.0
 - WYSIWYG map editing (back-prop pan/zoom into editor Lat/Long fields) ✅ — 3.5.0
 - Build timestamp in console signon (cache-bust verification aid) ✅ — 3.5.0
-- Loading spinner + `show_loading_spinner` config (contributed by @genericJE, [#124](https://github.com/Makin-Things/weather-radar-card/pull/124)) ✅ — 3.5.0
-- Now marker on the progress bar (contributed by @genericJE, [#125](https://github.com/Makin-Things/weather-radar-card/pull/125)) ✅ — 3.5.0
-- Dark / satellite map scale text-shadow fix (contributed by @genericJE, [#123](https://github.com/Makin-Things/weather-radar-card/pull/123)) ✅ — 3.5.0
+- Loading spinner + `show_loading_spinner` config (contributed by @genericJE, [#124](https://github.com/jpettitt/weather-radar-card/pull/124)) ✅ — 3.5.0
+- Now marker on the progress bar (contributed by @genericJE, [#125](https://github.com/jpettitt/weather-radar-card/pull/125)) ✅ — 3.5.0
+- Dark / satellite map scale text-shadow fix (contributed by @genericJE, [#123](https://github.com/jpettitt/weather-radar-card/pull/123)) ✅ — 3.5.0
 - `npm run build` regenerates `.js.gz` so HA can't serve a stale gzipped bundle ✅ — 3.5.0
 - DWD-outside-coverage region banner — visible UI cue replacing the developer-only `console.warn` from 3.4.0 ✅ — 3.5.0
 - Markercluster `_bounds`-undefined race in the resize path (RAF defer + `try/catch`) ✅ — 3.5.0

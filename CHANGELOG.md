@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`AbortController` on tile + data fetches** ([#159](https://github.com/Makin-Things/weather-radar-card/pull/159)). Radar tiles, wildfire perimeter fetches, NWS alerts (+ per-zone shape fetches), and the RainViewer JSON metadata call now cancel their HTTP requests when superseded by a fresh fetch, when the card tears down, or when Leaflet unloads the tile (pan-out-of-view / zoom). Previously the generation-counter trick discarded stale **responses** but the browser still downloaded the full payload first. On mobile or rate-limited connections a low-zoom continental pan can trigger dozens of tile requests that immediately get superseded — those now show as `(canceled)` in DevTools Network instead of completing. Steady-state playback is unchanged (tiles recycle across frames without unloading → no abort, correct). `src/wind-grid-fetcher.ts` intentionally not instrumented (its request-coalescing makes correct cancellation tricky; the 60 s cache TTL already provides similar bandwidth conservation — revisit when 3.7's layer-control panel adds explicit per-card cancellation).
+- **`AbortController` on tile + data fetches** ([#159](https://github.com/jpettitt/weather-radar-card/pull/159)). Radar tiles, wildfire perimeter fetches, NWS alerts (+ per-zone shape fetches), and the RainViewer JSON metadata call now cancel their HTTP requests when superseded by a fresh fetch, when the card tears down, or when Leaflet unloads the tile (pan-out-of-view / zoom). Previously the generation-counter trick discarded stale **responses** but the browser still downloaded the full payload first. On mobile or rate-limited connections a low-zoom continental pan can trigger dozens of tile requests that immediately get superseded — those now show as `(canceled)` in DevTools Network instead of completing. Steady-state playback is unchanged (tiles recycle across frames without unloading → no abort, correct). `src/wind-grid-fetcher.ts` intentionally not instrumented (its request-coalescing makes correct cancellation tricky; the 60 s cache TTL already provides similar bandwidth conservation — revisit when 3.7's layer-control panel adds explicit per-card cancellation).
 
 ### Internal
 
@@ -46,8 +46,8 @@ Three deferred items from the [code review](docs/code-review.md) pass are tracke
 
 ### Fixed
 
-- **Shadow clouds / flicker at `radar_opacity < 1`** ([#151](https://github.com/Makin-Things/weather-radar-card/issues/151)). With per-layer opacity set to `radar_opacity`, two semi-transparent radar layers stacked during the crossfade and the alpha-over composite brightened during the overlap window — visible as "shadow clouds" (rain from both frames showing through where they didn't perfectly align) and as a flicker on every animation tick. Fix moves all radar tile layers into a dedicated `wrcRadar` Leaflet pane (z-index 240, between basemap and wind-flow) and applies `radar_opacity` on the pane. Individual layers now crossfade between 0 and 1, so the composite α inside the pane stays at 1 throughout the overlap; the pane multiplies the whole composite by `radar_opacity` once. DWD coverage mask layer unaffected — already on its own pane, snap-switched, controlled by separate CSS theme vars.
-- **Ghost trails of stacked radar frames during initial load** ([#155](https://github.com/Makin-Things/weather-radar-card/pull/155)). While the card was still fetching frames on initial load, the playback showed a growing trail of overlapping past frames stacked under the current one — small rain cells looked smeared until the loop completed a full cycle and wrapped back to slot 0. Cause was a missing companion bump: when an older frame finished loading and was prepended to `_loadedSlots`, `_currentSlot` was bumped to keep the same physical frame visible, but `_prev1Slot` (also an index into `_loadedSlots`) was not — so on the next tick `_showSlot` faded out the wrong layer and the actually-visible previous frame stayed orphaned at active opacity until the loop wrapped. Fixed by shifting `_prev1Slot` alongside `_currentSlot`. Contributed by [@genericJE](https://github.com/genericJE).
+- **Shadow clouds / flicker at `radar_opacity < 1`** ([#151](https://github.com/jpettitt/weather-radar-card/issues/151)). With per-layer opacity set to `radar_opacity`, two semi-transparent radar layers stacked during the crossfade and the alpha-over composite brightened during the overlap window — visible as "shadow clouds" (rain from both frames showing through where they didn't perfectly align) and as a flicker on every animation tick. Fix moves all radar tile layers into a dedicated `wrcRadar` Leaflet pane (z-index 240, between basemap and wind-flow) and applies `radar_opacity` on the pane. Individual layers now crossfade between 0 and 1, so the composite α inside the pane stays at 1 throughout the overlap; the pane multiplies the whole composite by `radar_opacity` once. DWD coverage mask layer unaffected — already on its own pane, snap-switched, controlled by separate CSS theme vars.
+- **Ghost trails of stacked radar frames during initial load** ([#155](https://github.com/jpettitt/weather-radar-card/pull/155)). While the card was still fetching frames on initial load, the playback showed a growing trail of overlapping past frames stacked under the current one — small rain cells looked smeared until the loop completed a full cycle and wrapped back to slot 0. Cause was a missing companion bump: when an older frame finished loading and was prepended to `_loadedSlots`, `_currentSlot` was bumped to keep the same physical frame visible, but `_prev1Slot` (also an index into `_loadedSlots`) was not — so on the next tick `_showSlot` faded out the wrong layer and the actually-visible previous frame stayed orphaned at active opacity until the loop wrapped. Fixed by shifting `_prev1Slot` alongside `_currentSlot`. Contributed by [@genericJE](https://github.com/genericJE).
 
 ### Security
 
@@ -193,7 +193,7 @@ Two visual issues we know about and intend to address before 3.6.0 stable:
 
 ## [3.6.0-beta1] - 2026-05-10
 
-> Promotes the 3.6 alpha line to beta and folds in @genericJE's [DWD wind overlay (PR #133)](https://github.com/Makin-Things/weather-radar-card/pull/133): wind barbs, arrows, and animated streamlines, all sampled from the same ICON-D2 10 m wind layer DWD's WarnWetter app uses. Beta scope freeze — no new features after this; bugfix-only path to 3.6.0.
+> Promotes the 3.6 alpha line to beta and folds in @genericJE's [DWD wind overlay (PR #133)](https://github.com/jpettitt/weather-radar-card/pull/133): wind barbs, arrows, and animated streamlines, all sampled from the same ICON-D2 10 m wind layer DWD's WarnWetter app uses. Beta scope freeze — no new features after this; bugfix-only path to 3.6.0.
 
 ### Added
 
@@ -239,7 +239,7 @@ This beta consolidates everything from the 3.6 alpha line:
 
 ## [3.6.0-alpha4] - 2026-05-10
 
-> Lands @genericJE's DWD coverage-overlay fix (originally [PR #132](https://github.com/Makin-Things/weather-radar-card/pull/132), brought across as [PR #141](https://github.com/Makin-Things/weather-radar-card/pull/141)) — the per-frame snap-switched mask that kills the cross-fade pulse on the DWD coverage outline.
+> Lands @genericJE's DWD coverage-overlay fix (originally [PR #132](https://github.com/jpettitt/weather-radar-card/pull/132), brought across as [PR #141](https://github.com/jpettitt/weather-radar-card/pull/141)) — the per-frame snap-switched mask that kills the cross-fade pulse on the DWD coverage outline.
 
 ### Fixed
 
@@ -300,9 +300,9 @@ This beta consolidates everything from the 3.6 alpha line:
 
 > First alpha cut of the 3.6 line. New feature: a lightning overlay sourced from the Blitzortung HA integration. No external HTTP from the card — the integration handles all the data plumbing; we just render.
 >
-> Also includes the tile-active fix and the radar pan/zoom no-teardown perf improvement (PRs [#130](https://github.com/Makin-Things/weather-radar-card/pull/130) + [#131](https://github.com/Makin-Things/weather-radar-card/pull/131) from [@genericJE](https://github.com/genericJE), already on master) — they're carried through this alpha by virtue of merging master in.
+> Also includes the tile-active fix and the radar pan/zoom no-teardown perf improvement (PRs [#130](https://github.com/jpettitt/weather-radar-card/pull/130) + [#131](https://github.com/jpettitt/weather-radar-card/pull/131) from [@genericJE](https://github.com/genericJE), already on master) — they're carried through this alpha by virtue of merging master in.
 >
-> **Coming in 3.6.0-beta1:** the DWD coverage-mask pulse fix ([#132](https://github.com/Makin-Things/weather-radar-card/pull/132)) and the wind overlay ([#133](https://github.com/Makin-Things/weather-radar-card/pull/133)) — both pending review feedback addressed by [@genericJE](https://github.com/genericJE). 3.6.0 stable will consolidate alpha1 + beta1.
+> **Coming in 3.6.0-beta1:** the DWD coverage-mask pulse fix ([#132](https://github.com/jpettitt/weather-radar-card/pull/132)) and the wind overlay ([#133](https://github.com/jpettitt/weather-radar-card/pull/133)) — both pending review feedback addressed by [@genericJE](https://github.com/genericJE). 3.6.0 stable will consolidate alpha1 + beta1.
 
 ### Added
 
@@ -353,7 +353,7 @@ This beta consolidates everything from the 3.6 alpha line:
 - **Forecast Duration field** appears only on sources with a forecast (currently DWD: `Off / 1 h / 2 h`). Hidden in the DOM for RainViewer / NOAA.
 - **`frame_stride_minutes`** — YAML-only escape hatch for users who want very large past windows on DWD without the implied frame count.
 - **`SOURCE_CAPS` table** in `src/source-caps.ts` is the single source of truth for per-source `intervalMin` / `maxPastMin` / `editorMaxPastMin` / `maxForecastMin` / defaults. Adding a new radar source = adding a row.
-- **Auto-migration** — `migrateConfig` silently converts legacy `frame_count` to `past_minutes` (using the source's native interval) and `dwd_forecast_hours` to `forecast_minutes`. Existing configs need no changes; warning logged once. The DWD-only `dwd_past_hours` field proposed in [#121](https://github.com/Makin-Things/weather-radar-card/pull/121) by [@genericJE](https://github.com/genericJE) prompted this broader source-agnostic redesign.
+- **Auto-migration** — `migrateConfig` silently converts legacy `frame_count` to `past_minutes` (using the source's native interval) and `dwd_forecast_hours` to `forecast_minutes`. Existing configs need no changes; warning logged once. The DWD-only `dwd_past_hours` field proposed in [#121](https://github.com/jpettitt/weather-radar-card/pull/121) by [@genericJE](https://github.com/genericJE) prompted this broader source-agnostic redesign.
 
 #### Animation
 
@@ -384,7 +384,7 @@ This beta consolidates everything from the 3.6 alpha line:
 - **Dark / satellite map scale rendered a faint duplicate label** behind the main "50 km" text. Leaflet's default `.leaflet-control-scale-line` carries a `text-shadow: 1px 1px #fff` for readability on light basemaps; on the dark / satellite styles that shadow rendered as a ghost. The `.map-dark` override now sets `text-shadow: none`. Contributed by [@genericJE](https://github.com/genericJE) (#123).
 - **Popup "See README" links scrolled to the top of the README** instead of the relevant safety-disclaimer section. The README split that landed during 3.5 removed the `#wildfires` and `#nws-watches--warnings` headings the popup links anchored against; both wildfire and NWS-alert popup links now target the matching headings in `docs/overlays.md`.
 - **Editor toggle markup standardisation regression.** The Loading Spinner row was the lone holdout — text-then-switch with no `<span>`, instead of the canonical `[switch][text]` pattern used everywhere else. Realigned.
-- **Markercluster `_bounds`-undefined race in the resize path** ([#110](https://github.com/Makin-Things/weather-radar-card/issues/110) re-emergence). The 3.1.3 fix capped cluster zoom at 11 to avoid the same race during `_zoomEnd`; the resize path (`invalidateSize` → `markercluster._zoomEnd`) hits the same trap when a `ResizeObserver` callback fires before the cluster group's first bounds computation completes. Defer to next animation frame and wrap `invalidateSize()` in a `try/catch` to recover on the rare remaining edge case.
+- **Markercluster `_bounds`-undefined race in the resize path** ([#110](https://github.com/jpettitt/weather-radar-card/issues/110) re-emergence). The 3.1.3 fix capped cluster zoom at 11 to avoid the same race during `_zoomEnd`; the resize path (`invalidateSize` → `markercluster._zoomEnd`) hits the same trap when a `ResizeObserver` callback fires before the cluster group's first bounds computation completes. Defer to next animation frame and wrap `invalidateSize()` in a `try/catch` to recover on the rare remaining edge case.
 
 ### Documentation
 
@@ -651,33 +651,33 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.2...HEAD
-[3.6.2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.1...v3.6.2
-[3.6.1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.1-rc1...v3.6.1
-[3.6.1-rc1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0...v3.6.1-rc1
-[3.6.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc4...v3.6.0
-[3.6.0-rc4]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc3...v3.6.0-rc4
-[3.6.0-rc3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc2...v3.6.0-rc3
-[3.6.0-rc2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-rc1...v3.6.0-rc2
-[3.6.0-rc1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta2...v3.6.0-rc1
-[3.6.0-beta2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-beta1...v3.6.0-beta2
-[3.6.0-beta1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha4...v3.6.0-beta1
-[3.6.0-alpha4]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha3...v3.6.0-alpha4
-[3.6.0-alpha3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha2...v3.6.0-alpha3
-[3.6.0-alpha2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.6.0-alpha1...v3.6.0-alpha2
-[3.6.0-alpha1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.5.0...v3.6.0-alpha1
-[3.5.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.4.0...v3.5.0
-[3.4.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.3.0...v3.4.0
-[3.3.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.2.0-beta...v3.3.0
-[3.2.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.3-beta...v3.2.0-beta
-[3.1.3]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.2...v3.1.3-beta
-[3.1.2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.1...v3.1.2
-[3.1.1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.1.0...v3.1.1
-[3.1.0]: https://github.com/Makin-Things/weather-radar-card/compare/v3.0.2...v3.1.0
-[3.0.2]: https://github.com/Makin-Things/weather-radar-card/compare/v3.0.1...v3.0.2
-[3.0.1]: https://github.com/Makin-Things/weather-radar-card/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/Makin-Things/weather-radar-card/compare/v2.2.0...v3.0.0
-[2.2.0]: https://github.com/Makin-Things/weather-radar-card/compare/v2.1.1...v2.2.0
-[2.1.1]: https://github.com/Makin-Things/weather-radar-card/compare/v2.1.0...v2.1.1
-[2.1.0]: https://github.com/Makin-Things/weather-radar-card/compare/v2.0.4...v2.1.0
-[2.0.4]: https://github.com/Makin-Things/weather-radar-card/releases/tag/v2.0.4
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.2...HEAD
+[3.6.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.1...v3.6.2
+[3.6.1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.1-rc1...v3.6.1
+[3.6.1-rc1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0...v3.6.1-rc1
+[3.6.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-rc4...v3.6.0
+[3.6.0-rc4]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-rc3...v3.6.0-rc4
+[3.6.0-rc3]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-rc2...v3.6.0-rc3
+[3.6.0-rc2]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-rc1...v3.6.0-rc2
+[3.6.0-rc1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-beta2...v3.6.0-rc1
+[3.6.0-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-beta1...v3.6.0-beta2
+[3.6.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-alpha4...v3.6.0-beta1
+[3.6.0-alpha4]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-alpha3...v3.6.0-alpha4
+[3.6.0-alpha3]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-alpha2...v3.6.0-alpha3
+[3.6.0-alpha2]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0-alpha1...v3.6.0-alpha2
+[3.6.0-alpha1]: https://github.com/jpettitt/weather-radar-card/compare/v3.5.0...v3.6.0-alpha1
+[3.5.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.4.0...v3.5.0
+[3.4.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.3.0...v3.4.0
+[3.3.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.2.0-beta...v3.3.0
+[3.2.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.1.3-beta...v3.2.0-beta
+[3.1.3]: https://github.com/jpettitt/weather-radar-card/compare/v3.1.2...v3.1.3-beta
+[3.1.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.1.1...v3.1.2
+[3.1.1]: https://github.com/jpettitt/weather-radar-card/compare/v3.1.0...v3.1.1
+[3.1.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.0.2...v3.1.0
+[3.0.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.0.1...v3.0.2
+[3.0.1]: https://github.com/jpettitt/weather-radar-card/compare/v3.0.0...v3.0.1
+[3.0.0]: https://github.com/jpettitt/weather-radar-card/compare/v2.2.0...v3.0.0
+[2.2.0]: https://github.com/jpettitt/weather-radar-card/compare/v2.1.1...v2.2.0
+[2.1.1]: https://github.com/jpettitt/weather-radar-card/compare/v2.1.0...v2.1.1
+[2.1.0]: https://github.com/jpettitt/weather-radar-card/compare/v2.0.4...v2.1.0
+[2.0.4]: https://github.com/jpettitt/weather-radar-card/releases/tag/v2.0.4
