@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.3] - 2026-05-23
+
+> Patch release: fixes the GUI editor showing empty/invisible input fields under LOCATION, ANIMATION, APPEARANCE, OVERLAYS, and several marker fields on current HA versions. **The card itself was unaffected** — only the GUI editor was broken; YAML editing always worked. Plus a small cosmetic polish on the marker action buttons.
+
+### Fixed
+
+- **GUI editor inputs invisible on current HA versions** ([#166](https://github.com/jpettitt/weather-radar-card/pull/166)). HA frontend removed `ha-textfield` on 2026-04-01 ([commit "Migrate all from ha-textfield to ha-input #30349"](https://github.com/home-assistant/frontend/pull/30349)), so all 14 of our textfield usages rendered as zero-height invisible elements. Users opening the editor saw section headers (LOCATION, ANIMATION, etc.) with empty space below them — centre coordinates, frame delays, transition time, height/width, wildfire min acres, wildfire radius, and marker positions were uneditable via the GUI. Migrated all usages to the replacement element `ha-input` (1-to-1 API mapping; `helper="..."` renamed to `hint="..."` per the new element's webawesome convention).
+
+### Changed
+
+- **Marker action buttons now use `ha-button`.** The Add Marker, Remove (per marker), and Reset Color (per marker) buttons in the Markers sub-page render with HA's native pill-button style (theme color, white text, ripple) instead of browser-default. Cosmetic only; behaviour unchanged.
+
+### Internal
+
+- Six other bare `<button>` elements (subpage navigation tiles and back links) deliberately stay bare — their custom 3-column / back-link layouts don't fit `ha-button` cleanly.
+
 ## [3.6.2] - 2026-05-22
 
 > Patch release: bandwidth optimisation for mobile users (`AbortController` on tile + data fetches), cleanup of phantom dependencies, and a doc-block above the markercluster race workaround. **No new features, no behaviour changes for existing configs.** The 3.6.1 wind-source registry stays Experimental.
@@ -651,7 +667,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.2...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.3...HEAD
+[3.6.3]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.2...v3.6.3
 [3.6.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.1...v3.6.2
 [3.6.1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.1-rc1...v3.6.1
 [3.6.1-rc1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.0...v3.6.1-rc1
