@@ -2,9 +2,19 @@ name: HACS Action
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+    branches:
+      - main
   schedule:
     - cron: '0 0 * * *'
+
+# Cancel an older run of the same workflow on the same ref when a new push
+# arrives. Saves CI minutes on rapid force-pushes / quick fixups.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:

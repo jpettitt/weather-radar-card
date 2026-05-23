@@ -3,11 +3,17 @@ name: "Build"
 on:
   push:
     branches:
-      - '**'
+      - main
   pull_request:
     branches:
       - main
   workflow_dispatch:
+
+# Cancel an older run of the same workflow on the same ref when a new push
+# arrives. Saves CI minutes on rapid force-pushes / quick fixups.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
