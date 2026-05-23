@@ -74,12 +74,17 @@ been removed.) Open all PRs against `main`.
    [`rollup.config.dev.js`](rollup.config.dev.js) without explicit
    approval — these shape what ships in `dist/` and what's available
    under the dev server.
-5. **`dist/` hand-edits.** Never edit the bundled output by hand.
-   [`.github/workflows/build.yml`](.github/workflows/build.yml)
-   rebuilds and force-commits `dist/weather-radar-card.js` on every
-   push as `chore: update dist [skip ci]`; a hand-edit is undone on
-   the next CI run. Rebuild locally with `npm run build` to verify
-   bundle changes.
+5. **`dist/` JS bundle.** `dist/weather-radar-card.js` and
+   `dist/weather-radar-card.js.gz` are build outputs — not tracked
+   in git. Rebuild locally with `npm run build` for testing; CI
+   validates the bundle builds in every PR
+   ([`.github/workflows/build.yml`](.github/workflows/build.yml));
+   [`.github/workflows/release.yml`](.github/workflows/release.yml)
+   builds a fresh bundle and attaches `dist/*` to each GitHub
+   release for HACS and manual installers. Static assets in
+   `dist/` (PNGs, SVGs, JPG) **are** tracked — they're canonical
+   source, not build output. Don't hand-edit them either; replace
+   the file if a real change is needed.
 6. **Design-doc restructuring.** Typos, link fixes, and clarifying
    additions in [`docs/*-feature-design.md`](docs/) and
    [`docs/animation.md`](docs/animation.md) are fine. Wholesale
@@ -367,7 +372,7 @@ src/const.ts                      CARD_VERSION, BUILD_TIMESTAMP, z-index constan
 tests/                            vitest specs — "stub Leaflet, test the helpers"
 docs/                             User-facing docs + per-feature design docs
 docs/todo.md                      Backlog (shipped + open)
-dist/                             Built bundle — DO NOT hand-edit; CI rebuilds on every push
+dist/                             Static assets (PNGs/SVGs/JPG, tracked). The JS bundle is built by `npm run build` and gitignored — release.yml attaches it to each GitHub release
 .dev/                             Local dev artefacts: HA config, throwaway scripts, draft comments
 .github/workflows/                build.yml, release.yml, hacs-action.yml
 rollup.config.js                  Production bundle config

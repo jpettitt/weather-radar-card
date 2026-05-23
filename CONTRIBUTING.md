@@ -43,6 +43,8 @@ Thank you for your interest in contributing to Weather Radar Card! This document
 
 A `docker-compose.yml` at the repo root spins up a disposable Home Assistant instance with `dist/` bind-mounted into its `www/community/weather-radar-card/` directory. Each `npm run build` is immediately picked up by HA — hard-refresh and you're testing the new bundle. No file copying.
 
+> **First-time setup:** the JS bundle (`dist/weather-radar-card.js`) is not tracked in git. Run `npm run build` once after cloning to populate it, or HA will load an empty bundle.
+
 Requires Docker Desktop (or Podman with the Docker compatibility shim).
 
 ```bash

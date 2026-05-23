@@ -1,7 +1,10 @@
 /node_modules/
 /.rpt2_cache/
 
-# Generated dist files (built by CI and auto-committed to main)
+# Build outputs. Produced by `npm run build`; not tracked in git.
+# CI validates the bundle builds in PRs; release.yml attaches a fresh
+# .js + .gz to each GitHub release. Static assets in dist/ (PNGs / SVGs /
+# JPGs) ARE tracked — they're canonical source, not build output.
 dist/weather-radar-card.js
 dist/weather-radar-card.js.gz
 
