@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tablet-friendly timeline scrubbing.** Added the YAML-only `progress_bar_touch_height` option to enlarge the tappable and draggable progress-bar region upward over the lower map, while keeping the visible segmented track at its existing 8 px height and leaving the bottom chrome unchanged.
+
 ## [3.6.3] - 2026-05-23
 
 > Patch release: fixes the GUI editor showing empty/invisible input fields under LOCATION, ANIMATION, APPEARANCE, OVERLAYS, and several marker fields on current HA versions. **The card itself was unaffected** — only the GUI editor was broken; YAML editing always worked. Plus a small cosmetic polish on the marker action buttons.

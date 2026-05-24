@@ -123,6 +123,8 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   dwd_wind_flow_color_sat?: string;
   show_snow?: boolean;
   show_progress_bar?: boolean;
+  /** YAML-only: height in pixels of the tappable/draggable progress region. The visible track remains 8px. Default 8px. */
+  progress_bar_touch_height?: number;
   show_color_bar?: boolean;
   show_loading_spinner?: boolean;
   // Wildfire overlay (US-only — see docs/wildfire-feature-design.md)

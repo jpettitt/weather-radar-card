@@ -651,15 +651,15 @@ export class RadarPlayer {
   // ── Progress bar ─────────────────────────────────────────────────────────
 
   private _buildSegments(): void {
-    const bar = this._shadowRoot.getElementById('div-progress-bar');
-    if (!bar) return;
-    bar.innerHTML = '';
+    const track = this._shadowRoot.getElementById('div-progress-track');
+    if (!track) return;
+    track.innerHTML = '';
     this._frameStatuses = new Array(this._configFrameCount).fill('empty') as FrameStatus[];
     for (let i = 0; i < this._configFrameCount; i++) {
       const seg = document.createElement('div');
       seg.id = `seg-${i}`;
       seg.style.cssText = `flex:1;height:100%;background-color:${this._segColor('empty', false)}`;
-      bar.appendChild(seg);
+      track.appendChild(seg);
     }
     this._updateLoadingSpinner();
   }
