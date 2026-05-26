@@ -7,9 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.4] - 2026-05-26
+
+> Patch release: tablet-friendly timeline scrubbing for touchscreen dashboards (opt-in via YAML), a lightning-strike layering fix, and an internal HACS-on-PR ops cleanup. **No breaking changes, drop-in patch over 3.6.3.**
+
 ### Added
 
-- **Tablet-friendly timeline scrubbing.** Added the YAML-only `progress_bar_touch_height` option to enlarge the tappable and draggable progress-bar region upward over the lower map, while keeping the visible segmented track at its existing 8 px height and leaving the bottom chrome unchanged.
+- **Tablet-friendly timeline scrubbing** ([#172](https://github.com/jpettitt/weather-radar-card/pull/172)). New YAML-only `progress_bar_touch_height` option to enlarge the tappable and draggable progress-bar region upward over the lower map area, while keeping the visible segmented track at 8 px and leaving the bottom chrome unchanged. Set `progress_bar_touch_height: 44` (or whatever touch target size you need) to make timeline scrubbing reliable on touchscreens — the extra touch area overlays the lower edge of the map, so pan/pinch in that strip is consumed by scrubbing. Default unchanged. **Contributed by [@cgjolberg](https://github.com/cgjolberg)**, with real-hardware testing on a landscape touchscreen tablet.
+
+  ```yaml
+  type: 'custom:weather-radar-card'
+  show_progress_bar: true
+  progress_bar_touch_height: 44
+  ```
+
+### Fixed
+
+- **Lightning strikes — newest renders on top within each pane** ([#171](https://github.com/jpettitt/weather-radar-card/pull/171)). Leaflet's `L.Marker` defaults to z-index by screen-Y position (southern markers on top), not DOM-insertion order — so when two strikes were close together on screen, the southern one would render on top regardless of arrival time. Added explicit `zIndexOffset` derived from each strike's timestamp so the most recent strike always wins within its pane. Matches Blitzortung's own web map convention.
+
+### Internal
+
+- **HACS validation no longer runs on PRs** ([#173](https://github.com/jpettitt/weather-radar-card/pull/173)). Since #165 untracked the built JS bundle, HACS validation against fork PRs always failed because the fork has no GitHub release with the bundle attached. Validation still runs on push to main and the daily cron; PR code is fully validated by the Build matrix.
 
 ## [3.6.3] - 2026-05-23
 
@@ -671,7 +689,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.3...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.4...HEAD
+[3.6.4]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.3...v3.6.4
 [3.6.3]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.2...v3.6.3
 [3.6.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.1...v3.6.2
 [3.6.1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.1-rc1...v3.6.1
