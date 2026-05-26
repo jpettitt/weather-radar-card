@@ -58,6 +58,16 @@ show_playback: true
 zoom_level: 7
 ```
 
+## Tablet-friendly timeline scrubbing
+
+Increase the touch target upward over the lower map area while keeping the visible progress track slim and the bottom bar at its original height.
+
+```yaml
+type: 'custom:weather-radar-card'
+show_progress_bar: true
+progress_bar_touch_height: 44
+```
+
 ## US NOAA radar with slow crossfade
 
 ```yaml
