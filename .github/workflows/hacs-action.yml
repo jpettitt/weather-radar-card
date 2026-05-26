@@ -4,11 +4,19 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
   schedule:
     - cron: '0 0 * * *'
+  workflow_dispatch:
+
+# Note: pull_request trigger removed deliberately. The HACS action queries
+# GitHub's API for the repo being validated, not the workspace — so for a
+# PR opened from a fork it tries to validate the fork's repo, which has
+# neither a committed dist/weather-radar-card.js (we stopped tracking that
+# in PR #165) nor any GitHub releases. The check fails on every fork PR
+# while the contributor's actual code is fine. Code-side validation is
+# covered by build.yml (lint + test + build matrix on Node 20 + 22) which
+# does run on PRs. HACS-spec compliance is caught here on push-to-main
+# and the daily cron.
 
 # Cancel an older run of the same workflow on the same ref when a new push
 # arrives. Saves CI minutes on rapid force-pushes / quick fixups.
