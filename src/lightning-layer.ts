@@ -229,17 +229,28 @@ export class LightningLayer {
     return out;
   }
 
-  // Strike paint order:
-  //   - Within each pane, Leaflet renders markers in DOM-insertion
-  //     order. Newer = inserted later = on top.
-  //   - _collectStrikes walks Object.entries(hass.states), which yields
-  //     entities in HA's creation order — Blitzortung adds them as
-  //     strikes arrive, so newer strikes naturally come later.
-  //   - _addMarker adds new arrivals at the end of each pane.
-  //   - The bolt → + swap uses setIcon (in-place mutation, no DOM
-  //     re-insertion), so a strike's z-position relative to its peers
-  //     is preserved across the swap.
-  // Net effect: newest-on-top, matching Blitzortung's own web map.
+  // Strike paint order: newest-on-top within each pane, matching
+  // Blitzortung's own web map.
+  //
+  // Leaflet's L.Marker computes z-index from screen-Y position
+  // (markers further south render on top) and adds `options.zIndexOffset`
+  // on top. The default ordering is geographic, NOT DOM-insertion order
+  // — without an offset, two strikes close together on screen would
+  // stack with the southern one on top regardless of arrival time.
+  //
+  // We set zIndexOffset = floor(strike.ts / 1000) on every strike
+  // marker (bolt, + fill, + outline). Newer strikes have larger
+  // timestamps → higher offsets → render on top of older strikes in
+  // the same pane, regardless of their relative latitude.
+  //
+  // Seconds-since-epoch is ~1.74e9 in 2026, comfortably under the 2^31
+  // ceiling some browsers apply to CSS z-index. Drops below the ceiling
+  // again if needed by dividing strike.ts by a larger denominator.
+  //
+  // The bolt → + swap uses setIcon (in-place mutation, no DOM
+  // re-insertion), so the original marker's zIndexOffset persists
+  // across the swap. The new OUTLINE marker added during the swap is
+  // given the same strike.ts-derived offset explicitly.
   private _addMarker(id: string, strike: Strike): void {
     const cfg = this._getConfig();
     const plusSize = cfg.lightning_icon_size ?? DEFAULT_ICON_SIZE_PX;
@@ -261,6 +272,7 @@ export class LightningLayer {
           className: 'wrc-lightning-icon',
         }),
         pane: LIGHTNING_PANE,
+        zIndexOffset: Math.floor(strike.ts / 1000),
       });
       marker.bindPopup(() => this._popupHtml(strike), {
         autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight(),
@@ -281,6 +293,7 @@ export class LightningLayer {
   // + phase. Popup binds to the FILL marker (which sits on the higher
   // pane and intercepts clicks); the outline is non-interactive.
   private _addPlusMarkers(id: string, strike: Strike, size: number, fillColor: string): void {
+    const z = Math.floor(strike.ts / 1000);
     const fillMarker = L.marker([strike.lat, strike.lon], {
       icon: L.divIcon({
         html: this._plusFillSvg(size, fillColor),
@@ -288,6 +301,7 @@ export class LightningLayer {
         className: 'wrc-lightning-icon',
       }),
       pane: LIGHTNING_PANE,
+      zIndexOffset: z,
     });
     fillMarker.bindPopup(() => this._popupHtml(strike), {
       autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight(),
@@ -303,6 +317,7 @@ export class LightningLayer {
       }),
       pane: LIGHTNING_OUTLINE_PANE,
       interactive: false,
+      zIndexOffset: z,
     });
     outlineMarker.addTo(this._map);
     this._outlines.set(id, outlineMarker);
@@ -435,6 +450,7 @@ export class LightningLayer {
           }),
           pane: LIGHTNING_OUTLINE_PANE,
           interactive: false,
+          zIndexOffset: Math.floor(strike.ts / 1000),
         });
         outlineMarker.addTo(this._map);
         this._outlines.set(id, outlineMarker);
