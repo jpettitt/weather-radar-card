@@ -58,3 +58,15 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
     * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
+
+// Format a kilometre distance for display in HA's preferred length unit.
+// `lengthUnit` is `hass.config.unit_system.length` ('km' or 'mi'). Anything
+// other than 'mi' defaults to metric — matches the fallback convention used
+// elsewhere in the card (Leaflet scale control, range rings).
+const KM_TO_MILES = 0.621371;
+export function formatDistance(distKm: number, lengthUnit: string | undefined): string {
+  if (lengthUnit === 'mi') {
+    return `${Math.round(distKm * KM_TO_MILES)} mi`;
+  }
+  return `${Math.round(distKm)} km`;
+}

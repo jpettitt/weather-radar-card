@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { geometryLngLatBounds, centroidLngLat, haversineKm } from '../src/geo-utils';
+import { geometryLngLatBounds, centroidLngLat, haversineKm, formatDistance } from '../src/geo-utils';
 
 // A simple unit-square Polygon centred on the origin — easy to reason about
 // for bounds and centroid tests.
@@ -119,5 +119,38 @@ describe('haversineKm', () => {
     const d = haversineKm(0, 0, 0, 180);
     // πR ≈ 20015 km
     expect(d).toBeCloseTo(20015, 0);
+  });
+});
+
+describe('formatDistance — display in HA preferred length unit', () => {
+  it('formats km when unit is "km"', () => {
+    expect(formatDistance(45.4, 'km')).toBe('45 km');
+    expect(formatDistance(99.6, 'km')).toBe('100 km');
+  });
+
+  it('formats miles when unit is "mi"', () => {
+    // 45 km × 0.621371 ≈ 27.96 → 28
+    expect(formatDistance(45, 'mi')).toBe('28 mi');
+    // 100 km × 0.621371 ≈ 62.14 → 62
+    expect(formatDistance(100, 'mi')).toBe('62 mi');
+  });
+
+  it('defaults to km when unit is undefined or unknown', () => {
+    expect(formatDistance(12, undefined)).toBe('12 km');
+    expect(formatDistance(12, '')).toBe('12 km');
+    // Future-proof: HA could theoretically introduce a new unit code; we
+    // default to metric rather than guessing.
+    expect(formatDistance(12, 'lightyears')).toBe('12 km');
+  });
+
+  it('rounds sub-1-unit distances to 0 (pinned behaviour from the original popup logic)', () => {
+    expect(formatDistance(0.3, 'km')).toBe('0 km');
+    // 0.5 km × 0.621371 ≈ 0.31 mi → 0
+    expect(formatDistance(0.5, 'mi')).toBe('0 mi');
+  });
+
+  it('handles exactly zero distance', () => {
+    expect(formatDistance(0, 'km')).toBe('0 km');
+    expect(formatDistance(0, 'mi')).toBe('0 mi');
   });
 });

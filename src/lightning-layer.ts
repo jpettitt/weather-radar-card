@@ -4,7 +4,7 @@ import { HomeAssistant } from 'custom-card-helpers';
 import { WeatherRadarCardConfig } from './types';
 import { LIGHTNING_BOLT_PATH, LIGHTNING_PLUS_PATH } from './marker-icon';
 import { localize } from './localize/localize';
-import { haversineKm } from './geo-utils';
+import { haversineKm, formatDistance } from './geo-utils';
 import { escapeHtml } from './string-utils';
 import {
   BOLT_DURATION_SEC,
@@ -488,7 +488,7 @@ export class LightningLayer {
     const ageSec = this._ageSec(strike);
     const rel = relativeTime(ageSec);
 
-    const distLabel = `${Math.round(distKm)} km ${localize(`ui.lightning.bearing.${bearing}`)}`;
+    const distLabel = `${formatDistance(distKm, this._hass?.config?.unit_system?.length)} ${localize(`ui.lightning.bearing.${bearing}`)}`;
     const relLabel = rel.key === 'just_now'
       ? localize('ui.lightning.relative.just_now')
       : localize(`ui.lightning.relative.${rel.key}`).replace('{n}', String(rel.n));
