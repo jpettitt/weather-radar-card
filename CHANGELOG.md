@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.5] - 2026-06-03
+
+> Patch release: two small QoL fixes (lightning distance in your HA-preferred unit; broken Blitzortung-integration link in the docs). Plus the per-user state framework lands on `main` as dormant infrastructure for v3.7. **No behaviour change for existing configs.**
+
+### Fixed
+
+- **Lightning strike distance now uses HA's preferred length unit** ([#176](https://github.com/jpettitt/weather-radar-card/pull/176)). The popup that opens when you click a lightning strike was always showing distance in "km" regardless of HA's `unit_system` setting. Imperial users had to mentally convert. Now reads `hass.config.unit_system.length` and formats as "45 km" or "28 mi" accordingly — same signal already used by the Leaflet scale control and range rings. Wildfire / NWS-alert popups don't display distances, so this only affects the lightning popup.
+- **Broken Blitzortung-integration link in docs** ([#177](https://github.com/jpettitt/weather-radar-card/pull/177)). README, configuration, overlays, and lightning-feature-design all linked the integration as `home-assistant.io/integrations/blitzortung/`, which is a 404 — there's no native HA Blitzortung integration. Pointed all references at the actual HACS integration at `github.com/mrk-its/homeassistant-blitzortung`. Caught by [@mweinelt](https://github.com/mweinelt). 🙏
+
+### Internal
+
+- **Per-user state framework added on `main`** ([#175](https://github.com/jpettitt/weather-radar-card/pull/175)). New `src/viewer-state.ts` wraps HA's frontend storage WebSocket API to support v3.7's per-user runtime customisation features (layer visibility panel, playback speed override). **Dormant in this release** — no consumer wired up yet, no behaviour change. Documented in [`docs/viewer-state-api.md`](docs/viewer-state-api.md) for contributors.
+
 ## [3.6.4] - 2026-05-26
 
 > Patch release: tablet-friendly timeline scrubbing for touchscreen dashboards (opt-in via YAML), a lightning-strike layering fix, and an internal HACS-on-PR ops cleanup. **No breaking changes, drop-in patch over 3.6.3.**
@@ -689,7 +702,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.4...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.5...HEAD
+[3.6.5]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.4...v3.6.5
 [3.6.4]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.3...v3.6.4
 [3.6.3]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.2...v3.6.3
 [3.6.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.1...v3.6.2
