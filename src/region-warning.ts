@@ -20,6 +20,33 @@ const DWD_COVERAGE_COUNTRIES = new Set([
   'DE', 'NL', 'BE', 'LU', 'FR', 'CH', 'AT', 'CZ', 'PL', 'DK',
 ]);
 
+// Map-centre coverage bboxes. Used to suppress the radar-source warnings
+// when the user has explicitly centred the map on real coverage area
+// regardless of their HA-configured country. Symmetric to the country
+// allowlist above — country is a coarse proxy, centre coordinates are the
+// precise check. Bounds are generous (include some ocean / border regions)
+// because a missed suppression is worse than an over-eager one: the false
+// positive in this direction is a too-cautious banner that the user can
+// dismiss, while a false negative would be a misleading "this won't work
+// for you" warning over a map that's working fine.
+//
+// DWD bbox: Germany + immediate radar overlap into neighbours.
+const DWD_COVERAGE_BBOX = { minLat: 44.0, maxLat: 56.5, minLon: 1.0, maxLon: 18.0 };
+// NOAA NEXRAD bbox: CONUS + AK + HI + PR/USVI. Wide because Hawaii is
+// low-latitude and Alaska extends across the dateline; intentional that
+// it sweeps in some ocean and the western Caribbean.
+const US_COVERAGE_BBOX = { minLat: 15.0, maxLat: 72.0, minLon: -180.0, maxLon: -64.0 };
+
+function inBbox(
+  lat: unknown,
+  lon: unknown,
+  b: { minLat: number; maxLat: number; minLon: number; maxLon: number },
+): boolean {
+  return typeof lat === 'number' && typeof lon === 'number'
+    && lat >= b.minLat && lat <= b.maxLat
+    && lon >= b.minLon && lon <= b.maxLon;
+}
+
 export function getRegionWarnings(
   hass: HomeAssistant | undefined,
   cfg: WeatherRadarCardConfig,
@@ -31,10 +58,32 @@ export function getRegionWarnings(
 
   const messages: string[] = [];
 
+  // Effective map centre: config literal wins, fall back to HA's home
+  // location. Entity-tracked coordinates (CoordinateConfig as a string or
+  // EntityCoordinate object) aren't resolved here — they'd require hass
+  // state lookup at banner-render time. Conservative fallback: when the
+  // centre can't be resolved as a literal number, coverage check returns
+  // false and the warning fires as it did before this change.
+  const centreLat = typeof cfg.center_latitude === 'number'
+    ? cfg.center_latitude
+    : (hass?.config as any)?.latitude;
+  const centreLon = typeof cfg.center_longitude === 'number'
+    ? cfg.center_longitude
+    : (hass?.config as any)?.longitude;
+  const showingUs = inBbox(centreLat, centreLon, US_COVERAGE_BBOX);
+  const showingDwd = inBbox(centreLat, centreLon, DWD_COVERAGE_BBOX);
+
   // Catalogue of features that only have US data coverage. Each entry's
   // `key` is the localize suffix used for its individual banner; when more
   // than one is enabled at once we collapse to a single combined banner
   // instead of stacking near-identical messages.
+  //
+  // NOAA's `enabled` ANDs in the coverage check: a user with NOAA selected
+  // whose map is centred on the US is successfully viewing NOAA data
+  // regardless of where they live, so the warning is misleading and we
+  // suppress it. Wildfires / alerts don't get the same treatment — their
+  // overlays only ever have US data, so the warning informs the user the
+  // feature will be empty for them. Map centre doesn't change that.
   const usOnly: Array<{ enabled: boolean; key: string; label: string }> = [
     {
       enabled: cfg.show_wildfires === true,
@@ -47,7 +96,7 @@ export function getRegionWarnings(
       label: localize('ui.region_warning.label.alerts'),
     },
     {
-      enabled: (cfg.data_source ?? '').toUpperCase() === 'NOAA',
+      enabled: (cfg.data_source ?? '').toUpperCase() === 'NOAA' && !showingUs,
       key: 'noaa_us_only',
       label: localize('ui.region_warning.label.noaa'),
     },
@@ -70,11 +119,13 @@ export function getRegionWarnings(
 
   // DWD is a separate region (Germany + immediate neighbours). Stand-alone
   // banner — collapsing it into the US block would read as "X and DWD radar
-  // are US-only", which is wrong. The warning fires for any country outside
-  // DWD_COVERAGE_COUNTRIES so users in e.g. ES or GB selecting DWD see a
-  // visible explanation rather than a silently grey map.
+  // are US-only", which is wrong. Fires when DWD is selected AND the user's
+  // country is outside DWD_COVERAGE_COUNTRIES AND the map centre is outside
+  // the DWD coverage bbox — i.e. when the user neither lives in DWD coverage
+  // nor is explicitly viewing it.
   if ((cfg.data_source ?? '').toUpperCase() === 'DWD'
-      && !DWD_COVERAGE_COUNTRIES.has(country)) {
+      && !DWD_COVERAGE_COUNTRIES.has(country)
+      && !showingDwd) {
     messages.push(localize('ui.region_warning.dwd_de_only'));
   }
 

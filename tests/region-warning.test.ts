@@ -5,7 +5,12 @@ import { WeatherRadarCardConfig } from '../src/types';
 
 // Lightweight hass-with-country mock — the real mockHass helper doesn't
 // include `country`, which is what the region-warning logic keys off.
-function hassFor(country: string | undefined): HomeAssistant | undefined {
+// Optional `home` overrides HA's configured latitude/longitude (the
+// fallback for the coverage-bbox check when cfg has no centre literal).
+function hassFor(
+  country: string | undefined,
+  home?: { latitude: number; longitude: number },
+): HomeAssistant | undefined {
   if (country === undefined) {
     // Simulate the case where hass.config.country isn't populated yet —
     // we should silently skip the warning rather than firing false
@@ -13,7 +18,7 @@ function hassFor(country: string | undefined): HomeAssistant | undefined {
     // doing" branch in region-warning.ts.)
     return { config: {} } as unknown as HomeAssistant;
   }
-  return { config: { country } } as unknown as HomeAssistant;
+  return { config: { country, ...(home ?? {}) } } as unknown as HomeAssistant;
 }
 
 function cfg(overrides: Partial<WeatherRadarCardConfig> = {}): WeatherRadarCardConfig {
@@ -148,5 +153,117 @@ describe('getRegionWarnings — DWD coverage', () => {
     expect(result).toHaveLength(2);
     expect(result[0]).toMatch(/NWS/);
     expect(result[1]).toMatch(/DWD/);
+  });
+});
+
+// Centre-aware suppression: even when the country check would fire,
+// suppress the warning if the map is explicitly centred on real coverage.
+// The user has gone out of their way to view that region — assume they
+// know what they're doing.
+describe('getRegionWarnings — coverage-bbox suppression', () => {
+  // Reference points used across tests.
+  const BERLIN  = { latitude: 52.52, longitude: 13.40 };  // inside DWD bbox
+  const NYC     = { latitude: 40.71, longitude: -74.01 }; // inside US bbox
+  const HONOLULU = { latitude: 21.31, longitude: -157.86 }; // US bbox (HI corner)
+  const LONDON  = { latitude: 51.51, longitude: -0.13 };  // outside both
+
+  it('suppresses the DWD warning when map centre is in DWD coverage (US user, Berlin centre)', () => {
+    const result = getRegionWarnings(
+      hassFor('US'),
+      cfg({ data_source: 'DWD', center_latitude: BERLIN.latitude, center_longitude: BERLIN.longitude }),
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('fires the DWD warning when map centre is OUTSIDE DWD coverage (US user, NYC centre)', () => {
+    const [msg, ...rest] = getRegionWarnings(
+      hassFor('US'),
+      cfg({ data_source: 'DWD', center_latitude: NYC.latitude, center_longitude: NYC.longitude }),
+    );
+    expect(rest).toEqual([]);
+    expect(msg).toMatch(/DWD/);
+  });
+
+  it('suppresses the NOAA warning when map centre is in US coverage (DE user, NYC centre)', () => {
+    const result = getRegionWarnings(
+      hassFor('DE'),
+      cfg({ data_source: 'NOAA', center_latitude: NYC.latitude, center_longitude: NYC.longitude }),
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('suppresses the NOAA warning for the Hawaii corner of the bbox', () => {
+    const result = getRegionWarnings(
+      hassFor('DE'),
+      cfg({ data_source: 'NOAA', center_latitude: HONOLULU.latitude, center_longitude: HONOLULU.longitude }),
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('fires the NOAA warning when map centre is OUTSIDE US coverage (DE user, Berlin centre)', () => {
+    const [msg, ...rest] = getRegionWarnings(
+      hassFor('DE'),
+      cfg({ data_source: 'NOAA', center_latitude: BERLIN.latitude, center_longitude: BERLIN.longitude }),
+    );
+    expect(rest).toEqual([]);
+    expect(msg).toMatch(/NOAA/);
+  });
+
+  it('falls back to HA home location when cfg centre is unset (US user with German home → no DWD warning)', () => {
+    // Pathological setup but real: HA reports country=US but the location coords
+    // are in Berlin. Without an explicit cfg centre, fallback uses hass home,
+    // which is in DWD coverage → warning suppressed.
+    const result = getRegionWarnings(
+      hassFor('US', BERLIN),
+      cfg({ data_source: 'DWD' }),
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('wildfires + alerts warnings are NOT coverage-suppressed (semantic is different)', () => {
+    // Wildfires and alerts only have US data. A non-US user who centres on the
+    // US still sees the overlays empty unless THEIR map has US overlay data —
+    // the warning is about the overlay never having content outside the US, not
+    // about radar tile coverage. Suppression by map centre would be misleading.
+    const result = getRegionWarnings(
+      hassFor('DE'),
+      cfg({ show_wildfires: true, center_latitude: NYC.latitude, center_longitude: NYC.longitude }),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatch(/wildfire/i);
+  });
+
+  it('NOAA suppression interacts cleanly with combined message: NOAA suppressed → wildfires-only fires alone', () => {
+    // DE user, NOAA + wildfires both enabled, map on NYC. NOAA gets suppressed
+    // (showingUs=true); wildfires stays enabled. Result is just the wildfires
+    // message, not the combined "wildfires and NOAA radar" template.
+    const result = getRegionWarnings(
+      hassFor('DE'),
+      cfg({
+        data_source: 'NOAA',
+        show_wildfires: true,
+        center_latitude: NYC.latitude,
+        center_longitude: NYC.longitude,
+      }),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatch(/wildfire/i);
+    expect(result[0]).not.toMatch(/NOAA/);
+  });
+
+  it('entity-coord centre falls back to no-suppression (warning still fires)', () => {
+    // CoordinateConfig as a string entity reference means the literal coords
+    // aren't in cfg. Without HA home coords either, the bbox check can't
+    // succeed → warning fires as it did before this change. Conservative.
+    const result = getRegionWarnings(
+      hassFor('US'),  // no home coords
+      cfg({
+        data_source: 'DWD',
+        center_latitude: 'sensor.berlin_lat' as unknown as number,
+        center_longitude: 'sensor.berlin_lon' as unknown as number,
+      }),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatch(/DWD/);
   });
 });
