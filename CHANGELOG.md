@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.0-alpha1] - 2026-06-08
+
+> **Alpha pre-release.** First user-visible consumer of the per-user state framework that shipped dormant in 3.6.5 ([#175](https://github.com/jpettitt/weather-radar-card/pull/175)). Two weeks of feedback expected before promotion through beta / rc / stable, in line with the 3.6.1-rc1 → 3.6.1 cadence. **Not recommended for production dashboards** — install only if you want to exercise the persistence path and report findings.
+
+### Added
+
+- **Adjustable playback speed** ([#157](https://github.com/jpettitt/weather-radar-card/pull/157)) — toolbar button cycles ¼× / ½× / 1× / 2× / 4×, editor dropdown sets the YAML default. Sparse-storage convention: a user's runtime override clears automatically when the chosen value matches the YAML default, so an admin editing the YAML default propagates to every viewer who hasn't explicitly overridden. **Contributed by [@genericJE](https://github.com/genericJE)** — third contribution after [#155](https://github.com/jpettitt/weather-radar-card/pull/155) and [#172](https://github.com/jpettitt/weather-radar-card/pull/172); built on top of the viewer-state framework from #175.
+
+  ```yaml
+  type: 'custom:weather-radar-card'
+  show_playback: true
+  playback_speed: 1            # YAML default; user can override via toolbar
+  viewer_layer_control: true   # admin opt-in to persist overrides per-user across browsers/devices
+  ```
+
+- **`viewer_layer_control` admin toggle** in the editor's Animation section — opt-in to per-user, per-card preference persistence via Home Assistant's frontend storage. Off by default; when off, the toolbar speed button still works but the value is session-only. The first activation auto-mints a `_layer_state_id` nonce into the card YAML — the per-card storage key that lets a user have different preferences on different cards (e.g. local rain view vs continental forecast view).
+
+### Internal
+
+- First end-to-end exercise of the per-card identity nonce + ViewerState hydrate path introduced in 3.6.5's framework. The hydration WS round-trip races against the toolbar's first paint — on a fresh page load with a non-1× override stored, the speed button label briefly shows the YAML default then snaps to the override once HA's `frontend/get_user_data` resolves (typically one render frame). Documented for awareness; alpha audience can confirm whether this single-frame flicker is acceptable.
+
 ## [3.6.5] - 2026-06-03
 
 > Patch release: two small QoL fixes (lightning distance in your HA-preferred unit; broken Blitzortung-integration link in the docs). Plus the per-user state framework lands on `main` as dormant infrastructure for v3.7. **No behaviour change for existing configs.**
