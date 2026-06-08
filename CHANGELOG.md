@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stale frames on resume from long-hidden / device-sleep windows.** The existing visibility-visible handler did a single `_updateRadar` to catch the most recent missed publication, which is enough for a few-minute tab switch. After longer hidden periods (device sleep, hours-tabbed-away) the single-frame update left the *rest* of the loop holding hour-old timestamps — the displayed radar would show one fresh frame and N-1 stale ones. Now tracks the wall-clock time of the last frame fetch; on visibility-visible, if more than ~10 min (= 2× the refresh period) has elapsed, scraps the loop entirely and re-fetches every slot from scratch via `_initRadar`. Brief load state on resume from sleep, but the loop content is correct.
+
 ### Changed
 
 - **NOAA frame interval bumped from 5 → 10 min** to match the source's empirical publication cadence (`SOURCE_CAPS.NOAA.intervalMin`). NOAA's eventdriven WMS service has been observed to publish at irregular ~5–9 min intervals (mean ~7), and the server snaps any TIME within a publication window to the same physical frame. Requesting at a finer 5-min stride was returning duplicate frames for every other request — `dist/`-side dedup tolerated that gracefully but the loop bandwidth was wasted. Quantising to 10 min eliminates the duplicates at the source. **Behaviour change for NOAA users**: the same `past_minutes` value now yields half as many frames in the loop, but every frame is unique. Legacy `frame_count: N` configs auto-migrate to the new stride preserving frame count (a `frame_count: 12` config gets `past_minutes: 110` instead of `55`, keeping 12 distinct frames but covering twice the real time span). Tracking a server-side fix upstream at the NOAA / weather.gov API repo — if NOAA exposes a metadata endpoint for actual publication times, we'll drop this conservative quantisation.

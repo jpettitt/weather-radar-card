@@ -241,6 +241,15 @@ export class RadarPlayer {
   private _pathsAbortCtrl: AbortController | null = null;
   private _configFrameCount = 5;
   private _doRadarUpdate = false;
+  // Wall-clock ms of the last time we fetched fresh frame paths
+  // (either via _initRadar or _updateRadar). Read by onVisibilityVisible
+  // to decide whether resuming from a hidden state needs a full
+  // re-init: the scheduled _updateRadar handles a single missed
+  // refresh via the _doRadarUpdate flag, but on resume from device
+  // sleep or a long-hidden tab we can be many refresh-cycles stale,
+  // and a single _updateRadar would only freshen the newest slot
+  // while leaving the rest of the loop holding hour-old data.
+  private _lastFrameRefreshAt = 0;
 
   // Frame loop state — _loopGen is incremented to cancel in-flight timers
   private _currentSlot = 0;
@@ -1028,6 +1037,32 @@ export class RadarPlayer {
   onVisibilityVisible(): void {
     if (!this.viewPaused) return;
     this.viewPaused = false;
+    // Stale-frame detection on resume. The scheduled _updateRadar uses
+    // _workerTimeout, which mostly keeps firing while the tab is just
+    // hidden but stops dead when the device sleeps — and even when it
+    // does fire, _doRadarUpdate is a single bit ("a refresh is owed")
+    // that doesn't distinguish "owed one update" from "owed twelve".
+    // A single _updateRadar only freshens the newest frame; older
+    // frames in the loop stay stuck at whatever timestamps they were
+    // initialised with. After a long hidden / sleep window, the entire
+    // loop is many cycles outdated and one update isn't enough.
+    //
+    // Heuristic: if more than 2× the refresh period (= 10 min) has
+    // elapsed since the last successful path-fetch, scrap the loop
+    // entirely and let _initRadar refetch every slot from scratch.
+    // Shorter gaps fall through to the existing _doRadarUpdate-driven
+    // single-frame path (or just a loop resume).
+    const FRAME_PERIOD_MS = 300_000;
+    const STALE_THRESHOLD_MS = 2 * FRAME_PERIOD_MS;
+    const ageMs = this._lastFrameRefreshAt > 0
+      ? Date.now() - this._lastFrameRefreshAt
+      : 0;
+    if (this._radarReady && ageMs > STALE_THRESHOLD_MS) {
+      this._doRadarUpdate = false;
+      this._clearLayers();
+      void this._initRadar();
+      return;
+    }
     if (this._doRadarUpdate && this._radarReady) {
       this._doRadarUpdate = false;
       this._updateRadar();
@@ -1792,6 +1827,7 @@ export class RadarPlayer {
     if (myGen !== this._frameGeneration) return;
     if (pastFrames.length === 0) return; // API returned no frames
     this._radarPaths = pastFrames;
+    this._lastFrameRefreshAt = Date.now();
     const frameCount = pastFrames.length;
     this._configFrameCount = frameCount;
     this._computeNowFrameIndex();
@@ -2019,6 +2055,7 @@ export class RadarPlayer {
     this._radarMask[frameCount - 1] = newMask;
     this._radarTime[frameCount - 1] = newTime;
     this._radarPaths[frameCount - 1] = latestFrame;
+    this._lastFrameRefreshAt = Date.now();
     this._loadedSlots = this._loadedSlots.map(fi => fi - 1).filter(fi => fi >= 0);
     // Shift motion-compensation state alongside the radar frames.
     // The old frame 0 is dropped, so old motion[1] (which described
