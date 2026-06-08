@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { LitElement, html, css, unsafeCSS, TemplateResult, PropertyValues } from 'lit';
 import { property, customElement, state } from 'lit/decorators.js';
-import { HomeAssistant, LovelaceCardEditor, LovelaceCard, handleAction, ActionConfig } from 'custom-card-helpers';
+import { HomeAssistant, LovelaceCardEditor, LovelaceCard, handleAction, ActionConfig, fireEvent } from 'custom-card-helpers';
 import * as L from 'leaflet';
 // @ts-expect-error — rollup-plugin-string imports CSS as a raw string
 import leafletCss from 'leaflet/dist/leaflet.css';
@@ -19,8 +19,76 @@ import { FetchTileLayer } from './fetch-tile-layer';
 import { WindOverlay } from './wind-overlay';
 import { defaultWindSourceForLocation, DEFAULT_WIND_SOURCE } from './wind-source-caps';
 import { WindFlowOverlay } from './wind-flow-overlay';
-import { RadarToolbar } from './radar-toolbar';
+import { RadarToolbar, SPEED_STEPS } from './radar-toolbar';
 import { RadarPlayer } from './radar-player';
+import { ViewerState } from './viewer-state';
+
+// Storage key for the playback-speed override inside the per-card
+// ViewerState bucket. The bucket itself is keyed by the card's
+// _layer_state_id.nonce (managed by ViewerState); this is just the
+// field name within that bucket.
+const PLAYBACK_SPEED_KEY = 'playback_speed';
+
+// Clamp to the SPEED_STEPS range. Values outside it indicate either a
+// stale stored entry from a future version with different presets, or a
+// YAML value someone typed by hand. Either way the sensible behaviour
+// is to pin to the nearest supported preset rather than freezing the
+// loop at an extreme value.
+function clampSpeed(n: number): number {
+  const lo = SPEED_STEPS[0];
+  const hi = SPEED_STEPS[SPEED_STEPS.length - 1];
+  if (n < lo) return lo;
+  if (n > hi) return hi;
+  return n;
+}
+
+// Default playback speed for a card that has no YAML value set.
+const FACTORY_PLAYBACK_SPEED = 1;
+
+// What the card uses as "no override" — the YAML default if set,
+// otherwise the factory 1×. Centralised because both the save side
+// (delete the override when the user picks this value) and the load
+// side (fall back to this when no override exists) need the same view.
+function configuredPlaybackSpeed(configDefault: number | undefined): number {
+  if (typeof configDefault === 'number' && Number.isFinite(configDefault) && configDefault > 0) {
+    return clampSpeed(configDefault);
+  }
+  return FACTORY_PLAYBACK_SPEED;
+}
+
+// Resolve the effective starting playback speed. Per the ViewerState
+// sparse-storage convention: the user's override wins if present,
+// otherwise the YAML default. Each layer is clamped independently so a
+// corrupt entry doesn't poison the chain.
+function loadPlaybackSpeed(
+  state: ViewerState | null,
+  configDefault: number | undefined,
+): number {
+  if (state) {
+    const override = state.get<number>(PLAYBACK_SPEED_KEY);
+    if (typeof override === 'number' && Number.isFinite(override) && override > 0) {
+      return clampSpeed(override);
+    }
+  }
+  return configuredPlaybackSpeed(configDefault);
+}
+
+// Save the user's runtime choice as a sparse override: deleting the
+// stored value when it matches the YAML default lets future YAML
+// changes propagate; storing it otherwise pins the user's preference
+// across reloads and devices.
+function savePlaybackSpeed(
+  state: ViewerState | null,
+  value: number,
+  configDefault: number | undefined,
+): void {
+  if (!state) return;
+  if (value === configuredPlaybackSpeed(configDefault)) {
+    state.delete(PLAYBACK_SPEED_KEY);
+  } else {
+    state.set(PLAYBACK_SPEED_KEY, value);
+  }
+}
 import {
   isMobileDevice,
   getCurrentUserInfo,
@@ -111,6 +179,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _rangeRings: L.Circle[] = [];
   private _dynamicStyleEl!: HTMLStyleElement;
   private _player: RadarPlayer | null = null;
+  // Per-user, per-card preference store. Created lazily on the first
+  // setConfig because the constructor doesn't have hass yet. Dormant
+  // (isActive === false, all gets / sets are no-ops) unless the admin
+  // has opted in via viewer_layer_control.
+  private _viewerState: ViewerState | null = null;
   private _wildfireLayer: WildfireLayer | null = null;
   private _alertsLayer: NwsAlertsLayer | null = null;
   private _lightningLayer: LightningLayer | null = null;
@@ -191,6 +264,14 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     }
     const oldConfig = this._config;
     this._config = this._migrateConfig(config);
+    // Try to create the preference store. On the very first setConfig
+    // this is usually a no-op: HA calls setConfig BEFORE assigning hass,
+    // so there's nothing to build it with yet. _initMap (which only runs
+    // once hass has arrived) calls _ensureViewerState again, so the
+    // store is reliably created there. This call still matters for live
+    // editor edits, where hass is already set and setConfig is the first
+    // place we see a config change.
+    this._ensureViewerState();
     // Any structural change → full reset. Stale CSS-transition state on
     // radar layers from the previous animation regime is the cleanest to
     // wipe by destroying the map and rebuilding. The exception is the
@@ -202,12 +283,83 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       // when the live view already matches (the back-prop case), otherwise
       // setView would re-fire moveend and bounce another config update.
       this._syncMapViewIfNeeded();
+      this._viewerState?.ensureIdentity();
+      return;
+    }
+    // playback_speed change with everything else equal: a pure runtime
+    // knob. No need to tear down the map or refetch tiles — push the
+    // resolved value (override if set, otherwise the new YAML default)
+    // into the player and update the toolbar's button label. Users
+    // with an explicit override keep it; users without one pick up the
+    // admin's new default immediately.
+    if (this._map && oldConfig && this._isOnlyPlaybackSpeedChange(oldConfig, this._config)) {
+      const speed = loadPlaybackSpeed(this._viewerState, this._config.playback_speed);
+      this._player?.setSpeedMultiplier(speed);
+      this._toolbar?.setSpeed(speed);
+      this._viewerState?.ensureIdentity();
+      return;
+    }
+    // The identity-only fast path: ensureIdentity wrote a new
+    // _layer_state_id and Lovelace round-tripped it back. Register the
+    // nonce (activating the store) and hydrate so a persisted override
+    // loads now that the storage key is stable — without tearing the
+    // map down again. Nothing else visible changes.
+    if (this._map && oldConfig && this._isOnlyIdentityChange(oldConfig, this._config)) {
+      this._viewerState?.ensureIdentity();
+      void this._hydrateViewerState();
       return;
     }
     if (this._map) {
       this._teardown();
       this._initMap();
     }
+    this._viewerState?.ensureIdentity();
+  }
+
+  // Create the per-card preference store if it doesn't exist yet and
+  // hass is available. Idempotent and safe to call from multiple
+  // lifecycle points (setConfig, _initMap) — only the first call with
+  // hass present actually constructs it.
+  private _ensureViewerState(): void {
+    if (this._viewerState || !this.hass) return;
+    this._viewerState = new ViewerState({
+      hass: this.hass,
+      getConfig: () => this._config,
+      onIdentityMinted: (id) => {
+        // Dispatch config-changed so Lovelace persists the new id to
+        // YAML. The next setConfig() (after the round-trip) carries the
+        // id and ensureIdentity activates the storage.
+        fireEvent(this, 'config-changed', {
+          config: { ...this._config, _layer_state_id: id },
+        });
+      },
+    });
+  }
+
+  private _isOnlyIdentityChange(a: WeatherRadarCardConfig, b: WeatherRadarCardConfig): boolean {
+    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
+    let changed = false;
+    for (const k of keys) {
+      const av = JSON.stringify((a as Record<string, unknown>)[k]);
+      const bv = JSON.stringify((b as Record<string, unknown>)[k]);
+      if (av === bv) continue;
+      if (k !== '_layer_state_id') return false;
+      changed = true;
+    }
+    return changed;
+  }
+
+  private _isOnlyPlaybackSpeedChange(a: WeatherRadarCardConfig, b: WeatherRadarCardConfig): boolean {
+    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
+    let changed = false;
+    for (const k of keys) {
+      const av = JSON.stringify((a as Record<string, unknown>)[k]);
+      const bv = JSON.stringify((b as Record<string, unknown>)[k]);
+      if (av === bv) continue;
+      if (k !== 'playback_speed') return false;
+      changed = true;
+    }
+    return changed;
   }
 
   private _syncMapViewIfNeeded(): void {
@@ -357,6 +509,25 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (this._config && !this._map) {
       this.requestUpdate();
     }
+    // Hydrate the per-card preference cache from HA frontend storage so
+    // get() returns the persisted override on the first setupToolbar.
+    // Dormant when the admin opt-in is off — hydrate() short-circuits
+    // on !isActive so this is safe to always-call.
+    void this._hydrateViewerState();
+  }
+
+  // Awaits the WS round-trip to populate the in-memory cache, then
+  // re-applies the speed so the toolbar reflects the persisted value.
+  // _setupToolbar uses the cache synchronously, so on a fresh page load
+  // it has to wait for hydrate to finish before the override shows up.
+  private async _hydrateViewerState(): Promise<void> {
+    if (!this._viewerState) return;
+    await this._viewerState.hydrate();
+    if (this._player && this._config) {
+      const speed = loadPlaybackSpeed(this._viewerState, this._config.playback_speed);
+      this._player.setSpeedMultiplier(speed);
+      this._toolbar?.setSpeed(speed);
+    }
   }
 
   public disconnectedCallback(): void {
@@ -365,6 +536,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (this._editorClosedHandler) window.removeEventListener('weather-radar-editor-closed', this._editorClosedHandler);
     this._editorOpenedHandler = null;
     this._editorClosedHandler = null;
+    // dispose() cancels any pending debounced WS write and frees the
+    // live-card slot in the nonce registry. The instance is dropped
+    // so subsequent connectedCallback rebuilds it from scratch via
+    // setConfig.
+    this._viewerState?.dispose();
+    this._viewerState = null;
     this._teardown();
   }
 
@@ -500,9 +677,19 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._setupWindOverlay();
     this._setupAttribution(mapStyle);
     this._setupMarkers(mapStyle);
+    // Create + activate the preference store before the toolbar reads
+    // it. hass is guaranteed present here (this method only runs after
+    // it's assigned), so this is the reliable construction site —
+    // setConfig usually can't build it because hass isn't set yet on
+    // first call. ensureIdentity mints / registers the nonce; hydrate
+    // (kicked below, async) fills the cache so a persisted speed
+    // override applies once the WS round-trip resolves.
+    this._ensureViewerState();
+    this._viewerState?.ensureIdentity();
     this._setupToolbar();
     this._setupNavListeners();
     this._setupDoubleTapAction();
+    void this._hydrateViewerState();
     this._setupVisibilityObserver();
     this._setupResizeObserver();
     // For map_style: auto, reinit the map when the OS colour scheme changes so
@@ -940,6 +1127,17 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const showRecenter = cfg.show_recenter === true && cfg.static_map !== true;
     const showPlayback = cfg.show_playback === true;
     if (!showRecenter && !showPlayback) return;
+    // Restore the user's previous playback speed (if any) before the
+    // toolbar mounts so the button label and the player's effective
+    // frame_delay both start coherent. The override (stored per user
+    // in HA frontend storage via ViewerState) wins when active; the
+    // YAML default applies otherwise. Note the cache is only populated
+    // after hydrate() resolves — see _hydrateViewerState — so on a
+    // fresh page load we may briefly start at the YAML default and
+    // snap to the override once the WS round-trip completes.
+    const savedSpeed = loadPlaybackSpeed(this._viewerState, this._config.playback_speed);
+    this._player?.setSpeedMultiplier(savedSpeed);
+
     this._toolbar = new RadarToolbar({
       showRecenter,
       showPlayback,
@@ -947,6 +1145,16 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       onPlay: () => this._player?.togglePlay(),
       onSkipBack: () => this._player?.skipBack(),
       onSkipNext: () => this._player?.skipNext(),
+      initialSpeed: savedSpeed,
+      onSpeedChange: (m) => {
+        this._player?.setSpeedMultiplier(m);
+        // savePlaybackSpeed is a no-op when ViewerState is dormant
+        // (admin opt-in off). In that case the speed still works for
+        // this session — it just won't persist across reloads. Users
+        // who want cross-device persistence enable viewer_layer_control
+        // in the editor.
+        savePlaybackSpeed(this._viewerState, m, this._config.playback_speed);
+      },
     });
     this._toolbar.addTo(this._map);
   }

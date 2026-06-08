@@ -300,7 +300,24 @@ export class RadarPlayer {
   // ── Config helpers ───────────────────────────────────────────────────────
 
   private get _cfg(): WeatherRadarCardConfig { return this._getConfig(); }
-  private get _timeout(): number { return this._cfg.frame_delay ?? 500; }
+  // Effective per-frame delay = configured frame_delay divided by the user's
+  // playback-speed multiplier. Multiplier > 1 plays faster, < 1 plays slower.
+  // Defaults to 1× (unchanged) when the user hasn't touched the speed button.
+  private _speedMultiplier = 1;
+  private get _timeout(): number {
+    const base = this._cfg.frame_delay ?? 500;
+    return Math.round(base / this._speedMultiplier);
+  }
+
+  /**
+   * Adjust playback speed at runtime. Effective on the next tick — the
+   * currently scheduled setTimeout fires at the previous interval and the
+   * one it schedules picks up the new value. Out-of-range values fall back
+   * to 1× so the playback never silently freezes.
+   */
+  setSpeedMultiplier(m: number): void {
+    this._speedMultiplier = Number.isFinite(m) && m > 0 ? m : 1;
+  }
   private get _restartDelay(): number { return this._cfg.restart_delay ?? 1000; }
   // Crossfade timing per tick. Returns:
   //   fadeMs   — duration of each layer's fade (in or out)
