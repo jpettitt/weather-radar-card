@@ -50,51 +50,93 @@ describe('SPEED_STEPS', () => {
   });
 });
 
-// Mirror of the private resolvePlaybackSpeed in weather-radar-card.ts.
-// Duplicated here rather than imported because the card module pulls in
-// Lit and the full DOM stack — the test would have to mock too many
-// things for ~10 lines of code. The mirror stays in sync via the
-// behaviour-locking tests below; if the card's logic changes, the
-// duplicated copy needs to track it.
-function resolvePlaybackSpeed(stored: string | null, configDefault: number | undefined): number {
+// Mirrors of the private load / save helpers in weather-radar-card.ts.
+// Duplicated rather than imported because the card module pulls in Lit
+// and the full DOM stack — the test would have to mock too many things
+// for ~20 lines of code. The mirror stays in sync via the behaviour-
+// locking tests below; if the card's logic changes the duplicated copy
+// needs to track it.
+const FACTORY = 1;
+function clamp(n: number): number {
   const lo = SPEED_STEPS[0];
   const hi = SPEED_STEPS[SPEED_STEPS.length - 1];
-  const clamp = (n: number): number => (n < lo ? lo : n > hi ? hi : n);
-  if (stored != null) {
-    const n = Number(stored);
-    if (Number.isFinite(n) && n > 0) return clamp(n);
-  }
+  return n < lo ? lo : n > hi ? hi : n;
+}
+function configured(configDefault: number | undefined): number {
   if (typeof configDefault === 'number' && Number.isFinite(configDefault) && configDefault > 0) {
     return clamp(configDefault);
   }
-  return 1;
+  return FACTORY;
+}
+interface StateStub { get: (key: string) => unknown; }
+function loadPlaybackSpeed(state: StateStub | null, configDefault: number | undefined): number {
+  if (state) {
+    const v = state.get('playback_speed');
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) return clamp(v);
+  }
+  return configured(configDefault);
 }
 
-describe('resolvePlaybackSpeed', () => {
-  it('prefers localStorage over the YAML default', () => {
-    expect(resolvePlaybackSpeed('2', 0.5)).toBe(2);
+// Sparse-storage save: returns the action a real call would have
+// taken so the test can assert on it without instantiating ViewerState.
+function savePlaybackSpeedAction(value: number, configDefault: number | undefined): { action: 'delete' | 'set'; value?: number } {
+  if (value === configured(configDefault)) return { action: 'delete' };
+  return { action: 'set', value };
+}
+
+describe('loadPlaybackSpeed', () => {
+  it('prefers the per-user override when ViewerState has one', () => {
+    const state: StateStub = { get: (k) => (k === 'playback_speed' ? 2 : undefined) };
+    expect(loadPlaybackSpeed(state, 0.5)).toBe(2);
   });
 
-  it('falls back to the YAML default when localStorage is empty', () => {
-    expect(resolvePlaybackSpeed(null, 0.5)).toBe(0.5);
+  it('falls back to the YAML default when ViewerState has no override', () => {
+    const state: StateStub = { get: () => undefined };
+    expect(loadPlaybackSpeed(state, 0.5)).toBe(0.5);
   });
 
-  it('falls back to 1× when neither localStorage nor config is set', () => {
-    expect(resolvePlaybackSpeed(null, undefined)).toBe(1);
+  it('falls back to 1× when neither override nor config is set', () => {
+    expect(loadPlaybackSpeed(null, undefined)).toBe(1);
+    const state: StateStub = { get: () => undefined };
+    expect(loadPlaybackSpeed(state, undefined)).toBe(1);
   });
 
-  it('clamps an out-of-range localStorage value to the SPEED_STEPS bounds', () => {
-    expect(resolvePlaybackSpeed('100', undefined)).toBe(SPEED_STEPS[SPEED_STEPS.length - 1]);
-    expect(resolvePlaybackSpeed('0.001', undefined)).toBe(SPEED_STEPS[0]);
+  it('clamps an out-of-range override to the SPEED_STEPS bounds', () => {
+    const fast: StateStub = { get: () => 100 };
+    const slow: StateStub = { get: () => 0.001 };
+    expect(loadPlaybackSpeed(fast, undefined)).toBe(SPEED_STEPS[SPEED_STEPS.length - 1]);
+    expect(loadPlaybackSpeed(slow, undefined)).toBe(SPEED_STEPS[0]);
   });
 
-  it('ignores garbage in localStorage and uses the YAML default', () => {
-    expect(resolvePlaybackSpeed('not-a-number', 2)).toBe(2);
-    expect(resolvePlaybackSpeed('-5', 2)).toBe(2);
+  it('ignores a non-numeric override and falls through to the YAML default', () => {
+    const state: StateStub = { get: () => 'not-a-number' as unknown as number };
+    expect(loadPlaybackSpeed(state, 2)).toBe(2);
   });
 
   it('ignores a non-positive config default and returns 1×', () => {
-    expect(resolvePlaybackSpeed(null, 0)).toBe(1);
-    expect(resolvePlaybackSpeed(null, -1)).toBe(1);
+    expect(loadPlaybackSpeed(null, 0)).toBe(1);
+    expect(loadPlaybackSpeed(null, -1)).toBe(1);
+  });
+
+  it('treats a null ViewerState (dormant admin opt-in) as "no override"', () => {
+    expect(loadPlaybackSpeed(null, 2)).toBe(2);
+  });
+});
+
+describe('savePlaybackSpeed (sparse-storage convention)', () => {
+  it('deletes the override when the new value matches the YAML default', () => {
+    expect(savePlaybackSpeedAction(0.5, 0.5)).toEqual({ action: 'delete' });
+  });
+
+  it('deletes the override when picking 1× and YAML is unset', () => {
+    expect(savePlaybackSpeedAction(1, undefined)).toEqual({ action: 'delete' });
+  });
+
+  it('stores the override when it differs from the YAML default', () => {
+    expect(savePlaybackSpeedAction(2, 0.5)).toEqual({ action: 'set', value: 2 });
+  });
+
+  it('stores the override when it differs from the factory 1×', () => {
+    expect(savePlaybackSpeedAction(0.25, undefined)).toEqual({ action: 'set', value: 0.25 });
   });
 });

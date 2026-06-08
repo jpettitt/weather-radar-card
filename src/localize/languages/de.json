@@ -178,7 +178,9 @@
       "playback_speed_half": "½× (langsamer)",
       "playback_speed_normal": "1× (normal)",
       "playback_speed_double": "2× (schneller)",
-      "playback_speed_quad": "4× (schnellste)"
+      "playback_speed_quad": "4× (schnellste)",
+      "viewer_layer_control": "Benutzerbezogene Speicherung (Admin-Opt-in)",
+      "viewer_layer_control_helper": "Wenn aktiviert, wird die Geschwindigkeitswahl pro Benutzer gespeichert und folgt dem Benutzer über Browser und Geräte hinweg über den Home-Assistant-Frontend-Speicher. Wenn deaktiviert, funktioniert die Schaltfläche weiterhin für die aktuelle Sitzung, die Auswahl wird jedoch nicht gespeichert."
     },
     "appearance": {
       "height": "Höhe",

@@ -444,6 +444,15 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           .configValue=${'playback_speed'}
           @value-changed=${this._handleSelectorChanged}
         ></ha-selector>
+        <label>
+          <ha-switch
+            .checked=${config.viewer_layer_control === true}
+            .configValue=${'viewer_layer_control'}
+            @change=${this._valueChangedSwitch}
+          ></ha-switch>
+          <span>${localize('editor.animation.viewer_layer_control')}</span>
+        </label>
+        <div class="section-description">${localize('editor.animation.viewer_layer_control_helper')}</div>
 
         <!-- APPEARANCE -->
         <h3 class="section-header">${localize('editor.section.appearance')}</h3>

@@ -70,11 +70,12 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   /**
    * Default playback-speed multiplier applied to frame_delay. The toolbar
    * exposes a button that cycles through ¼×, ½×, 1×, 2×, 4×; this config
-   * value is the starting point a fresh card uses before the user has
-   * touched that button. Once the user does touch it, their choice is
-   * persisted to localStorage and takes precedence over this default on
-   * subsequent reloads, so the YAML setting acts as a per-card "factory"
-   * value rather than a hard override.
+   * value is the YAML default that applies until a user overrides it.
+   * When `viewer_layer_control` is on, the override is persisted per
+   * user via ViewerState (HA frontend storage) so each viewer's choice
+   * follows them across browsers and devices. When `viewer_layer_control`
+   * is off, the button still works for the current session but the
+   * choice is not saved.
    */
   playback_speed?: number;
   center_longitude?: CoordinateConfig;

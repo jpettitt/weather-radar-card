@@ -178,7 +178,9 @@
       "playback_speed_half": "½× (slower)",
       "playback_speed_normal": "1× (normal)",
       "playback_speed_double": "2× (faster)",
-      "playback_speed_quad": "4× (fastest)"
+      "playback_speed_quad": "4× (fastest)",
+      "viewer_layer_control": "Per-user persistence (admin opt-in)",
+      "viewer_layer_control_helper": "When enabled, the toolbar speed button persists per user and follows them across browsers and devices via Home Assistant frontend storage. When off the button still works for the current session but the choice is not saved."
     },
     "appearance": {
       "height": "Altezza",

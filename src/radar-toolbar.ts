@@ -17,7 +17,8 @@ export interface RadarToolbarOptions {
   onPlay?: () => void;
   onSkipBack?: () => void;
   onSkipNext?: () => void;
-  /** Initial playback speed multiplier. Persisted by the card via localStorage. */
+  /** Initial playback speed multiplier. The card owns persistence (via
+   * ViewerState); the toolbar just renders and cycles the value. */
   initialSpeed?: number;
   /** Notified when the user clicks the speed button to cycle to the next preset. */
   onSpeedChange?: (multiplier: number) => void;
@@ -61,8 +62,8 @@ export class RadarToolbar extends L.Control {
       this._addBtn(bar, `${ICON_BASE}skip-next.png`, 'Next frame', () => this._opts.onSkipNext?.());
 
       // Speed button cycles through SPEED_STEPS. Snap the initial value to
-      // the nearest preset so a stale localStorage entry from an older
-      // SPEED_STEPS set doesn't leave the button stuck between presets.
+      // the nearest preset so a stored override from an older SPEED_STEPS
+      // set doesn't leave the button stuck between presets.
       const initial = this._opts.initialSpeed ?? 1;
       this._speed = SPEED_STEPS.reduce(
         (best, s) => Math.abs(s - initial) < Math.abs(best - initial) ? s : best,
