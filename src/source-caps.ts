@@ -44,7 +44,25 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
     defaultForecastMin: 0,
   },
   NOAA: {
-    intervalMin: 5,
+    // Empirically measured publication cadence on
+    // mapservices.weather.noaa.gov/.../eventdriven is ~5-9 min
+    // (alternating short/long, mean ~7 min) — see
+    // `.dev/noaa-cadence-probe.mjs`. NOAA's metadata endpoints
+    // (queryRasters / query / GetCapabilities) all refuse browser
+    // requests, so we can't discover the actual grid in advance.
+    //
+    // Setting `intervalMin: 10` over-quantises slightly relative to
+    // the mean, but avoids the duplicate-frame churn produced when
+    // the requested stride is finer than the publication interval —
+    // NOAA's WMS server snaps any TIME within a publication window
+    // to the same physical frame, so finer requests just return
+    // byte-identical content for multiple slots.
+    //
+    // Tracking a server-side improvement upstream at
+    // https://github.com/weather-gov/api/ — a metadata endpoint that
+    // exposes actual publication times would let us snap exactly to
+    // the grid and drop this conservative quantisation.
+    intervalMin: 10,
     // mapservices.weather.noaa.gov advertises 4h of history but in
     // practice frames > 2h back fail intermittently — observed empty
     // tiles past that point. Cap at 2h until we understand why.

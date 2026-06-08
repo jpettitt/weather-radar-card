@@ -9,7 +9,7 @@ A Home Assistant rain radar card using tiled radar imagery from RainViewer, NOAA
 
 ## Description
 
-This card displays animated weather radar loops within Home Assistant. It supports multiple radar data sources and map styles, and can be zoomed and panned seamlessly. Markers, hazard overlays (US wildfires + NWS watches & warnings), a forecast nowcast (DWD), full sections-grid resize support, and 11 languages.
+This card displays animated weather radar loops within Home Assistant. It supports multiple radar data sources and map styles, and can be zoomed and panned seamlessly. Markers, hazard overlays (US wildfires + NWS watches & warnings), a forecast nowcast (DWD), opt-in [motion-compensated playback](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#motion-compensation) (rain drifts between frames instead of teleporting), full sections-grid resize support, and 11 languages.
 
 ![Weather Radar card](weather-radar-card.gif)
 
@@ -46,6 +46,7 @@ Full backlog: [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob
 | [Wildfire feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/wildfire-feature-design.md) | Internal: NIFC WFIGS feed, render decisions, InciWeb gating, refresh cadence |
 | [NWS alerts feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/nws-alerts-feature-design.md) | Internal: api.weather.gov polling, zone resolution + caching, severity sort, popup chrome |
 | [Wind feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/wind-feature-design.md) | Internal: bulk WCS fetch + adaptive scaling, coalescing cache, zoom-aware streamlines, layering |
+| [Motion compensation feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/motion-compensation-feature-design.md) | Internal: pyramidal Lucas-Kanade optical flow, distance-from-white channel, inline-Blob worker pattern, crossfade-time translate |
 | [Backlog / TODO](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md) | Open and shipped features |
 | [Contributing](https://github.com/jpettitt/weather-radar-card/blob/main/CONTRIBUTING.md) | Local dev setup including the Docker HA testbed (`npm run ha:up`) |
 

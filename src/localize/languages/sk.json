@@ -180,7 +180,9 @@
       "playback_speed_double": "2× (faster)",
       "playback_speed_quad": "4× (fastest)",
       "viewer_layer_control": "Per-user persistence (admin opt-in)",
-      "viewer_layer_control_helper": "When enabled, the toolbar speed button persists per user and follows them across browsers and devices via Home Assistant frontend storage. When off the button still works for the current session but the choice is not saved."
+      "viewer_layer_control_helper": "When enabled, the toolbar speed button persists per user and follows them across browsers and devices via Home Assistant frontend storage. When off the button still works for the current session but the choice is not saved.",
+      "motion_compensation": "Motion Compensation (drift rain between frames)",
+      "motion_compensation_helper": "Slides each frame in the direction of rain motion during the crossfade so the rain appears to drift smoothly between frames instead of teleporting to its new position. Motion is recovered from the frame pair via pyramidal Lucas-Kanade optical flow — no external wind data, works for all radar sources. Pairs naturally with Smooth Animation. Default off."
     },
     "appearance": {
       "height": "Výška",

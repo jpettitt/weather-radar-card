@@ -154,11 +154,16 @@ describe('migrateConfig', () => {
       expect(r.past_minutes).toBe(40);
     });
 
-    it('converts legacy frame_count to past_minutes using the source interval (NOAA, 5-min)', () => {
+    it('converts legacy frame_count to past_minutes using the source interval (NOAA, 10-min)', () => {
       const cfg = { ...base, data_source: 'NOAA', frame_count: 12 };
       const r = migrateConfig(cfg);
-      // (12 - 1) × 5 min = 55 min
-      expect(r.past_minutes).toBe(55);
+      // (12 - 1) × 10 min = 110 min. NOAA interval was bumped from 5
+      // to 10 min — see SOURCE_CAPS.NOAA doc-block on the empirical
+      // publication cadence — so legacy frame_count: 12 now migrates
+      // to a longer time span. The user keeps 12 distinct frames in
+      // their loop; with the old 5-min stride those 12 would have
+      // been 6-8 unique + 4-6 duplicates from server-side snapping.
+      expect(r.past_minutes).toBe(110);
     });
 
     it('converts legacy frame_count using RainViewer interval when data_source is undefined', () => {

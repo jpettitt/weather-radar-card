@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **NOAA frame interval bumped from 5 → 10 min** to match the source's empirical publication cadence (`SOURCE_CAPS.NOAA.intervalMin`). NOAA's eventdriven WMS service has been observed to publish at irregular ~5–9 min intervals (mean ~7), and the server snaps any TIME within a publication window to the same physical frame. Requesting at a finer 5-min stride was returning duplicate frames for every other request — `dist/`-side dedup tolerated that gracefully but the loop bandwidth was wasted. Quantising to 10 min eliminates the duplicates at the source. **Behaviour change for NOAA users**: the same `past_minutes` value now yields half as many frames in the loop, but every frame is unique. Legacy `frame_count: N` configs auto-migrate to the new stride preserving frame count (a `frame_count: 12` config gets `past_minutes: 110` instead of `55`, keeping 12 distinct frames but covering twice the real time span). Tracking a server-side fix upstream at the NOAA / weather.gov API repo — if NOAA exposes a metadata endpoint for actual publication times, we'll drop this conservative quantisation.
+
+### Added
+
+- **Motion compensation for radar transitions** (opt-in via `motion_compensation: true`). During each crossfade, the new frame slides in from where its rain *would have been* at the previous frame's time, and the outgoing frame slides out toward where its rain *would be* at the new frame's time. The composite reads as one drifting rain field rather than two crossfading frames at separated positions. Built on top of [#156](https://github.com/jpettitt/weather-radar-card/pull/156) by [@genericJE](https://github.com/genericJE) — kept the snapshot-capture infrastructure, swapped the SAD block-matcher for pyramidal Lucas-Kanade optical flow with a distance-from-white intensity channel so the feature works for all three radar sources (DWD, RainViewer, NOAA) instead of being DWD-only. LK runs in a Web Worker by default so slow devices stay smooth; falls back to synchronous main-thread execution under strict CSPs. Auto-skipped on frame pairs without enough gradient signal for a confident vector (light rain, clear sky). NOAA-specific: post-load `_dedupFrames()` removes byte-identical frames produced by NOAA's coarser publication cycle so the deduped loop animates only unique frames. See [`docs/configuration.md#motion-compensation`](docs/configuration.md#motion-compensation). Default off.
+
+  ```yaml
+  type: 'custom:weather-radar-card'
+  smooth_animation: true
+  smooth_overlap: 0
+  motion_compensation: true
+  ```
+
 ## [3.7.0-alpha1] - 2026-06-08
 
 > **Alpha pre-release.** First user-visible consumer of the per-user state framework that shipped dormant in 3.6.5 ([#175](https://github.com/jpettitt/weather-radar-card/pull/175)). Two weeks of feedback expected before promotion through beta / rc / stable, in line with the 3.6.1-rc1 → 3.6.1 cadence. **Not recommended for production dashboards** — install only if you want to exercise the persistence path and report findings.

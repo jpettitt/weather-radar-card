@@ -7,6 +7,8 @@ import { FetchTileLayer, FetchWmsTileLayer, layerSettled } from './fetch-tile-la
 import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
 import { getEffectiveTimeRange } from './source-caps';
+import { extractChannel } from './lk';
+import { createLkWorker, LkWorkerClient, estimateMotionLk } from './lk-worker';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -30,6 +32,15 @@ export function nearestFrameIndex(frames: { time: number }[], nowSec: number): n
 
 export type FrameStatus = 'empty' | 'loading' | 'loaded' | 'failed';
 export interface RadarFrame { time: number; path: string; host?: string; }
+
+/**
+ * Screen-space motion vector for one frame-to-frame transition.
+ * Produced by the LK motion-compensation pipeline; applied as a CSS
+ * translate in {@link RadarPlayer._showSlot}. Sign convention matches
+ * the LK output: (dx, dy) is the displacement of rain content from
+ * the older frame into the newer frame.
+ */
+interface MotionVector { dx: number; dy: number; confidence: number; }
 
 const NOAA_WMS_URL =
   'https://mapservices.weather.noaa.gov/eventdriven/services/radar/radar_base_reflectivity_time/ImageServer/WMSServer';
@@ -265,6 +276,85 @@ export class RadarPlayer {
   // lower native zoom.
   private _pinnedNativeZoom = 0;
 
+  // ── Motion compensation state ────────────────────────────────────────
+  //
+  // Per-frame snapshots of the visible radar tiles (distance-from-white
+  // intensity grid at SNAPSHOT_GRID resolution), and per-transition
+  // motion vectors derived from adjacent snapshots via pyramidal
+  // Lucas-Kanade optical flow. Both arrays are parallel to
+  // _radarImage[] — index = frame index.
+  //
+  // _frameMotion[fi] is the vector to USE when transitioning INTO
+  // frame fi (so the slide ends in sync with the fade-in of the new
+  // frame). _frameMotion[0] is always null because the oldest frame
+  // has no predecessor.
+  //
+  // null entries mean either:
+  //   - snapshot not captured yet (frame still loading), or
+  //   - LK confidence below CONFIDENCE_FLOOR (image too flat for a
+  //     trustworthy vector — fall back to static crossfade).
+  //
+  // _snapshotGen is bumped on each map move/zoom/resize so async LK
+  // results from the previous viewport don't pollute the new one when
+  // they eventually resolve.
+  private _frameSnapshot: (Float32Array | null)[] = [];
+  // Per-snapshot non-zero pixel count, tracked alongside _frameSnapshot
+  // so we can detect partial captures (tiles still loading when 'load'
+  // fired). Two snapshots with very different nz aren't comparing the
+  // same content and produce spurious LK vectors with deceptively high
+  // confidence — gated against in _computeMotionForFrame.
+  private _frameSnapshotNz: number[] = [];
+  private _frameMotion: (MotionVector | null)[] = [];
+  private _snapshotGen = 0;
+  // Tracks which frame indices we've already logged an "averaging
+  // anomaly" for (direction flip or magnitude overshoot in
+  // _smoothedMotion). The smoothed value is constant for a given
+  // snapshot-generation, so logging once per fi per generation
+  // avoids spamming the console while still surfacing every
+  // anomalous transition for diagnostic.
+
+  // LK worker client; lazy-initialised on first compensation request
+  // so the worker isn't created when motion_compensation is off. Falls
+  // back to synchronous main-thread execution if Worker construction
+  // fails (e.g. corporate CSP blocks blob: workers).
+  private _lkClient: LkWorkerClient | null = null;
+  private _lkWorkerInitTried = false;
+
+  // 96 × 96 snapshot keeps the LK compute under ~3 ms on a fast
+  // desktop, ~10–25 ms on a low-end mobile/tablet — well within a
+  // single animation frame even on slow hardware when run in the
+  // worker. CONFIDENCE_FLOOR matches the prototype's empirical
+  // "borderline" threshold (Shi-Tomasi min eigenvalue normalised by
+  // pixel count). Below it, the gradient field is too flat for LK to
+  // produce a trustworthy vector and we fall back to no compensation
+  // rather than slide by whatever the noise floor returned.
+  private static readonly SNAPSHOT_GRID = 96;
+  private static readonly CONFIDENCE_FLOOR = 5;
+  // Window for cross-tick motion-vector smoothing in _smoothedMotion.
+  // ±2 around the current transition (5-tap median) — same as PR #156's
+  // smoothMotionVectors. Suppresses the per-tick speed jumps that read
+  // visually as "stepping" between frames: raw LK output for a typical
+  // RainViewer loop showed 3× speed variation between adjacent
+  // transitions, which the slide animation faithfully renders as a
+  // step at every tick boundary even when overlap=1 makes the fade
+  // itself continuous.
+  private static readonly MOTION_SMOOTH_RADIUS = 2;
+  // Coverage similarity floor: when the smaller of two snapshots'
+  // non-zero pixel counts is below this fraction of the larger, the
+  // snapshots aren't comparing the same content and we refuse to
+  // compute motion (which would otherwise produce a spurious vector
+  // with deceptively high confidence — LK aggregates whatever
+  // gradient signal it finds, even on incompatible inputs). 0.6
+  // tolerates a meaningful rain-decay difference between consecutive
+  // frames while rejecting the ~3× nz mismatches we see when one
+  // snapshot captures partially-loaded tiles.
+  private static readonly COVERAGE_SIMILARITY_FLOOR = 0.6;
+  // Absolute floor on snapshot coverage. Below this many non-zero
+  // pixels the input is too sparse to produce a meaningful estimate
+  // regardless of comparability — typically means a near-empty
+  // (clear-sky) viewport or a snapshot captured before tiles arrived.
+  private static readonly MIN_SNAPSHOT_NZ = 500;
+
   constructor(opts: RadarPlayerOptions) {
     this._map = opts.map;
     this._shadowRoot = opts.shadowRoot;
@@ -278,6 +368,8 @@ export class RadarPlayer {
       this._sourceMaxNativeZoom(),
     );
     this._map.on('zoomend', this._onZoomEnd);
+    this._map.on('moveend', this._onMoveEnd);
+    this._map.on('resize', this._onResize);
   }
 
   private _sourceMaxNativeZoom(): number {
@@ -288,14 +380,502 @@ export class RadarPlayer {
   private _onZoomEnd = (): void => {
     if (!this._map) return;
     const newPin = Math.min(this._map.getZoom(), this._sourceMaxNativeZoom());
-    if (newPin <= this._pinnedNativeZoom) return;
-    this._pinnedNativeZoom = newPin;
-    // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
-    // option on existing layers is enough, no redraw needed.
-    for (const layer of this._radarImage) {
-      if (layer) (layer.options as any).minNativeZoom = newPin;
+    if (newPin > this._pinnedNativeZoom) {
+      this._pinnedNativeZoom = newPin;
+      // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
+      // option on existing layers is enough, no redraw needed.
+      for (const layer of this._radarImage) {
+        if (layer) (layer.options as any).minNativeZoom = newPin;
+      }
+    }
+    // Zoom changes pixel scale, so cached snapshots and the screen-
+    // pixel motion vectors derived from them are stale. Drop them and
+    // immediately recapture from whatever tiles are in the DOM at the
+    // new zoom level; _onLayerLoaded will run again if new tiles also
+    // arrive, overwriting with a fresher snapshot.
+    this._invalidateSnapshots();
+    void this._resnapshotAll();
+  };
+
+  private _onMoveEnd = (): void => {
+    // Pan changes which tiles are visible, but Leaflet only fires the
+    // layer-level 'load' event when it actually fetches NEW tiles. A
+    // small pan within the already-cached tile set just repositions
+    // existing tiles via CSS transform and never fires 'load' — which
+    // means _onLayerLoaded never runs and motion compensation would
+    // stay off indefinitely after a cached-pan. So we resnapshot here
+    // directly using whatever tiles are in the DOM right now; if a
+    // larger pan also triggers new tile fetches, _onLayerLoaded picks
+    // those up later and overwrites with the fresher snapshot.
+    this._invalidateSnapshots();
+    void this._resnapshotAll();
+  };
+
+  // Map container size changed (window resize, parent reflow, theme
+  // switch, etc.). Leaflet's tile manager will re-fetch tiles for the
+  // new viewport and each layer will fire its own 'load' as its tiles
+  // settle, at which point _onLayerLoaded rebuilds its snapshot. Drop
+  // the cached snapshots and motion vectors now so playback runs
+  // without compensation through the resize rather than animating
+  // with stale viewport data.
+  private _onResize = (): void => {
+    this._invalidateSnapshots();
+    void this._resnapshotAll();
+  };
+
+  // ── Motion compensation: snapshot + LK pipeline ──────────────────────
+
+  // Lazy-initialise the LK worker on first request. We don't create it
+  // in the constructor because motion_compensation is off by default
+  // and we don't want every player to spawn a worker it never uses.
+  private _ensureLkClient(): void {
+    if (this._lkClient || this._lkWorkerInitTried) return;
+    this._lkWorkerInitTried = true;
+    const created = createLkWorker();
+    if (created) {
+      this._lkClient = new LkWorkerClient(created.worker, created.blobUrl);
+    } else {
+      // Worker construction unavailable — silently fall back to
+      // synchronous LK on the main thread. Logged once so a user
+      // troubleshooting performance reports under a strict CSP has a
+      // breadcrumb.
+      console.info(
+        '[weather-radar-card] LK worker unavailable; motion compensation will run on the main thread.',
+      );
+    }
+  }
+
+  // Drop the per-frame snapshots and motion vectors and bump the
+  // generation so any pending async LK results bail out. New
+  // snapshots will be captured the next time tiles settle on each
+  // frame (or immediately via _resnapshotAll for cached-pan cases).
+  private _invalidateSnapshots(): void {
+    this._snapshotGen++;
+    if (this._frameSnapshot.length > 0) {
+      this._frameSnapshot = new Array(this._frameSnapshot.length).fill(null);
+      this._frameSnapshotNz = new Array(this._frameSnapshotNz.length).fill(0);
+      this._frameMotion = new Array(this._frameMotion.length).fill(null);
+    }
+  }
+
+  // Capture the current visible state of a loaded radar frame's tiles
+  // to a downsampled distance-from-white intensity grid. The grid
+  // feeds the LK call that estimates rain motion between consecutive
+  // frames.
+  //
+  // Why render to canvas rather than read tile <img> pixels directly:
+  // FetchTileLayer serves tiles via blob URLs (so the canvas is
+  // same-origin and readable), but reading pixels per <img> would
+  // require one canvas allocation each. Building a single
+  // viewport-sized canvas and drawImage'ing every tile into it is
+  // simpler and only marginally more memory.
+  //
+  // Why distance-from-white (not alpha): alpha works for DWD's banded
+  // palette but is near-binary for RainViewer/NOAA's smooth ramps,
+  // leaving no signal for LK at the rain edges. Distance-from-white
+  // (`255 - min(R, G, B)`, weighted by alpha) reads the colour ramp
+  // as a continuous gradient and works for all three sources.
+  //
+  // ## Async because of the decode race
+  //
+  // FetchTileLayer assigns `tile.src` to a blob URL and calls
+  // Leaflet's `done()` callback synchronously immediately after — see
+  // src/fetch-tile-layer.ts createFetchTile(). That fires the layer's
+  // 'load' event the moment the LAST tile's `done()` runs, but at
+  // that point the browser may not have finished DECODING the new
+  // image data (`tile.src = url` is async). Tiles with the
+  // `.leaflet-tile-loaded` class but `complete=false` aren't drawable
+  // yet — our JS check skips them, producing a partial snapshot whose
+  // motion-vector output looks plausible but is measuring random
+  // gradient overlap rather than real rain motion.
+  //
+  // We await `tile.decode()` on any incomplete tile before drawing.
+  // For already-decoded tiles decode() returns immediately, so the
+  // cost is paid only on the first 'load' fire of a freshly-loaded
+  // layer. Re-snapshot on pan/zoom resolves instantly.
+  //
+  // The async generation check (`genAtStart !== _snapshotGen`)
+  // ensures a viewport change mid-decode discards the result rather
+  // than polluting the new state.
+  //
+  // Skips silently when the layer's container isn't mounted yet, no
+  // tiles have loaded, or canvas isn't available. Callers check the
+  // _frameSnapshot[fi] slot to know whether a snapshot exists.
+  private async _captureFrameSnapshot(fi: number): Promise<void> {
+    const layer = this._radarImage[fi];
+    if (!layer || !this._map) return;
+    const container = (layer as any).getContainer?.() as HTMLElement | undefined;
+    if (!container) return;
+    // Broader selector than `.leaflet-tile-loaded`: pick up any tile
+    // in this layer's grid. The decode-await below filters the actual
+    // "drawable" set, and the JS isImageLoaded check in the draw loop
+    // is the final gate. Using the class would be premature filtering
+    // because Leaflet adds the class before the browser finishes
+    // decoding (see the doc-block above).
+    const tiles = container.querySelectorAll<HTMLImageElement>('img.leaflet-tile');
+    if (tiles.length === 0) return;
+    // Wait for any tile whose browser decode isn't complete yet.
+    // decode() returns a resolved promise for already-decoded images,
+    // so the common steady-state pan/zoom recapture costs nothing.
+    // catch() swallows broken-image rejections — those tiles fail the
+    // isImageLoaded check below and get skipped at draw time.
+    const genAtStart = this._snapshotGen;
+    await Promise.all(Array.from(tiles).map((t) => {
+      if (t.complete && t.naturalWidth > 0) return Promise.resolve();
+      return t.decode().catch(() => { /* broken; skip at draw time */ });
+    }));
+    // View changed during decode (pan/zoom/resize) — the snapshot for
+    // the old viewport is no longer relevant; the new generation will
+    // do its own capture.
+    if (genAtStart !== this._snapshotGen) return;
+    // Verify the layer wasn't replaced underneath us either (e.g. by
+    // _updateRadar's shift, or a teardown).
+    if (this._radarImage[fi] !== layer) return;
+    const mapSize = this._map.getSize();
+    const grid = RadarPlayer.SNAPSHOT_GRID;
+    const canvas = document.createElement('canvas');
+    canvas.width = grid;
+    canvas.height = grid;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const mapRect = this._map.getContainer().getBoundingClientRect();
+    const xScale = grid / mapSize.x;
+    const yScale = grid / mapSize.y;
+    for (const tileImg of Array.from(tiles)) {
+      if (!tileImg.complete || tileImg.naturalWidth === 0) continue;
+      const tr = tileImg.getBoundingClientRect();
+      const sx = (tr.left - mapRect.left) * xScale;
+      const sy = (tr.top - mapRect.top) * yScale;
+      const sw = tr.width * xScale;
+      const sh = tr.height * yScale;
+      try {
+        ctx.drawImage(tileImg, sx, sy, sw, sh);
+      } catch {
+        // Cross-origin taint shouldn't happen with FetchTileLayer's
+        // blob URLs, but if it does we silently skip the tile rather
+        // than throw.
+      }
+    }
+    const imgData = ctx.getImageData(0, 0, grid, grid);
+    const snapshot = extractChannel(imgData, 'distance-from-white');
+    this._frameSnapshot[fi] = snapshot;
+    // Count non-zero pixels so _computeMotionForFrame can detect a
+    // partial-load capture (small nz next to a sibling frame's full
+    // snapshot → LK would lock onto noise with high confidence).
+    let nz = 0;
+    for (let k = 0; k < snapshot.length; k++) if (snapshot[k] > 0) nz++;
+    this._frameSnapshotNz[fi] = nz;
+  }
+
+  // After snapshotting frame fi, async-compute the motion vector that
+  // takes frame fi-1's rain field into frame fi's. Stored as the
+  // vector to animate when transitioning INTO frame fi. Skips if the
+  // previous snapshot doesn't exist yet (fi is the oldest, or its
+  // predecessor hasn't loaded). Discards stale async results via the
+  // generation check so a viewport change mid-computation doesn't
+  // pollute the new state with old-viewport vectors.
+  private _computeMotionForFrame(fi: number): void {
+    const cur = this._frameSnapshot[fi];
+    const prev = this._frameSnapshot[fi - 1];
+    if (!cur || !prev || !this._map) { this._frameMotion[fi] = null; return; }
+    // Comparability check: two snapshots with very different non-zero
+    // coverage aren't capturing the same scene (one was likely taken
+    // while tiles were still loading — Leaflet's 'load' event empirically
+    // fires before all tile <img> elements are decoded into the DOM as
+    // class="leaflet-tile-loaded"). LK on incompatible inputs produces
+    // spurious vectors with deceptively high Shi-Tomasi confidence,
+    // because the algorithm just minimises the residual on whatever
+    // gradient signal exists — not knowing the inputs don't correspond.
+    // Without this gate the user sees occasional "rain teleports half
+    // the screen" frames mixed in with normal slides.
+    const prevNz = this._frameSnapshotNz[fi - 1];
+    const curNz = this._frameSnapshotNz[fi];
+    if (prevNz < RadarPlayer.MIN_SNAPSHOT_NZ || curNz < RadarPlayer.MIN_SNAPSHOT_NZ) {
+      // Too sparse to be reliable. Leave any prior motion[fi] in
+      // place — better an out-of-date vector than a wrong one.
+      return;
+    }
+    const ratio = Math.min(prevNz, curNz) / Math.max(prevNz, curNz);
+    if (ratio < RadarPlayer.COVERAGE_SIMILARITY_FLOOR) {
+      // Snapshots have incompatible coverage. Same reasoning — keep
+      // whatever motion[fi] already holds rather than overwriting.
+      return;
+    }
+    this._ensureLkClient();
+    const grid = RadarPlayer.SNAPSHOT_GRID;
+    const genAtStart = this._snapshotGen;
+    // The worker transfers (and detaches) the ArrayBuffers it
+    // receives. Copy the snapshots first so future
+    // _computeMotionForFrame calls — which read these same snapshots
+    // for adjacent transitions — still find valid data.
+    const i0 = new Float32Array(prev);
+    const i1 = new Float32Array(cur);
+    const mapSize = this._map.getSize();
+    const xScale = mapSize.x / grid;
+    const yScale = mapSize.y / grid;
+    void estimateMotionLk(i0, i1, grid, grid, {}, this._lkClient).then((result) => {
+      // Viewport changed since the call started — result is stale,
+      // _invalidateSnapshots already cleared _frameMotion.
+      if (genAtStart !== this._snapshotGen) return;
+      if (result.confidence < RadarPlayer.CONFIDENCE_FLOOR) {
+        this._frameMotion[fi] = null;
+        return;
+      }
+      this._frameMotion[fi] = {
+        dx: result.dx * xScale,
+        dy: result.dy * yScale,
+        confidence: result.confidence,
+      };
+    }).catch(() => {
+      // Worker error or termination — quietly drop. The next
+      // _onLayerLoaded / _resnapshotAll cycle will retry.
+      if (genAtStart !== this._snapshotGen) return;
+      this._frameMotion[fi] = null;
+    });
+  }
+
+  // Handle a layer's Leaflet 'load' event by snapshotting just that
+  // layer and recomputing the motion vectors for the two pairs it
+  // participates in (the transition INTO it, and the transition OUT
+  // of it to the next-newer frame). Per-layer rather than a debounced
+  // global sweep because Leaflet's 'load' fires the moment THIS
+  // layer's visible tiles are decoded, which is precisely when its
+  // pixel buffer is consistent. A global sweep timer can fire while
+  // a slower layer is still decoding, leaving a partial snapshot
+  // whose vector then drags the smoothed motion for that frame off
+  // course — visible as a jittery patch midway through the loop
+  // after a pan, zoom, or resize.
+  private _onLayerLoaded = async (layer: FetchTileLayer | FetchWmsTileLayer): Promise<void> => {
+    if (!this._cfg.motion_compensation) return;
+    const fi = this._radarImage.indexOf(layer);
+    if (fi < 0) return;
+    // Await capture — the decode race in fetch-tile-layer.ts means
+    // tile pixels may not be drawable when 'load' fires. See the
+    // doc-block on _captureFrameSnapshot.
+    await this._captureFrameSnapshot(fi);
+    // Layer might have been replaced (e.g. by _updateRadar) during
+    // the decode wait. _captureFrameSnapshot returns silently in
+    // that case, leaving snapshot[fi] stale or unchanged — either
+    // way, recomputing motion off it is meaningless.
+    if (this._radarImage[fi] !== layer) return;
+    this._computeMotionForFrame(fi);
+    if (fi + 1 < this._frameSnapshot.length) {
+      this._computeMotionForFrame(fi + 1);
     }
   };
+
+  // Median-of-5 smoothing for the motion vector at frame fi. Reduces
+  // visible "stepping" at tick boundaries when adjacent transitions
+  // produce significantly different LK vectors — without this, the
+  // slide animation honestly renders every per-tick speed change as
+  // a perceptible step. With it, the per-tick vector applied to the
+  // slide is the median of the window centered on fi, robustly
+  // ignoring single-tick outliers (e.g. a brief moment of bad
+  // gradient signal producing a 3× spike).
+  //
+  // Confidence inherits from the centre transition since the median
+  // is structural rather than statistical — averaging confidence
+  // would mask the actual signal quality of THIS transition.
+  //
+  // O(window²) time per call. With window=5 (radius 2) and per-tick
+  // invocation, this is single-digit operations — negligible.
+  private _smoothedMotion(fi: number): MotionVector | null {
+    if (fi < 0 || fi >= this._frameMotion.length) return null;
+    const raw = this._frameMotion[fi];
+    // Bypass smoothing when raw is near-zero. These come from frame
+    // pairs where the source served byte-identical snapshots
+    // (publication-cycle quirks on RainViewer / DWD / NOAA produce
+    // periodic duplicate frames when the requested stride is finer
+    // than the source's true unique-frame interval). LK correctly
+    // reports zero motion for these — but the median smoothing would
+    // replace the zero with the bulk neighbor vector, sliding the
+    // new layer from translate(-d_neighbor) to translate(0) over the
+    // tick. Since the actual frame content is identical to the
+    // previous frame, the rain visually JUMPS BACKWARD by d_neighbor
+    // at the tick start, then slides forward to its starting
+    // position. That's the periodic "step back" artifact.
+    //
+    // Threshold of 0.5 canvas-px = ~2 screen-px on a typical viewport
+    // — well below visual significance, so anything below it is
+    // either noise or a true duplicate-frame zero.
+    if (raw && Math.hypot(raw.dx, raw.dy) < 0.5) return raw;
+    const radius = RadarPlayer.MOTION_SMOOTH_RADIUS;
+    const dxs: number[] = [];
+    const dys: number[] = [];
+    for (let k = -radius; k <= radius; k++) {
+      const j = fi + k;
+      if (j < 0 || j >= this._frameMotion.length) continue;
+      const v = this._frameMotion[j];
+      if (!v) continue;
+      dxs.push(v.dx);
+      dys.push(v.dy);
+    }
+    if (dxs.length === 0) return null;
+    const median = (vs: number[]): number => {
+      const sorted = vs.slice().sort((a, b) => a - b);
+      const mid = sorted.length >> 1;
+      return sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
+    };
+    return {
+      dx: median(dxs),
+      dy: median(dys),
+      confidence: this._frameMotion[fi]?.confidence ?? 0,
+    };
+  }
+
+  // Detect frames that are byte-identical to their predecessor and
+  // remove them from the playback loop, compacting every per-frame
+  // array. Caused by source-side publication-cycle quirks — NOAA's
+  // eventdriven WMS service snaps any TIME query within a single
+  // ~6-7 min publication window to the same physical frame, so
+  // requests at the source-caps `intervalMin: 5` stride return
+  // duplicates at roughly every 3-4th position. NOAA's metadata
+  // endpoints (queryRasters, query, GetCapabilities) all refuse
+  // browser requests, so the only way to learn the true cadence is
+  // empirically — from the snapshot nz fingerprints LK already has.
+  //
+  // Detection criterion: consecutive snapshots with identical nz
+  // (non-zero pixel count). When two snapshots have the same number
+  // of rain pixels AND we know they were captured from the same
+  // tile set (loaded sequentially in _initRadar), they're byte-
+  // identical with overwhelming probability — coincidental nz
+  // collision on random different frames is theoretically possible
+  // but vanishingly rare for any real radar scene.
+  //
+  // After compaction, _loadedSlots becomes the trivial [0, 1, …,
+  // n-1] (slot index == fi), every per-frame array is sized to the
+  // unique count, _configFrameCount reflects the actual displayed
+  // count, and the progress bar is rebuilt to match. _currentSlot
+  // and _prev1Slot are remapped to keep showing the same frame
+  // content across the compaction.
+  //
+  // Synchronous — atomic update relative to any tick callbacks
+  // (JavaScript single-threaded). Caller is responsible for
+  // bumping _loopGen via _stopLoop first so any in-flight
+  // setTimeout from before the dedup bails out on its gen check
+  // (the cancelled timer's captured n/isLoopBack would be stale
+  // after dedup).
+  private _dedupFrames(): void {
+    if (this._loadedSlots.length <= 1) return;
+    // Walk _loadedSlots in order; mark frames whose nz matches the
+    // PREVIOUSLY-KEPT frame (not the previous in _loadedSlots — a
+    // chain of 3 duplicates should all collapse to one, not zigzag).
+    const isDuplicate: boolean[] = new Array(this._loadedSlots.length).fill(false);
+    let lastKeptFi = this._loadedSlots[0];
+    for (let i = 1; i < this._loadedSlots.length; i++) {
+      const fi = this._loadedSlots[i];
+      const nz = this._frameSnapshotNz[fi];
+      const prevNz = this._frameSnapshotNz[lastKeptFi];
+      if (nz > 0 && nz === prevNz) {
+        isDuplicate[i] = true;
+      } else {
+        lastKeptFi = fi;
+      }
+    }
+    const droppedCount = isDuplicate.filter(Boolean).length;
+    if (droppedCount === 0) return;
+
+    // Capture the fi values for the currently-visible slot and the
+    // most-recent prev1 slot BEFORE we compact, so we can remap
+    // those pointers afterward to keep showing the same content.
+    const currentFi = this._loadedSlots[this._currentSlot];
+    const prev1Fi = this._prev1Slot >= 0
+      ? this._loadedSlots[this._prev1Slot]
+      : -1;
+
+    // Build the kept-fi list in slot order (oldest → newest), then
+    // tear down the dropped layers (return their tiles + DOM to
+    // Leaflet) so duplicates don't linger as invisible attached
+    // layers consuming memory.
+    const keptFi: number[] = [];
+    for (let i = 0; i < this._loadedSlots.length; i++) {
+      if (isDuplicate[i]) {
+        const fi = this._loadedSlots[i];
+        const layer = this._radarImage[fi];
+        if (layer && (layer as { remove?: () => void }).remove) {
+          (layer as { remove: () => void }).remove();
+        }
+        const mask = this._radarMask[fi];
+        if (mask && (mask as { remove?: () => void }).remove) {
+          (mask as { remove: () => void }).remove();
+        }
+      } else {
+        keptFi.push(this._loadedSlots[i]);
+      }
+    }
+
+    // Compact every per-frame array. New index == position in
+    // keptFi, which IS the new fi value since _loadedSlots becomes
+    // trivial [0..n-1] below.
+    this._radarImage = keptFi.map((fi) => this._radarImage[fi]);
+    this._radarTime = keptFi.map((fi) => this._radarTime[fi]);
+    this._radarPaths = keptFi.map((fi) => this._radarPaths[fi]);
+    this._frameSnapshot = keptFi.map((fi) => this._frameSnapshot[fi]);
+    this._frameSnapshotNz = keptFi.map((fi) => this._frameSnapshotNz[fi]);
+    this._frameMotion = keptFi.map((fi) => this._frameMotion[fi]);
+    this._radarMask = keptFi.map((fi) => this._radarMask[fi] ?? null);
+
+    // _loadedSlots becomes the identity mapping; _configFrameCount
+    // reflects what's actually displayed.
+    this._loadedSlots = Array.from({ length: keptFi.length }, (_, i) => i);
+    this._configFrameCount = keptFi.length;
+
+    // Remap _currentSlot / _prev1Slot to the new fi positions so
+    // playback resumes on the same content.
+    const newCurrent = keptFi.indexOf(currentFi);
+    this._currentSlot = newCurrent >= 0 ? newCurrent : (keptFi.length - 1);
+    if (prev1Fi >= 0) {
+      const newPrev1 = keptFi.indexOf(prev1Fi);
+      this._prev1Slot = newPrev1 >= 0 ? newPrev1 : this._currentSlot;
+    }
+
+    // Rebuild the progress bar at the new (correct) length. All
+    // remaining frames are loaded by this point, so seed every
+    // segment to 'loaded' rather than 'empty'.
+    this._buildSegments();
+    for (let i = 0; i < this._loadedSlots.length; i++) {
+      this._setSegment(i, 'loaded');
+    }
+    // Recompute the "now" marker against the new (compacted)
+    // _radarPaths and re-highlight the currently-visible segment.
+    this._computeNowFrameIndex();
+    this._applyNowMarker();
+    this._highlightSegment(this._currentSlot);
+
+    // Diagnostic: what cadence did we infer? Surfacing this once
+    // makes it easy for users to choose `frame_stride_minutes` in
+    // YAML if they want to skip the discovery overhead entirely.
+    const range = getEffectiveTimeRange(this._cfg);
+    const originalCount = keptFi.length + droppedCount;
+    const inferredCadenceMin = (originalCount * range.strideMin) / keptFi.length;
+    const dataSource = this._cfg.data_source ?? 'RainViewer';
+    console.info(
+      `[weather-radar-card] ${dataSource} cadence inferred: ~${inferredCadenceMin.toFixed(1)} min (dropped ${droppedCount} of ${originalCount} frames as duplicates).`,
+    );
+  }
+
+  // Snapshot every currently attached radar layer and compute every
+  // adjacent-pair motion vector. Called after view changes (pan, zoom,
+  // resize) where Leaflet's 'load' event may not fire because the
+  // necessary tiles are already cached and only reposition. Per-layer
+  // 'load' still handles the case where new tiles do load and gives
+  // a fresher snapshot.
+  private async _resnapshotAll(): Promise<void> {
+    if (!this._cfg.motion_compensation) return;
+    // Capture all snapshots in parallel (each awaits its own tiles'
+    // decode internally). Once all snapshots resolve, recompute every
+    // adjacent-pair motion vector with the fresh data.
+    await Promise.all(
+      this._radarImage.map((layer, fi) =>
+        layer ? this._captureFrameSnapshot(fi) : Promise.resolve(),
+      ),
+    );
+    for (let fi = 1; fi < this._frameSnapshot.length; fi++) {
+      this._computeMotionForFrame(fi);
+    }
+  }
 
   // ── Config helpers ───────────────────────────────────────────────────────
 
@@ -382,11 +962,20 @@ export class RadarPlayer {
     this._pathsAbortCtrl?.abort();
     this._pathsAbortCtrl = null;
     this._map?.off('zoomend', this._onZoomEnd);
+    this._map?.off('moveend', this._onMoveEnd);
+    this._map?.off('resize', this._onResize);
     if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
     this._worker?.terminate();
     this._worker = null;
     this._workerCallbacks.clear();
     if (this._workerBlobUrl) { URL.revokeObjectURL(this._workerBlobUrl); this._workerBlobUrl = null; }
+    // Bump generation so any in-flight LK promises bail out on resolve.
+    this._snapshotGen++;
+    this._lkClient?.dispose();
+    this._lkClient = null;
+    this._frameSnapshot = [];
+    this._frameSnapshotNz = [];
+    this._frameMotion = [];
     this._frameStatuses = [];
     this._updateLoadingSpinner();
   }
@@ -523,6 +1112,10 @@ export class RadarPlayer {
       if (!el) continue;
       el.style.transition = 'none';
       el.style.opacity = (s === current) ? '1' : '0';
+      // Reset any mid-transition translate so a paused-then-resumed
+      // playback doesn't show the current frame still offset by the
+      // outgoing slide of the previous tick.
+      el.style.transform = '';
     }
   }
 
@@ -575,7 +1168,13 @@ export class RadarPlayer {
       : this._crossfadeTiming();
     const fade = timing.fadeMs;
     const fadeOutDelay = timing.delayMs;
-    const transition = fade > 0 ? `opacity ${fade}ms ease-in-out` : 'none';
+    // Linear opacity easing (rather than ease-in-out) so the fade
+    // curve matches the slide's linear timing. ease-in-out's slow
+    // start / slow end creates a perceptual "settling" at each fade
+    // boundary that reads as extra stepping when consecutive ticks
+    // are stitched together. Linear keeps the brightness change rate
+    // constant throughout the cycle, eliminating that artifact.
+    const transition = fade > 0 ? `opacity ${fade}ms linear` : 'none';
 
     // Two-slot animation model. Per-layer opacity transitions between 0
     // and 1; radar_opacity is applied at the pane level (see
@@ -613,6 +1212,37 @@ export class RadarPlayer {
     const prev1 = this._prev1Slot;
     const useChain = fade > 0;
 
+    // Motion compensation: slide layers in the rain-drift direction
+    // over the full transition window (frame_delay). The incoming
+    // layer starts at translate(-dx, -dy) — where its rain WOULD
+    // have been at the previous frame's time — and slides to (0, 0).
+    // The outgoing layer starts at (0, 0) and slides to (+dx, +dy) —
+    // where its rain WOULD be at the new frame's time. At any t the
+    // two layers' rain positions overlap, so the composite reads as
+    // one drifting field rather than two crossfading ones.
+    //
+    // Linear easing keeps the perceived drift speed constant.
+    //
+    // _frameMotion[fi] is the vector from frame fi-1 INTO frame fi —
+    // so for THIS tick we want _frameMotion[newFi]. Disabled when:
+    //   - opts.snap (loop-restart): a slide across the loop reads
+    //     wrong because the user just watched time pause
+    //   - useChain is false (animations off): no transition to slide on
+    //   - motion_compensation config is off
+    //   - vector unavailable (snapshot pending, low confidence, etc.)
+    const newFi = this._loadedSlots[slot];
+    // Read the smoothed vector rather than the raw one — see
+    // _smoothedMotion's doc-block. The raw LK output for adjacent
+    // transitions can vary by 3× in magnitude on real radar data,
+    // which the slide animation would honestly render as a visible
+    // speed change at every tick boundary. Median-of-5 across the
+    // window centered on this frame collapses outliers and keeps the
+    // perceived rain speed consistent across the loop.
+    const motion = (!opts?.snap && useChain && this._cfg.motion_compensation && newFi !== undefined)
+      ? this._smoothedMotion(newFi)
+      : null;
+    const motionTransition = motion ? `, transform ${this._timeout}ms linear` : '';
+
     for (let s = 0; s < n; s++) {
       const fi = this._loadedSlots[s];
       const layer = this._radarImage[fi];
@@ -624,12 +1254,18 @@ export class RadarPlayer {
         el.style.zIndex = String(newZ);
         el.style.transition = 'none';
         el.style.opacity = '0';
+        // Stage the starting translate before the reflow so the
+        // transform transition has a "from" position to animate from.
+        // No motion: clear any stale translate left over from this
+        // layer's previous role as prev1 in an earlier tick.
+        el.style.transform = motion ? `translate(${-motion.dx}px, ${-motion.dy}px)` : '';
         // Forced reflow before re-assigning — without this the browser
         // coalesces the two opacity writes and skips the transition.
         // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         void el.offsetHeight;
-        el.style.transition = transition;
+        el.style.transition = transition + motionTransition;
         el.style.opacity = '1';
+        if (motion) el.style.transform = 'translate(0px, 0px)';
       } else if (useChain && s === prev1) {
         // Just-promoted previous current: delayed fade-out. The
         // `transition-delay` (the second time value) holds the layer
@@ -639,13 +1275,24 @@ export class RadarPlayer {
         // mode delay is 75% of fade duration — the fade-out starts
         // before fade-in finishes, creating a brief overlap window
         // where the brightness composite stays close to constant.
-        el.style.transition = `opacity ${fade}ms ease-in-out ${fadeOutDelay}ms`;
+        // The transform animation runs the full window (no delay) so
+        // the slide ends in sync with the fade-out completing.
+        // Linear opacity easing here too — matches the slot
+        // layer's linear easing set above. Previously ease-in-out,
+        // which created an asymmetric brightness curve during the
+        // crossfade (slot fading in linearly while prev faded out
+        // along an S-curve) that read as a "settling pause" mid-
+        // transition. Symmetric linear keeps the perceived rate of
+        // change constant.
+        el.style.transition = `opacity ${fade}ms linear ${fadeOutDelay}ms${motionTransition}`;
         el.style.opacity = '0';
+        if (motion) el.style.transform = `translate(${motion.dx}px, ${motion.dy}px)`;
       } else if (!useChain) {
         // Snap mode / fade=0: every non-current slot snaps to 0
         // immediately so we never see two layers at opacity 1.
         el.style.transition = 'none';
         el.style.opacity = '0';
+        el.style.transform = '';
       }
       // useChain && older: don't touch. Their delayed fade-out from a
       // previous tick is either still finishing or already at 0.
@@ -810,6 +1457,12 @@ export class RadarPlayer {
     // that no longer exist after a teardown + re-init.
     this._prev1Slot = -1;
     this._zCounter = 0;
+    // Reset motion-compensation state too. _snapshotGen++ invalidates
+    // any LK results still in flight from the previous frame set.
+    this._snapshotGen++;
+    this._frameSnapshot = [];
+    this._frameSnapshotNz = [];
+    this._frameMotion = [];
     this._clearDwdMaskLayers();
   }
 
@@ -929,6 +1582,18 @@ export class RadarPlayer {
       const frames: RadarFrame[] = [];
       // forecast_minutes is irrelevant for NOAA (maxForecastMin: 0) so the
       // anchor is just the latest past frame.
+      //
+      // Note: NOAA's eventdriven WMS server snaps any TIME query within
+      // a single ~6-7 min publication window to the same physical
+      // frame, so requests at the source-caps `intervalMin: 5` stride
+      // produce periodic duplicate frames (every 3-4 stride positions,
+      // empirically). NOAA's metadata endpoints (/queryRasters, /query,
+      // GetCapabilities) all refuse browser requests so we can't
+      // discover the actual frame times in advance. Instead, _initRadar
+      // detects duplicates from the captured snapshot statistics and
+      // prunes them via _dedupFrames, leaving the playback loop with
+      // only unique frames. See the doc-block on _dedupFrames for the
+      // full reasoning.
       for (let i = frameCount - 1; i >= 0; i--) {
         frames.push({ time: (snap - i * strideMs) / 1000, path: '' });
       }
@@ -1010,8 +1675,17 @@ export class RadarPlayer {
     const { size: tileSize, zoomOffset } = this._radarTileSize();
     // Drive the spinner from each layer's load events, so pan/zoom edge
     // fetches on attached layers light it up too (not just frame status).
+    // The same 'load' event drives the spinner AND the motion-comp
+    // snapshot refresh. Leaflet fires it once a layer's visible tiles
+    // are all decoded, which is exactly the right moment to read
+    // pixels for the LK input. Per-layer rather than a debounced
+    // global sweep, because a debounce timer can fire while ONE
+    // late-loading layer is still decoding, leaving a partial
+    // snapshot whose vector then drags the motion for that frame off
+    // course — visible as a jittery patch midway through the loop.
     const wireSpinner = (l: FetchTileLayer | FetchWmsTileLayer): typeof l => {
       l.on('loading load', () => this._updateLoadingSpinner());
+      l.on('load', () => this._onLayerLoaded(l));
       return l;
     };
     if (dataSource === 'NOAA') {
@@ -1132,6 +1806,20 @@ export class RadarPlayer {
     }
     const dwdLayerName = dwdActive ? this._dwdLayerName() : '';
 
+    // Initialise motion-compensation state for the fresh set of
+    // frames. _captureFrameSnapshot writes into these as each frame's
+    // tile-settle completes below.
+    this._frameSnapshot = new Array(frameCount).fill(null);
+    this._frameSnapshotNz = new Array(frameCount).fill(0);
+    this._frameMotion = new Array(frameCount).fill(null);
+
+    // Collected snapshot promises so we can await all captures before
+    // running _dedupFrames at the end of this init. The dedup needs
+    // every snapshot's nz to be populated before it can identify
+    // duplicate frames; without the await it would run while
+    // half the captures are still in their decode-wait.
+    const snapshotPromises: Promise<void>[] = [];
+
     let newestShown = false;
 
     for (let fi = frameCount - 1; fi >= 0; fi--) {
@@ -1164,6 +1852,32 @@ export class RadarPlayer {
       if (status === 'loaded') {
         const prevSlotCount = this._loadedSlots.length;
         this._loadedSlots.unshift(fi);
+
+        // Motion-comp prep: snapshot this frame, then compute the
+        // motion vector(s) we now have enough data for. Frames load
+        // newest first, so after fi snapshots we may be able to
+        // compute motion FROM fi INTO fi+1 (snapshotted last
+        // iteration). motion[fi] itself needs fi-1, which arrives
+        // next iteration.
+        //
+        // Fire and forget: _captureFrameSnapshot awaits each tile's
+        // decode() so we don't want to block this loop on it. The
+        // motion computation chains off the snapshot completion via
+        // .then() so it picks up fresh snapshot data, and a generation
+        // guard in _computeMotionForFrame discards stale results if
+        // _frameGeneration bumps mid-flight.
+        if (this._cfg.motion_compensation) {
+          const myGenInner = myGen;
+          snapshotPromises.push(
+            this._captureFrameSnapshot(fi).then(() => {
+              if (myGenInner !== this._frameGeneration) return;
+              this._computeMotionForFrame(fi);
+              if (fi + 1 < this._frameSnapshot.length) {
+                this._computeMotionForFrame(fi + 1);
+              }
+            }),
+          );
+        }
 
         if (!newestShown) {
           // Show newest frame as a static preview before the loop starts.
@@ -1214,6 +1928,33 @@ export class RadarPlayer {
     }
 
     if (myGen !== this._frameGeneration) return;
+
+    // Wait for snapshot captures to finish, then dedup duplicate
+    // frames out of the playback loop. Done at this point so the
+    // user has been watching the un-deduped loop for a few seconds
+    // already (the loop starts after 2 frames load) — the dedup
+    // tightens the loop without making them wait for it on first
+    // paint. _stopLoop bumps _loopGen so any in-flight tick whose
+    // captured (delay, isLoopBack) state is stale after compaction
+    // bails on its gen check; we restart immediately after dedup
+    // **regardless of whether the dedup actually dropped any frames**
+    // — _stopLoop killed the loop unconditionally, so we have to
+    // restart unconditionally too. (Skipping the restart when no
+    // duplicates were found leaves the loop dead, which manifests
+    // for sources like RainViewer where the configured intervalMin
+    // already matches the native cadence — no duplicates ever exist
+    // to trigger the restart-on-dedup path.)
+    if (this._cfg.motion_compensation && snapshotPromises.length > 0) {
+      await Promise.all(snapshotPromises);
+      if (myGen !== this._frameGeneration) return;
+      const wasRunning = this.run && this._radarReady && this._loadedSlots.length >= 2;
+      if (wasRunning) this._stopLoop();
+      this._dedupFrames();
+      if (wasRunning && this._loadedSlots.length >= 2) {
+        this._startLoop(this._currentSlot);
+      }
+    }
+
     if (this._loadedSlots.length > 0) {
       this._radarReady = true;
       this._scheduleUpdate();
@@ -1279,6 +2020,20 @@ export class RadarPlayer {
     this._radarTime[frameCount - 1] = newTime;
     this._radarPaths[frameCount - 1] = latestFrame;
     this._loadedSlots = this._loadedSlots.map(fi => fi - 1).filter(fi => fi >= 0);
+    // Shift motion-compensation state alongside the radar frames.
+    // The old frame 0 is dropped, so old motion[1] (which described
+    // the 0→1 transition) is also dropped — its predecessor no
+    // longer exists. All later motion vectors stay valid because the
+    // pair they describe (old fi-1, old fi) survives intact as
+    // (new fi-2, new fi-1).
+    for (let i = 0; i < frameCount - 1; i++) {
+      this._frameSnapshot[i] = this._frameSnapshot[i + 1] ?? null;
+      this._frameSnapshotNz[i] = this._frameSnapshotNz[i + 1] ?? 0;
+      this._frameMotion[i] = i === 0 ? null : (this._frameMotion[i + 1] ?? null);
+    }
+    this._frameSnapshot[frameCount - 1] = null;
+    this._frameSnapshotNz[frameCount - 1] = 0;
+    this._frameMotion[frameCount - 1] = null;
     this._computeNowFrameIndex();
     this._applyNowMarker();
 
@@ -1296,7 +2051,23 @@ export class RadarPlayer {
       }
       const newStatus: FrameStatus = newLayer._tileFailed > 0 ? 'failed' : 'loaded';
       this._setSegment(frameCount - 1, newStatus);
-      if (newStatus === 'loaded') this._loadedSlots.push(frameCount - 1);
+      if (newStatus === 'loaded') {
+        this._loadedSlots.push(frameCount - 1);
+        // Snapshot the freshly loaded newest frame so its transition
+        // into view picks up motion compensation from the previous
+        // frame. _onLayerLoaded would handle this too on the next
+        // 'load' fire, but doing it here makes the very first
+        // post-refresh transition compensated rather than waiting
+        // a tile-cycle. Fire-and-forget — see the equivalent
+        // call in _initRadar for the gen-guard rationale.
+        if (this._cfg.motion_compensation) {
+          const myGenInner = myGen;
+          void this._captureFrameSnapshot(frameCount - 1).then(() => {
+            if (myGenInner !== this._frameGeneration) return;
+            this._computeMotionForFrame(frameCount - 1);
+          });
+        }
+      }
       // Restart loop at newest frame so new data shows immediately
       this._currentSlot = this._loadedSlots.length - 1;
       this._startLoop();

@@ -423,6 +423,15 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             .disabled=${config.smooth_animation !== true}
             @value-changed=${this._handleSelectorChanged}
           ></ha-selector>
+          <label>
+            <ha-switch
+              .checked=${config.motion_compensation === true}
+              .configValue=${'motion_compensation'}
+              @change=${this._valueChangedSwitch}
+            ></ha-switch>
+            <span>${localize('editor.animation.motion_compensation')}</span>
+          </label>
+          <div class="section-description">${localize('editor.animation.motion_compensation_helper')}</div>
         ` : ''}
         <ha-selector
           .hass=${this.hass}

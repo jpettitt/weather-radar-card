@@ -21,6 +21,7 @@ All options can be configured using the GUI editor — there is no need to edit 
 | transition_time           | number          | **Optional**   | Crossfade duration in ms. Default is 40% of `frame_delay`. Ignored when `smooth_animation: true`.                                                                                                                                                      | auto                                  |
 | smooth_animation          | boolean         | **Optional**   | When `true`, the crossfade auto-calibrates so the full cycle equals `frame_delay` — the radar appears to flow continuously instead of stepping. Overrides `transition_time`.                                                                           | `false`                               |
 | smooth_overlap            | number          | **Optional**   | Cross-fade overlap fraction when `smooth_animation: true`. `0` = sequential (no brightness dip; previous frame held at full opacity, then fades out). `1` = fully simultaneous (brief mid-transition brightness dip). Tune for your basemap.           | `1`                                   |
+| motion_compensation       | boolean         | **Optional**   | Slide each radar layer in the estimated direction of rain motion during the crossfade, so rain drifts between frames instead of teleporting. See [Motion compensation](#motion-compensation).                                                          | `false`                               |
 | radar_opacity             | number          | **Optional**   | Opacity of the active radar frame (0.1–1.0). Lower values let more of the basemap show through                                                                                                                                                         | `1.0`                                 |
 | zoom_level                | number          | **Optional**   | Initial zoom level, 3–10                                                                                                                                                                                                                               | `7`                                   |
 | center_latitude           | number / string | **Optional**   | Initial map center latitude — number or entity ID                                                                                                                                                                                                      | HA instance location                  |
@@ -109,6 +110,25 @@ The relative timing of the two fades when `smooth_animation: true` is controlled
 | `1` (default) | Fully simultaneous — both fades run together. Brief mid-transition brightness dip but the smoothest motion.          |
 
 Tune for your basemap: lighter bases benefit from lower `smooth_overlap` to avoid pulsing.
+
+### Motion compensation
+
+`motion_compensation: true` slides each radar layer in the estimated direction of rain motion during the crossfade. The new frame slides in from where its rain *would have been* at the previous frame's time, and the old frame slides out toward where its rain *would be* at the new frame's time. The two layers' rain positions stay overlapped throughout the transition, so the composite reads as one drifting precipitation field rather than two crossfading frames at different positions.
+
+The motion vector is recovered from the frame pair itself — pyramidal Lucas-Kanade optical flow on a 96 × 96 intensity grid extracted from the visible tiles. No external wind data, no source-specific dispatch. Works for **all three radar sources** (DWD, RainViewer, NOAA).
+
+Runs in a Web Worker by default so the LK compute (~2 ms on a fast desktop, ~10–25 ms on a low-end mobile/tablet) doesn't block the main thread during the animation. Falls back to synchronous main-thread execution if Worker construction is blocked (e.g. by a strict CSP); a console line records the fallback.
+
+Auto-skipped on frame pairs where LK doesn't find enough gradient signal to produce a confident vector (light rain, clear skies, near-uniform palette). Those transitions render as the regular static crossfade — no jitter, no slide on noise.
+
+Pairs naturally with `smooth_overlap: 0` (sequential timing) so the composite stays at full opacity through the slide. Higher overlap values still work but let the alpha dip be slightly visible mid-slide.
+
+```yaml
+type: 'custom:weather-radar-card'
+smooth_animation: true
+smooth_overlap: 0
+motion_compensation: true
+```
 
 **Loop boundary snap** — when the loop wraps from the last frame back to the first after `restart_delay`, the transition is a hard cut rather than a fade. The pause has already broken perceived continuity, so a smooth crossfade across the loop reads as "time ran backwards"; a snap reads as "the loop restarted".
 

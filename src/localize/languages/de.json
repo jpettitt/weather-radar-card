@@ -180,7 +180,9 @@
       "playback_speed_double": "2× (schneller)",
       "playback_speed_quad": "4× (schnellste)",
       "viewer_layer_control": "Benutzerbezogene Speicherung (Admin-Opt-in)",
-      "viewer_layer_control_helper": "Wenn aktiviert, wird die Geschwindigkeitswahl pro Benutzer gespeichert und folgt dem Benutzer über Browser und Geräte hinweg über den Home-Assistant-Frontend-Speicher. Wenn deaktiviert, funktioniert die Schaltfläche weiterhin für die aktuelle Sitzung, die Auswahl wird jedoch nicht gespeichert."
+      "viewer_layer_control_helper": "Wenn aktiviert, wird die Geschwindigkeitswahl pro Benutzer gespeichert und folgt dem Benutzer über Browser und Geräte hinweg über den Home-Assistant-Frontend-Speicher. Wenn deaktiviert, funktioniert die Schaltfläche weiterhin für die aktuelle Sitzung, die Auswahl wird jedoch nicht gespeichert.",
+      "motion_compensation": "Motion Compensation (drift rain between frames)",
+      "motion_compensation_helper": "Slides each frame in the direction of rain motion during the crossfade so the rain appears to drift smoothly between frames instead of teleporting to its new position. Motion is recovered from the frame pair via pyramidal Lucas-Kanade optical flow — no external wind data, works for all radar sources. Pairs naturally with Smooth Animation. Default off."
     },
     "appearance": {
       "height": "Höhe",

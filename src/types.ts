@@ -78,6 +78,27 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * choice is not saved.
    */
   playback_speed?: number;
+  /**
+   * Slide each radar layer in the estimated direction of rain motion
+   * during the crossfade transition, so the rain appears to drift
+   * smoothly between frames instead of appearing in its new position
+   * while the old position fades out underneath.
+   *
+   * The motion vector is recovered by running pyramidal Lucas-Kanade
+   * optical flow on consecutive frame snapshots — no external wind
+   * data, no source dependency. Works for all three radar sources
+   * (DWD, RainViewer, NOAA). Runs in a Web Worker when available so
+   * slow devices don't see UI jank; falls back to synchronous main-
+   * thread execution if Worker construction fails (e.g. corporate CSP).
+   *
+   * Pairs naturally with `smooth_overlap: 0` (sequential timing) so
+   * the composite stays at full opacity through the slide — overlap > 0
+   * still works but lets the alpha dip be slightly visible mid-slide.
+   *
+   * Default off. Frames without enough texture (light rain, clear sky)
+   * fall back to the static crossfade automatically.
+   */
+  motion_compensation?: boolean;
   center_longitude?: CoordinateConfig;
   center_latitude?: CoordinateConfig;
   zoom_level?: number;
