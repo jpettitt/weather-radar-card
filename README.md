@@ -13,25 +13,28 @@ This card displays animated weather radar loops within Home Assistant. It suppor
 
 ![Weather Radar card](weather-radar-card.gif)
 
-## What's new in 3.5
+## What's new in 3.6 (current stable line)
 
-- **Hazard overlays (US-only)** — active wildfire perimeters from [NIFC's WFIGS feed](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#wildfires), and active NWS watches & warnings from [api.weather.gov](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#nws-watches--warnings). Both with strong life-safety disclaimers — informational only.
-- **Source-agnostic time range** — `past_minutes` / `forecast_minutes` (and a YAML-only `frame_stride_minutes`) replace `frame_count`. Editor surfaces preset dropdowns filtered by per-source caps; the forecast row hides on sources without a forecast. Existing `frame_count` configs auto-migrate. See [Configuration](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md).
-- **Sections-grid support** — `getGridOptions()` plus a flex layout that fills any cell, with a responsive bottom row that hides the date prefix on narrow cards.
-- **`smooth_overlap`** crossfade knob (0–1) — tune the brightness-dip vs cushion trade-off for your basemap.
-- **Loading spinner** + **"Now" marker** + **dark-map scale fix** — three contributions from [@genericJE](https://github.com/genericJE).
-- **Card-picker preview** — a static preview image now shows in HA's card-add picker (a live render would just show an empty map when there's no current rain in the user's area).
+- **Real-time lightning strikes** when the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung) is installed — bolt + pulse for first 30 s, then a coloured + sign on a two-pane outline-vs-fill split (dense storm clusters read clean instead of black-blob). Card-side max-age cap defaults to 30 min. ([3.6.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.0))
+- **Wind overlay** — barbs, arrows, animated streamlines from DWD's ICON-D2 model. Bulk WCS fetch with 60 s coalescing cache, zoom-aware streamlines. See [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#wind). ([3.6.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.0))
+- **Wind source registry** — choose `dwd_icon`, `dwd_aicon` (DWD's AI-augmented variant), or `ndfd_wind` (NWS NDFD 2.5 km CONUS / AK / HI / PR). Fresh US installs default to `ndfd_wind` automatically. ([3.6.1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.1))
+- **AbortController** on tile + data fetches — superseded fetches no longer complete on the wire after a pan / zoom / teardown. ([3.6.2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.2))
+- **Tablet-friendly progress-bar touch target** via `progress_bar_touch_height` YAML option, contributed by [@cgjolberg](https://github.com/cgjolberg). ([3.6.4](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.4))
+- **Per-user state framework** (dormant) — `ViewerState` wraps HA's frontend-storage WebSocket API. First user-visible consumer (adjustable playback speed) ships in 3.7. ([3.6.5](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.5))
+
+## 3.7 in flight (alpha pre-release)
+
+- **Adjustable playback speed** — toolbar button cycles ¼× / ½× / 1× / 2× / 4×; editor dropdown sets the YAML default. Optional per-user persistence via `viewer_layer_control` admin opt-in. Contributed by [@genericJE](https://github.com/genericJE). ([3.7.0-alpha1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.7.0-alpha1))
+- **Motion compensation for radar transitions** — opt-in `motion_compensation: true`. Rain visibly drifts between frames instead of teleporting. Pyramidal Lucas-Kanade optical flow on a distance-from-white intensity channel; source-agnostic across DWD / RainViewer / NOAA. Built on top of [@genericJE](https://github.com/genericJE)'s [#156](https://github.com/jpettitt/weather-radar-card/pull/156). ([3.7.0-alpha2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.7.0-alpha2))
 
 For the full release history see [CHANGELOG](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md).
 
 ## Roadmap
 
-- **Real-time lightning strikes** when the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung) is installed — shipped in 3.6.0
-- **Wind overlay** — barbs, arrows, animated streamlines from DWD's ICON-D2 model (global 0.25° grid). Shipped in 3.6.0-beta. See [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#wind).
-- **Wind source choice** (AICON / BRD-1km / NOAA NCSS) — target 3.7. See [todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md).
-- **Per-user / per-card layer visibility control** — target 3.7
+Active threads, no specific version commitment — alpha line for 3.7 is intentionally iterative until a real shape emerges. See [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md) for full backlog with status per item.
 
-Full backlog: [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md).
+- **Real-time per-user layer visibility control panel** — UI for toggling individual overlays in real time. Persistence framework already shipped (3.6.5); first consumer shipped (playback speed in 3.7.0-alpha1); the on-map panel itself is the remaining piece. Full design in [docs/layer-control-design.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/layer-control-design.md).
+- **Additional wind sources** — Open-Meteo for global coverage, ICON pressure levels for upper-air wind, regional finer-than-ICON-D2 sources (AROME, MEPS, HRRR). Tiers and trade-offs documented in [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md).
 
 ## Documentation
 

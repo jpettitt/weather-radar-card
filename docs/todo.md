@@ -88,7 +88,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
-- **Open-Meteo as an alternate wind source for global coverage** — target 3.7.
+- **Open-Meteo as an alternate wind source for global coverage.**
   The wind overlay landing in 3.6 (PR #133) is DWD-only — Germany +
   immediate neighbours via the ICON-D2 model. To extend the feature
   globally, add [Open-Meteo](https://open-meteo.com/) as a second
@@ -124,7 +124,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   helper line is per-source. Adding a new source is now: caps-table
   entry + (if not WCS-text-plain) a parser variant.
 
-  **Shipped (Unreleased):**
+  **Shipped — 3.6.1:**
 
   - ✅ `ndfd_wind` — NWS NDFD (HRRR + RAP + NAM + GFS forecaster blend) at
     2.5 km over CONUS / AK / HI / PR. Originally classified Tier 3 but
@@ -182,54 +182,28 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   UX. External-provider sources (AROME, ECMWF, HRRR direct) deferred
   unless a user requests them.
 
-- **Real-time per-user layer control** with persistent state — target 3.7.
-  The card now ships radar + wildfires + NWS alerts + lightning + DWD
-  coverage outline + three wind modes — too many for the editor to
-  be the only enable/disable surface. Add an on-map control letting
-  users toggle individual overlays in real time without re-opening
-  the editor.
+- **Real-time per-user layer control panel.** UI for toggling individual
+  overlays (radar, wildfires, NWS alerts, lightning, wind, DWD coverage,
+  range rings, markers) in real time, without re-opening the editor or
+  reloading the dashboard. State persists per-user across browsers and
+  devices.
 
-  **UX:** custom on-map button (`mdi:layers`) → expanding panel
-  matching the existing toolbar idiom (zoom / recenter / playback).
-  Considered Leaflet's built-in `L.control.layers` but it's dated
-  and doesn't match HA's design language. The custom panel can also
-  group toggles (Hazards / Wind / Coverage) and show live state
-  ("Wildfires (3 visible)").
+  **Storage dependency: shipped.** The `ViewerState` framework (per-user
+  state via HA's frontend-storage WebSocket API, per-card identity nonce
+  in YAML) landed dormant in 3.6.5 ([#175](https://github.com/jpettitt/weather-radar-card/pull/175))
+  and was first exercised by the adjustable playback-speed toggle in
+  3.7.0-alpha1 ([#157](https://github.com/jpettitt/weather-radar-card/pull/157)).
+  The framework + identity + sparse-override semantics + WS hydrate are
+  proven.
 
-  **Composition semantics — approach B (subset):** dashboard YAML
-  defines the *available* set of layers; user UI controls visibility
-  within that set, can't enable layers the dashboard owner didn't
-  authorise. Mirrors how HA's own per-user dashboard customisation
-  works — owner curates, user tunes within frame.
+  **What's still pending:** the layer-control panel UI itself (an on-map
+  `mdi:layers` button → expanding panel listing the active overlays with
+  per-row toggles) plus the per-overlay wiring (construct / tear down
+  layers based on the override-or-YAML resolution).
 
-  **Persistence:** HA's frontend storage API
-  (`frontend/get_user_data` / `frontend/set_user_data` over
-  WebSocket). Server-side, per-user, syncs across the user's
-  browsers and devices. Same API HA's own frontend uses for sidebar
-  state and view bookmarks.
-
-  **Storage key = config-hash + dashboard path.** SHA-1 (or short
-  hash) of the canonical card config (lat/lon/data_source/etc.) plus
-  the dashboard URL path. Rationale: the same card config can appear
-  on two dashboards (e.g. one user's main radar dashboard and a
-  separate "weather wall") — the user's toggle choices belong to
-  the dashboard they're looking at, not to the card-config in the
-  abstract. Two dashboards × same config = two independent
-  per-user states. Key shape: `wrc-overlays:{configHash}:{dashboardPath}`.
-
-  **What gets stored:** which overlays the user has hidden (sparse —
-  only overrides, not full state). Defaults are the dashboard YAML;
-  storage layer just records "user explicitly turned X off" or "user
-  explicitly turned Y back on after toggling it off then back".
-
-  **Edge cases to think about during design:**
-  - YAML config changes — does a meaningful change invalidate the
-    user's overrides (they were tuning a different set), or do
-    overrides survive across config edits?
-  - Dashboard rename — URL path changes, user's state appears to
-    reset. Acceptable (rare) or handle via stable dashboard ID?
-  - Multi-card dashboards (same card type, different configs on the
-    same dashboard) — config-hash differentiates them naturally.
+  Full design in [`layer-control-design.md`](layer-control-design.md) —
+  UX, composition semantics (subset of YAML-authorised layers), storage
+  key shape, edge cases.
 
 ### Investigated, won't pursue
 
@@ -246,7 +220,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   external PR, guaranteed to render. We've held off on that to keep the
   card name canonical; revisit if the issue gets attention.
 
-- **TypeScript module augmentation for Leaflet** — code-health pass, target 3.8.
+- **TypeScript module augmentation for Leaflet** — code-health pass.
   About 25 source files carry `/* eslint-disable @typescript-eslint/no-explicit-any */`
   to access Leaflet APIs we legitimately need (`getContainer()`,
   `_tilePending`, project-internal extensions like `_wrcCfg`). The
@@ -279,7 +253,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   Identified by Gemini code review (issue #2).
 
 - **WindGridFetcher cancellation via consumer reference-counting** —
-  pair with the 3.7 layer-control work.
+  pair with the layer-control panel work.
   The other four fetch sites (`fetch-tile-layer.ts`, `wildfire-layer.ts`,
   `nws-alerts-layer.ts`, `radar-player.ts`) gained `AbortController` in
   3.6.2 to stop superseded fetches from completing on the wire.
@@ -290,7 +264,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   interest, not when any one of them does. The 60-second cache TTL
   provides similar bandwidth conservation in practice.
 
-  When the layer-control panel (3.7) adds explicit per-card cancellation
+  When the layer-control panel adds explicit per-card cancellation
   semantics — the user toggles wind off on a card mid-fetch — this
   becomes a real requirement. Until then, the cache TTL is fine.
 
@@ -324,4 +298,17 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - `animation.md` rewritten to match the current two-slot + delayed-fade-out model ✅ — 3.5.0
 - 11-language i18n parity sweep (100% key coverage, stale `frame_count` keys dropped) ✅ — 3.5.0
 - Lightning overlay (Blitzortung integration) — bolt + pulse for first 30 s, then a Blitzortung-style coloured + sign on a two-pane outline-vs-fill split (so dense storm clusters read clean instead of black-blob). Card-side max-age cap (default 30 min, distinct from the integration's own setting). Editor toggle disabled with tooltip when integration not loaded. ✅ — 3.6.0
+- Wind overlay — barbs / arrows / animated streamlines from DWD's ICON-D2 model. Bulk WCS fetch with 60 s coalescing cache. ✅ — 3.6.0
+- Wind source registry — `WindSource` caps table in `src/wind-source-caps.ts`; `ndfd_wind` (NWS NDFD 2.5 km CONUS/AK/HI/PR) + `dwd_aicon` (DWD AI-augmented ICON-D2). Auto-defaults `ndfd_wind` for fresh US installs. ✅ — 3.6.1
+- AbortController on tile + data fetches (`fetch-tile-layer`, `wildfire-layer`, `nws-alerts-layer`, `radar-player`) so superseded fetches don't complete on the wire ✅ — 3.6.2
+- `ha-textfield` → `ha-input` migration after invisible-editor-input regression on current HA ✅ — 3.6.3
+- Lightning strikes — newest renders on top within each pane (z-index by timestamp) ([#171](https://github.com/jpettitt/weather-radar-card/pull/171)) ✅ — 3.6.4
+- Tablet-friendly progress-bar touch target via `progress_bar_touch_height` YAML option (contributed by [@cgjolberg](https://github.com/cgjolberg), [#172](https://github.com/jpettitt/weather-radar-card/pull/172)) ✅ — 3.6.4
+- Lightning strike distance now uses HA's preferred length unit (km / mi) ([#176](https://github.com/jpettitt/weather-radar-card/pull/176)) ✅ — 3.6.5
+- Per-user state framework on `main` — `src/viewer-state.ts` wraps HA's frontend storage WebSocket API; per-card identity nonce auto-minted into YAML. Dormant on landing; first consumer shipped in 3.7.0-alpha1. ([#175](https://github.com/jpettitt/weather-radar-card/pull/175)) ✅ — 3.6.5
+- DWD/NOAA region-warning auto-suppress when the map's actual coverage is visible ([#180](https://github.com/jpettitt/weather-radar-card/pull/180)) ✅ — 3.6.5
+- Adjustable playback speed via toolbar button + editor dropdown — cycles ¼× / ½× / 1× / 2× / 4×. Optional per-user persistence via `viewer_layer_control` admin opt-in (first exercise of the viewer-state framework). Contributed by [@genericJE](https://github.com/genericJE) ([#157](https://github.com/jpettitt/weather-radar-card/pull/157)) ✅ — 3.7.0-alpha1
+- Motion compensation for radar transitions — opt-in `motion_compensation: true`. Pyramidal Lucas-Kanade optical flow on a distance-from-white intensity channel; source-agnostic across DWD / RainViewer / NOAA. Built on top of [@genericJE](https://github.com/genericJE)'s [#156](https://github.com/jpettitt/weather-radar-card/pull/156). ([#183](https://github.com/jpettitt/weather-radar-card/pull/183)) ✅ — 3.7.0-alpha2
+- NOAA `intervalMin` bump 5 → 10 — matches empirical publication cadence on the eventdriven WMS service, eliminates duplicate frames at the source ✅ — 3.7.0-alpha2
+- Stale-frame full re-init on resume from long-hidden / device-sleep windows ✅ — 3.7.0-alpha2
 - Local Docker HA testbed (`npm run ha:up`) replacing the abandoned `.devcontainer/` ✅ — post-3.4.0

@@ -2,9 +2,13 @@
 
 User-controlled show/hide of individual map overlays in real time, with state persisted per-user via Home Assistant's frontend storage API. No editor round-trip, no YAML edits, no dashboard reload.
 
-## Status — proposed for v3.7
+## Status — proposed; persistence dependency shipped
 
-Tracking issue: TBD on creation. Targeted at the 3.7 milestone (post 3.6.0 stable).
+Tracking issue: TBD on creation.
+
+The persistence dependency (per-user state via Home Assistant's frontend-storage WebSocket API) shipped on `main` in 3.6.5 as dormant infrastructure ([#175](https://github.com/jpettitt/weather-radar-card/pull/175)) and was first exercised by the adjustable playback-speed toggle in 3.7.0-alpha1 ([#157](https://github.com/jpettitt/weather-radar-card/pull/157)). The `ViewerState` API + per-card identity nonce + sparse-override semantics + hydrate flow are proven in production.
+
+What's still pending is the layer-control panel UI itself + the per-overlay wiring described below.
 
 The problem this solves: by 3.6 the card carries seven layer concepts that can stack on the radar (wildfires, NWS alerts, lightning, wind, DWD coverage, range rings, markers). A user looking at a busy map needs a way to mute layers temporarily without touching dashboard config — and the next user looking at the same dashboard might want a different subset visible. The editor controls the dashboard-author intent; this control gives the individual viewer real-time customisation within that intent.
 
@@ -227,10 +231,10 @@ export class LayerControl {
 The card decides which layers to construct based on `effective(layer)` (override-or-YAML), not on YAML directly. So:
 
 ```ts
-// Pre-3.7
+// Today (before layer-control panel)
 if (cfg.show_wildfires === true) this._wildfireLayer = new WildfireLayer(...);
 
-// In 3.7
+// With layer-control panel
 if (this._layerControl.effective('wildfires')) this._wildfireLayer = new WildfireLayer(...);
 ```
 
