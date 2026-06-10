@@ -1152,10 +1152,6 @@ export class RadarPlayer {
     // fetches tiles for wherever the map now points.
     if (this._initInFlight && !this._radarReady
         && this._requestedFrameCount === frameCount) {
-      // TODO(diag): remove the [wrc-diag] logs before the PR — soak-build
-      // instrumentation to confirm the churn driver on the user's setup.
-      // eslint-disable-next-line no-console
-      console.info('[wrc-diag] moveend during in-flight init — guard held, letting it finish');
       return;
     }
 
@@ -1170,9 +1166,6 @@ export class RadarPlayer {
     // and programmatic view changes leave layers attached — Leaflet
     // fetches only the tiles entering the new viewport.
     if (!this._radarReady || this._requestedFrameCount !== frameCount) {
-      // TODO(diag): remove the [wrc-diag] logs before the PR.
-      // eslint-disable-next-line no-console
-      console.info(`[wrc-diag] nav re-init: ready=${this._radarReady} req=${this._requestedFrameCount} new=${frameCount}`);
       this._clearLayers();
       this._requestedFrameCount = frameCount;
       this._configFrameCount = frameCount;
