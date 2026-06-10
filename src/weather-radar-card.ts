@@ -177,7 +177,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _clusterSpiderfied = false;
   private _lastTrackedPosition: { lat: number; lon: number } | null = null;
   private _rangeRings: L.Circle[] = [];
-  private _dynamicStyleEl!: HTMLStyleElement;
   private _player: RadarPlayer | null = null;
   // Per-user, per-card preference store. Created lazily on the first
   // setConfig because the constructor doesn't have hass yet. Dormant
@@ -479,9 +478,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   }
 
   protected firstUpdated(): void {
-    this._dynamicStyleEl = document.createElement('style');
-    this._dynamicStyleEl.id = 'radar-dynamic';
-    this.shadowRoot!.appendChild(this._dynamicStyleEl);
     this._setupProgressBarScrub();
     this._initMap();
   }

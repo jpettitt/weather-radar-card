@@ -108,6 +108,9 @@ export class NwsAlertsLayer {
   }
 
   start(): void {
+    // Prune expired/corrupt persistent zone entries once per layer
+    // start so the wrc-zone-v1: keyspace can't grow to the quota.
+    sweepExpiredZonesFromLocalStorage();
     void this._fetch();
   }
 
@@ -525,6 +528,44 @@ function writeZoneToLocalStorage(url: string, geometry: GeoJSON.Geometry): void 
     // Quota exceeded or storage disabled. Swallow — the in-memory cache
     // still works for this session, the persistent cache is a bonus.
   }
+}
+
+/**
+ * One-time sweep of expired zone entries. TTL expiry was previously only
+ * enforced inside readZoneFromLocalStorage for the specific zone being
+ * re-read — zones cached for areas the user never revisits persisted
+ * forever, and with ~30-day national alert churn the keyspace grew until
+ * the quota was hit, at which point writeZoneToLocalStorage silently
+ * failed and the persistent cache quietly stopped working for NEW zones.
+ * Called once from start(); cost is proportional to the number of cached
+ * zones (typically tens).
+ *
+ * Exported for tests. Returns the number of entries removed.
+ */
+export function sweepExpiredZonesFromLocalStorage(): number {
+  let removed = 0;
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(ZONE_LS_KEY_PREFIX)) continue;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) ?? '') as { ts?: number };
+        if (typeof parsed.ts !== 'number' || Date.now() - parsed.ts > ZONE_LS_TTL_MS) {
+          stale.push(key);
+        }
+      } catch {
+        stale.push(key);   // corrupt entry — remove it too
+      }
+    }
+    for (const key of stale) {
+      localStorage.removeItem(key);
+      removed++;
+    }
+  } catch {
+    // Storage disabled — nothing to sweep.
+  }
+  return removed;
 }
 
 function featureKey(f: GeoJSON.Feature): string {

@@ -33,9 +33,14 @@ const DWD_COVERAGE_COUNTRIES = new Set([
 // DWD bbox: Germany + immediate radar overlap into neighbours.
 const DWD_COVERAGE_BBOX = { minLat: 44.0, maxLat: 56.5, minLon: 1.0, maxLon: 18.0 };
 // NOAA NEXRAD bbox: CONUS + AK + HI + PR/USVI. Wide because Hawaii is
-// low-latitude and Alaska extends across the dateline; intentional that
-// it sweeps in some ocean and the western Caribbean.
+// low-latitude; intentional that it sweeps in some ocean and the
+// western Caribbean.
 const US_COVERAGE_BBOX = { minLat: 15.0, maxLat: 72.0, minLon: -180.0, maxLon: -64.0 };
+// The far Aleutians (Attu, Amchitka, Shemya) sit WEST of the
+// antimeridian — positive longitudes ~172..180 — which the main bbox's
+// minLon: -180 can't reach. Without this second box, a card centred on
+// the trans-dateline Aleutians got a false "outside coverage" banner.
+const US_ALEUTIAN_BBOX = { minLat: 50.0, maxLat: 55.5, minLon: 170.0, maxLon: 180.0 };
 
 function inBbox(
   lat: unknown,
@@ -70,7 +75,8 @@ export function getRegionWarnings(
   const centreLon = typeof cfg.center_longitude === 'number'
     ? cfg.center_longitude
     : (hass?.config as any)?.longitude;
-  const showingUs = inBbox(centreLat, centreLon, US_COVERAGE_BBOX);
+  const showingUs = inBbox(centreLat, centreLon, US_COVERAGE_BBOX)
+    || inBbox(centreLat, centreLon, US_ALEUTIAN_BBOX);
   const showingDwd = inBbox(centreLat, centreLon, DWD_COVERAGE_BBOX);
 
   // Catalogue of features that only have US data coverage. Each entry's

@@ -152,6 +152,9 @@ export function createFetchTile(
       .then((blob) => {
         const objUrl = URL.createObjectURL(blob);
         tile.onload = () => URL.revokeObjectURL(objUrl);
+        // Decode failures never fire onload — without this, the blob
+        // URL (and its buffer) lived until document unload.
+        tile.onerror = () => URL.revokeObjectURL(objUrl);
         tile.src = objUrl;
         limiter?.recordSuccess(url);
         layer._tilePending--;

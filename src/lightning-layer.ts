@@ -209,8 +209,16 @@ export class LightningLayer {
     if (!this._hass?.states) return out;
     const maxAgeSec = this._displayMaxAgeSec();
     const now = Date.now();
-    for (const [id, st] of Object.entries(this._hass.states)) {
+    // for-in with an early prefix test rather than Object.entries: this
+    // runs on EVERY hass tick (any state change in the whole install),
+    // and Object.entries allocates a [key, value] pair array for
+    // potentially thousands of entities each time. for-in touches only
+    // the keys until the prefix matches — scales with installation
+    // size, which entity-heavy installs hit several times per second.
+    const states = this._hass.states as Record<string, unknown>;
+    for (const id in states) {
       if (!id.startsWith('geo_location.')) continue;
+      const st = states[id];
       const attrs = (st as any)?.attributes;
       if (!attrs || attrs.source !== 'blitzortung') continue;
       const lat = attrs.latitude;

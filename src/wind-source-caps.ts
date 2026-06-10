@@ -57,7 +57,7 @@ export interface WindSourceCaps {
    * U/V before storing in the WindGrid. */
   bands: 'uv' | 'speed_dir';
   /** Short cadence note for the editor's helper line. English; the i18n
-   * key 'editor.wind_overlay.cadence_<id>' wins when present. */
+   * key 'editor.wind.cadence_<id>' wins when present. */
   cadenceNote: string;
   /** Per-source streamline-trail length multiplier. 1.0 = render the
    * full TRAIL_LENGTH-segment ring buffer. Sources with a finer native
@@ -143,8 +143,14 @@ const US_REGION_BBOXES: readonly UsRegionBbox[] = [
 ];
 
 function inUsBbox(lat: number, lon: number): boolean {
+  // Leaflet supplies unwrapped longitudes after world-wrap panning
+  // (|lon| can exceed 180), and a viewport straddling the antimeridian
+  // averages to a centre well outside [-180, 180]. Normalise before
+  // testing so the NDFD auto-fallback doesn't misfire near the
+  // dateline (e.g. centre lon 187 is really -173 — Alaska).
+  const wrapped = ((lon + 540) % 360) - 180;
   for (const r of US_REGION_BBOXES) {
-    if (lat >= r.south && lat <= r.north && lon >= r.west && lon <= r.east) return true;
+    if (lat >= r.south && lat <= r.north && wrapped >= r.west && wrapped <= r.east) return true;
   }
   return false;
 }

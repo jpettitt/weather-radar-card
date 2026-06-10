@@ -267,3 +267,28 @@ describe('getRegionWarnings — coverage-bbox suppression', () => {
     expect(result[0]).toMatch(/DWD/);
   });
 });
+
+// ── Trans-dateline Aleutians (2026-06 review backlog) ────────────────────
+
+describe('getRegionWarnings — Aleutian antimeridian box', () => {
+  it('suppresses the NOAA warning for the far Aleutians (positive longitude)', () => {
+    // Attu / Shemya sit WEST of the antimeridian at lon ~172..179 E —
+    // the main US bbox (minLon -180) can never contain a positive
+    // longitude, so these US locations got a false "outside coverage"
+    // banner before the dedicated Aleutian box.
+    const result = getRegionWarnings(
+      hassFor('DE'),
+      cfg({ data_source: 'NOAA', center_latitude: 52.85, center_longitude: 173.18 }), // Attu
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('still fires for non-US locations at similar latitudes (Kamchatka)', () => {
+    const [msg, ...rest] = getRegionWarnings(
+      hassFor('DE'),
+      cfg({ data_source: 'NOAA', center_latitude: 56.5, center_longitude: 159.0 }),
+    );
+    expect(rest).toEqual([]);
+    expect(msg).toMatch(/NOAA/);
+  });
+});

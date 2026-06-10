@@ -140,3 +140,25 @@ describe('savePlaybackSpeed (sparse-storage convention)', () => {
     expect(savePlaybackSpeedAction(0.25, undefined)).toEqual({ action: 'set', value: 0.25 });
   });
 });
+
+// ── setSpeed preset snapping (2026-06 review backlog) ────────────────────
+
+describe('RadarToolbar.setSpeed snapping', () => {
+  it('snaps non-preset values to the nearest preset', async () => {
+    // A raw YAML value like playback_speed: 1.5 used to be stored
+    // verbatim; SPEED_STEPS.indexOf(1.5) === -1 made the next button
+    // click cycle to ¼× instead of the adjacent step.
+    const { RadarToolbar } = await import('../src/radar-toolbar');
+    const tb = Object.create(RadarToolbar.prototype);
+    tb._speedBtn = null;
+    tb.setSpeed(1.5);
+    expect(SPEED_STEPS).toContain(tb._speed);
+    // 1.5 is equidistant from 1 and 2; the reduce keeps the LOWER
+    // candidate on ties — same convention as onAdd's initialSpeed snap.
+    expect(tb._speed).toBe(1);
+    tb.setSpeed(0.3);
+    expect(tb._speed).toBe(0.25);
+    tb.setSpeed(4);
+    expect(tb._speed).toBe(4);          // exact presets unchanged
+  });
+});

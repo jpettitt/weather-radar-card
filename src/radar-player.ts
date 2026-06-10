@@ -337,6 +337,26 @@ export class RadarPlayer {
   // forever once they diverged.
   private _requestedFrameCount = 5;
   private _doRadarUpdate = false;
+  // Trailing debounce for the post-view-change refresh work
+  // (motion-comp resnapshot + coverage-clip rebuild). Tracked-marker
+  // configs re-centre on every GPS jitter, firing moveend several
+  // times a minute — each used to run the full pipeline (tile decode
+  // awaits + canvas draws + an LK call per adjacent frame pair).
+  // Coalescing behind 250 ms costs one debounce window of staleness
+  // on work that is purely cosmetic for that window. Snapshot
+  // INVALIDATION stays immediate in the event handlers, so stale
+  // vectors can't be applied while the refresh is pending.
+  private _viewRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private _scheduleViewRefresh(): void {
+    if (this._viewRefreshTimer) clearTimeout(this._viewRefreshTimer);
+    this._viewRefreshTimer = setTimeout(() => {
+      this._viewRefreshTimer = null;
+      void this._resnapshotAll();
+      void this._updateCoverageClip();
+    }, 250);
+  }
+
   // Cancel function for the currently armed periodic-update timer.
   // _scheduleUpdate maintains a single-chain invariant by cancelling
   // this before arming a replacement; clear() cancels it on teardown.
@@ -507,10 +527,7 @@ export class RadarPlayer {
     // new zoom level; _onLayerLoaded will run again if new tiles also
     // arrive, overwriting with a fresher snapshot.
     this._invalidateSnapshots();
-    void this._resnapshotAll();
-    // Viewport changed — the radar-pane coverage clip is positioned in
-    // layer-point space and sized to the viewport, so rebuild it.
-    void this._updateCoverageClip();
+    this._scheduleViewRefresh();
   };
 
   private _onMoveEnd = (): void => {
@@ -524,10 +541,7 @@ export class RadarPlayer {
     // larger pan also triggers new tile fetches, _onLayerLoaded picks
     // those up later and overwrites with the fresher snapshot.
     this._invalidateSnapshots();
-    void this._resnapshotAll();
-    // Viewport changed — the radar-pane coverage clip is positioned in
-    // layer-point space and sized to the viewport, so rebuild it.
-    void this._updateCoverageClip();
+    this._scheduleViewRefresh();
   };
 
   // Map container size changed (window resize, parent reflow, theme
@@ -539,10 +553,7 @@ export class RadarPlayer {
   // with stale viewport data.
   private _onResize = (): void => {
     this._invalidateSnapshots();
-    void this._resnapshotAll();
-    // Viewport changed — the radar-pane coverage clip is positioned in
-    // layer-point space and sized to the viewport, so rebuild it.
-    void this._updateCoverageClip();
+    this._scheduleViewRefresh();
   };
 
   // ── Motion compensation: snapshot + LK pipeline ──────────────────────
@@ -1100,6 +1111,7 @@ export class RadarPlayer {
     // the card has already discarded.
     this._cancelScheduledUpdate?.();
     this._cancelScheduledUpdate = null;
+    if (this._viewRefreshTimer) { clearTimeout(this._viewRefreshTimer); this._viewRefreshTimer = null; }
     this._worker?.terminate();
     this._worker = null;
     this._workerCallbacks.clear();
@@ -1505,16 +1517,30 @@ export class RadarPlayer {
 
   // ── Progress bar ─────────────────────────────────────────────────────────
 
+  // Cached segment elements, rebuilt by _buildSegments. The per-tick
+  // paths (_applyNowMarker / _highlightSegment via _showSlot) used to do
+  // a getElementById per segment per tick — at 4× speed with a 48-frame
+  // DWD loop that was ~770 shadow-DOM lookups+writes per second for
+  // state that almost never changes. The cache plus the changed-only
+  // updates below reduce that to a handful of writes per tick.
+  private _segEls: HTMLElement[] = [];
+  private _lastNowMarkerIndex = -1;
+  private _lastHighlightFi = -1;
+
   private _buildSegments(): void {
     const track = this._shadowRoot.getElementById('div-progress-track');
     if (!track) return;
     track.innerHTML = '';
+    this._segEls = [];
+    this._lastNowMarkerIndex = -1;
+    this._lastHighlightFi = -1;
     this._frameStatuses = new Array(this._configFrameCount).fill('empty') as FrameStatus[];
     for (let i = 0; i < this._configFrameCount; i++) {
       const seg = document.createElement('div');
       seg.id = `seg-${i}`;
       seg.style.cssText = `flex:1;height:100%;background-color:${this._segColor('empty', false)}`;
       track.appendChild(seg);
+      this._segEls.push(seg);
     }
     this._updateLoadingSpinner();
   }
@@ -1533,8 +1559,8 @@ export class RadarPlayer {
 
   private _setSegment(fi: number, status: FrameStatus): void {
     this._frameStatuses[fi] = status;
-    const seg = this._shadowRoot.getElementById(`seg-${fi}`);
-    if (seg) seg.style.backgroundColor = this._segColor(status, false);
+    const seg = this._segEls[fi];
+    if (seg) seg.style.backgroundColor = this._segColor(status, fi === this._lastHighlightFi);
     this._updateLoadingSpinner();
   }
 
@@ -1557,14 +1583,19 @@ export class RadarPlayer {
   }
 
   private _applyNowMarker(): void {
-    for (let i = 0; i < this._configFrameCount; i++) {
-      const seg = this._shadowRoot.getElementById(`seg-${i}`);
-      if (!seg) continue;
-      const isNow = i === this._nowFrameIndex;
+    // Touch only the segments whose now-state changed (the previous
+    // marker holder and the new one) — this runs every tick.
+    if (this._nowFrameIndex === this._lastNowMarkerIndex) return;
+    const apply = (i: number, isNow: boolean): void => {
+      const seg = this._segEls[i];
+      if (!seg) return;
       seg.title = isNow ? localize('ui.now_tooltip') : '';
       // boxShadow (not backgroundColor) so _segColor doesn't clobber it on each tick.
       seg.style.boxShadow = isNow ? 'inset 0 2px 0 0 var(--warning-color, #ff9800)' : '';
-    }
+    };
+    if (this._lastNowMarkerIndex >= 0) apply(this._lastNowMarkerIndex, false);
+    if (this._nowFrameIndex >= 0) apply(this._nowFrameIndex, true);
+    this._lastNowMarkerIndex = this._nowFrameIndex;
   }
 
   /**
@@ -1600,10 +1631,17 @@ export class RadarPlayer {
   }
 
   private _highlightSegment(fi: number): void {
-    for (let j = 0; j < this._configFrameCount; j++) {
-      const seg = this._shadowRoot.getElementById(`seg-${j}`);
-      if (seg) seg.style.backgroundColor = this._segColor(this._frameStatuses[j] ?? 'empty', j === fi);
-    }
+    // Repaint only the segment losing the highlight and the one gaining
+    // it — this runs every tick, and segment STATUS changes repaint
+    // through _setSegment independently.
+    if (fi === this._lastHighlightFi) return;
+    const paint = (j: number, isCurrent: boolean): void => {
+      const seg = this._segEls[j];
+      if (seg) seg.style.backgroundColor = this._segColor(this._frameStatuses[j] ?? 'empty', isCurrent);
+    };
+    if (this._lastHighlightFi >= 0) paint(this._lastHighlightFi, false);
+    paint(fi, true);
+    this._lastHighlightFi = fi;
   }
 
   // ── Rate limit banner ────────────────────────────────────────────────────
