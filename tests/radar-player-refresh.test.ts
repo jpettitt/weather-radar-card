@@ -162,9 +162,76 @@ describe('onNavSettled frame-count comparison', () => {
     expect(p._initRadar).toHaveBeenCalledOnce();
     expect(p._requestedFrameCount).toBe(7);
   });
+
+  it('does NOT tear down an in-flight init on moveend (tracked-marker churn)', async () => {
+    // Configs that pan programmatically (tracked device markers
+    // re-centre on GPS jitter) fire moveend continuously. A
+    // DWD+forecast init loads ~48 frames sequentially and needs the
+    // first two before _radarReady flips true — without the in-flight
+    // guard, every moveend in that window tore the init down and
+    // restarted it, a self-sustaining loop (observed live: continuous
+    // tile requests, mask pane re-filling every cycle).
+    const p = makePlayer() as any;
+    p._radarReady = false;            // init still loading
+    p._requestedFrameCount = 12;
+    p._initFlightGen = p._frameGeneration;  // init in flight for current gen
+    p._initRadar = vi.fn();
+    p._clearLayers = vi.fn();
+    p.run = false;
+
+    await p.onNavSettled(12);         // same request shape → let it finish
+
+    expect(p._initRadar).not.toHaveBeenCalled();
+    expect(p._clearLayers).not.toHaveBeenCalled();
+  });
+
+  it('still re-inits mid-flight when the REQUEST changed (user edited config)', async () => {
+    const p = makePlayer() as any;
+    p._radarReady = false;
+    p._requestedFrameCount = 12;
+    p._initFlightGen = p._frameGeneration;
+    p._initRadar = vi.fn();
+    p._clearLayers = vi.fn();
+
+    await p.onNavSettled(7);          // request shape changed mid-load
+
+    expect(p._initRadar).toHaveBeenCalledOnce();
+  });
 });
 
-// ── 3. Single update chain ───────────────────────────────────────────────
+// ── 3. Dedup compaction must remove EVERYTHING it drops ─────────────────
+
+describe('_dedupFrames orphan prevention', () => {
+  it('removes layers/masks of never-loaded frames, not just duplicates', () => {
+    // Mask-pane leak observed live on DWD with forecast enabled: the
+    // compaction maps the per-frame arrays through keptFi, so any frame
+    // NOT in keptFi vanishes from tracking — and _clearLayers can only
+    // sweep what's tracked. Frames that never made it into _loadedSlots
+    // (failed / still settling at dedup time) therefore stayed attached
+    // to the map forever; with repeated re-inits the mask pane grew
+    // without bound.
+    const p = makePlayer() as any;
+    const layers = [fakeLayer(), fakeLayer(), fakeLayer()];
+    p._radarImage = [...layers];
+    p._radarTime = [{ date: 'a', time: '1' }, { date: 'a', time: '2' }, { date: 'a', time: '3' }];
+    p._radarPaths = frames(1000, 1600, 2200);
+    p._frameSnapshot = [new Float32Array(4), new Float32Array(4), null];
+    p._frameSnapshotNz = [500, 500, 0];   // frames 0+1 identical → 1 is a duplicate
+    p._frameMotion = [null, null, null];
+    p._loadedSlots = [0, 1];              // frame 2 was created but never loaded
+    p._currentSlot = 0;
+    p._prev1Slot = 0;
+
+    p._dedupFrames();
+
+    expect(layers[1].remove).toHaveBeenCalled();     // duplicate's layer
+    expect(layers[2].remove).toHaveBeenCalled();     // ORPHAN: never-loaded frame's layer
+    expect(layers[0].remove).not.toHaveBeenCalled(); // kept frame untouched
+    expect(p._radarImage).toHaveLength(1);
+  });
+});
+
+// ── 4. Single update chain ───────────────────────────────────────────────
 
 describe('_scheduleUpdate single-chain invariant', () => {
   it('cancels the previously armed timer when re-armed (no chain forking)', () => {

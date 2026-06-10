@@ -179,12 +179,6 @@ function parseCssColor(value: string): [number, number, number, number] | null {
   return [d[0], d[1], d[2], d[3]];
 }
 
-// Leaflet's tile-layer container is the DOM element holding the
-// rendered tiles — this is where we apply opacity for the snap-switch.
-// Typed loosely because the public API doesn't expose `getContainer`.
-function layerEl(layer: { getContainer?: () => HTMLElement | null } | null | undefined): HTMLElement | null {
-  return layer?.getContainer?.() ?? null;
-}
 
 export interface RadarPlayerOptions {
   map: L.Map;
@@ -212,12 +206,17 @@ export class RadarPlayer {
   private _dwdLimiter: RateLimiter;
   private _dwdSwapLogged = false;
 
-  // Per-frame coverage overlay (DWD only). Parallel to _radarImage,
-  // each entry fetches the same WMS layer at the matching frame's TIME
-  // with makeDwdMaskOnlyFilter so only the wash + outline survive
-  // (recoloured to theme variables). _showSlot snap-switches visibility
-  // — never crossfades — so two stacked masks can't compound the dim.
-  private _radarMask: (FetchWmsTileLayer | null)[] = [];
+  // Coverage overlay (DWD only) — a SINGLE shared layer, not per-frame.
+  // Fetches the same WMS layer with makeDwdMaskOnlyFilter so only the
+  // wash + outline survive (recoloured to theme variables). The
+  // coverage geometry is the radar composite's no-data region, which
+  // is identical in every frame — the original per-frame design built
+  // one mask layer per radar frame and snap-switched between N
+  // identical images, which at a 12 h history (~144 frames, ~6 tiles
+  // each) meant ~900 redundant WMS requests per init that saturated
+  // the browser's per-origin connection pool. One layer, fetched once
+  // per init at the newest past frame's TIME, always visible.
+  private _coverageMask: FetchWmsTileLayer | null = null;
   private _radarPaneCreated = false;
   private _dwdMaskPaneCreated = false;
   private _dwdDimRgba: [number, number, number, number] | null = null;
@@ -258,6 +257,10 @@ export class RadarPlayer {
   // _scheduleUpdate maintains a single-chain invariant by cancelling
   // this before arming a replacement; clear() cancels it on teardown.
   private _cancelScheduledUpdate: (() => void) | null = null;
+  // Generation of the _initRadar currently loading frames, or -1 when
+  // none. Read via the _initInFlight getter by onNavSettled's guard
+  // against tearing down an in-flight init on every moveend.
+  private _initFlightGen = -1;
   // Wall-clock ms of the last time we fetched fresh frame paths
   // (either via _initRadar or _updateRadar). Read by onVisibilityVisible
   // to decide whether resuming from a hidden state needs a full
@@ -811,25 +814,32 @@ export class RadarPlayer {
       ? this._loadedSlots[this._prev1Slot]
       : -1;
 
-    // Build the kept-fi list in slot order (oldest → newest), then
-    // tear down the dropped layers (return their tiles + DOM to
-    // Leaflet) so duplicates don't linger as invisible attached
-    // layers consuming memory.
+    // Build the kept-fi list in slot order (oldest → newest).
     const keptFi: number[] = [];
     for (let i = 0; i < this._loadedSlots.length; i++) {
-      if (isDuplicate[i]) {
-        const fi = this._loadedSlots[i];
-        const layer = this._radarImage[fi];
-        if (layer && (layer as { remove?: () => void }).remove) {
-          (layer as { remove: () => void }).remove();
-        }
-        const mask = this._radarMask[fi];
-        if (mask && (mask as { remove?: () => void }).remove) {
-          (mask as { remove: () => void }).remove();
-        }
-      } else {
-        keptFi.push(this._loadedSlots[i]);
+      if (!isDuplicate[i]) keptFi.push(this._loadedSlots[i]);
+    }
+
+    // Tear down EVERY radar layer not being kept — not just the
+    // duplicates. The arrays can hold entries for frames that never
+    // made it into _loadedSlots (a frame that failed mid-init, or one
+    // whose tiles were still settling when init was superseded). The
+    // compaction below maps the arrays through keptFi, so anything not
+    // in keptFi vanishes from our tracking — if it isn't removed from
+    // the map HERE, no later sweep (_clearLayers iterates the tracked
+    // arrays) can ever find it again. That was a real leak: every init
+    // cycle orphaned the layers of its not-loaded frames into the
+    // radar pane. (The DWD coverage mask is a single shared layer now
+    // and isn't touched by dedup at all.)
+    const keptSet = new Set(keptFi);
+    const removeLayer = (l: unknown): void => {
+      if (l && (l as { remove?: () => void }).remove) {
+        (l as { remove: () => void }).remove();
       }
+    };
+    for (let fi = 0; fi < this._radarImage.length; fi++) {
+      if (keptSet.has(fi)) continue;
+      removeLayer(this._radarImage[fi]);
     }
 
     // Compact every per-frame array. New index == position in
@@ -841,7 +851,6 @@ export class RadarPlayer {
     this._frameSnapshot = keptFi.map((fi) => this._frameSnapshot[fi]);
     this._frameSnapshotNz = keptFi.map((fi) => this._frameSnapshotNz[fi]);
     this._frameMotion = keptFi.map((fi) => this._frameMotion[fi]);
-    this._radarMask = keptFi.map((fi) => this._radarMask[fi] ?? null);
 
     // _loadedSlots becomes the identity mapping; _configFrameCount
     // reflects what's actually displayed.
@@ -1023,6 +1032,28 @@ export class RadarPlayer {
   async onNavSettled(frameCount: number): Promise<void> {
     this.navPaused = false;
 
+    // An init is currently loading frames and the request shape hasn't
+    // changed → let it finish. Without this guard, any moveend while
+    // `_radarReady` is still false tore down the in-flight init and
+    // started over — and on configs that pan programmatically (tracked
+    // device markers re-centre on every GPS jitter), that loop is
+    // self-sustaining: a DWD+forecast init loads ~48 frames
+    // sequentially and needs the first two before _radarReady flips,
+    // the restart makes the connection pool more saturated and thus
+    // the next attempt slower, and the next pan lands before that.
+    // Observed live as continuous tile requests + the mask pane
+    // re-filling on every cycle. The in-flight init handles the new
+    // viewport on its own — its layers are attached, so Leaflet
+    // fetches tiles for wherever the map now points.
+    if (this._initInFlight && !this._radarReady
+        && this._requestedFrameCount === frameCount) {
+      // TODO(diag): remove the [wrc-diag] logs before the PR — soak-build
+      // instrumentation to confirm the churn driver on the user's setup.
+      // eslint-disable-next-line no-console
+      console.info('[wrc-diag] moveend during in-flight init — guard held, letting it finish');
+      return;
+    }
+
     // Full re-init only when state needs rebuilding: initial load not yet
     // complete, or the REQUESTED frame_count changed (i.e. the user edited
     // past_minutes / stride / source). Compared against
@@ -1034,6 +1065,9 @@ export class RadarPlayer {
     // and programmatic view changes leave layers attached — Leaflet
     // fetches only the tiles entering the new viewport.
     if (!this._radarReady || this._requestedFrameCount !== frameCount) {
+      // TODO(diag): remove the [wrc-diag] logs before the PR.
+      // eslint-disable-next-line no-console
+      console.info(`[wrc-diag] nav re-init: ready=${this._radarReady} req=${this._requestedFrameCount} new=${frameCount}`);
       this._clearLayers();
       this._requestedFrameCount = frameCount;
       this._configFrameCount = frameCount;
@@ -1366,10 +1400,8 @@ export class RadarPlayer {
 
     this._prev1Slot = slot;
 
-    // Coverage overlay snap-switch — only the new slot's mask is visible.
-    // Done unconditionally; non-DWD sources have an empty _radarMask array
-    // and the loop is a no-op.
-    this._showDwdMaskForSlot(slot);
+    // The DWD coverage mask is a single always-visible shared layer
+    // (see _coverageMask) — nothing to switch per tick.
 
     const fi = this._loadedSlots[slot];
     if (fi !== undefined) {
@@ -1529,7 +1561,7 @@ export class RadarPlayer {
     this._frameSnapshot = [];
     this._frameSnapshotNz = [];
     this._frameMotion = [];
-    this._clearDwdMaskLayers();
+    this._clearCoverageMask();
   }
 
   // Resolve the DWD WMS layer the player is currently using. Niederschlagsradar
@@ -1616,20 +1648,41 @@ export class RadarPlayer {
     } as any);
   }
 
-  private _clearDwdMaskLayers(): void {
-    for (const layer of this._radarMask) layer?.remove();
-    this._radarMask = [];
+  private _clearCoverageMask(): void {
+    this._coverageMask?.remove();
+    this._coverageMask = null;
   }
 
-  // Show only the active slot's mask. No transition — two stacked masks
-  // during a data crossfade would compound the dim into a pulse.
-  private _showDwdMaskForSlot(slot: number): void {
-    for (let s = 0; s < this._loadedSlots.length; s++) {
-      const el = layerEl(this._radarMask[this._loadedSlots[s]]);
-      if (!el) continue;
-      el.style.transition = 'none';
-      el.style.opacity = s === slot ? '1' : '0';
-    }
+  // Create the single shared coverage mask. Uses the newest PAST
+  // frame's TIME: a past timestamp is guaranteed to exist on the
+  // server, whereas the newest nowcast frame may not have been
+  // published yet at request time.
+  //
+  // Deliberate approximation: the coverage geometry is NOT strictly
+  // identical across nowcast lead times — probing real WN tiles
+  // showed the no-data boundary shifting slightly and the wash area
+  // growing with lead time (outline pixel count 1104 → 1006 from
+  // analysis to +120 min). The old per-frame mask design rendered
+  // each frame's own boundary and snap-switched between them, which
+  // made the boundary visibly wobble during the forecast segment of
+  // the loop. Pinning one analysis-frame boundary for the whole loop
+  // trades a marginal coverage inaccuracy on forecast frames for a
+  // rock-steady outline — and cuts ~N redundant mask WMS layers down
+  // to one (at 12 h history that was ~900 tile requests per init).
+  // Always visible from creation; it lives alone in its own pane, so
+  // there is no crossfade interplay and nothing to switch per tick.
+  private _ensureCoverageMask(frames: RadarFrame[], layerName: string): void {
+    this._clearCoverageMask();
+    const nowSec = Date.now() / 1000;
+    // Newest frame at-or-before "now", else the oldest frame we have
+    // (all-forecast configs are not currently possible, but be safe).
+    const pastFrames = frames.filter((f) => f.time <= nowSec);
+    const anchor = pastFrames.length > 0 ? pastFrames[pastFrames.length - 1] : frames[0];
+    if (!anchor) return;
+    const mask = this._createDwdMaskLayer(anchor, layerName);
+    if (!mask) return;
+    this._coverageMask = mask;
+    if (this._map) mask.addTo(this._map);
   }
 
   // ── Radar fetching ───────────────────────────────────────────────────────
@@ -1841,6 +1894,23 @@ export class RadarPlayer {
     this._stopLoop();
     this._frameGeneration++;
     const myGen = this._frameGeneration;
+    // Mark this init as in flight for onNavSettled's churn guard. The
+    // generation-scoped clear in the finally means a superseded init
+    // can't clear the flag out from under its successor.
+    this._initFlightGen = myGen;
+    try {
+      await this._initRadarBody(myGen);
+    } finally {
+      if (this._initFlightGen === myGen) this._initFlightGen = -1;
+    }
+  }
+
+  /** True while an _initRadar belonging to the CURRENT generation is loading. */
+  private get _initInFlight(): boolean {
+    return this._initFlightGen === this._frameGeneration && this._initFlightGen !== -1;
+  }
+
+  private async _initRadarBody(myGen: number): Promise<void> {
     this._loadedSlots = [];
     this._currentSlot = 0;
 
@@ -1867,11 +1937,15 @@ export class RadarPlayer {
     this._applyNowMarker();
 
     const dwdActive = (this._cfg.data_source ?? 'RainViewer') === 'DWD';
+    const dwdLayerName = dwdActive ? this._dwdLayerName() : '';
     if (dwdActive) {
       this._refreshDwdMaskColors();
-      this._radarMask = new Array(frameCount).fill(null);
+      // ONE shared coverage mask for the whole loop — the no-data
+      // geometry is identical in every frame, so per-frame masks were
+      // pure waste (at 12 h history: ~144 extra WMS layers ≈ ~900
+      // redundant tile requests per init).
+      this._ensureCoverageMask(pastFrames, dwdLayerName);
     }
-    const dwdLayerName = dwdActive ? this._dwdLayerName() : '';
 
     // Initialise motion-compensation state for the fresh set of
     // frames. _captureFrameSnapshot writes into these as each frame's
@@ -1900,16 +1974,6 @@ export class RadarPlayer {
       this._setLayerZ(layer, fi + 1);
       const el = (layer as any).getContainer?.() as HTMLElement | undefined;
       if (el) el.style.opacity = '0';
-
-      if (dwdActive) {
-        const maskLayer = this._createDwdMaskLayer(this._radarPaths[fi], dwdLayerName);
-        if (maskLayer) {
-          this._radarMask[fi] = maskLayer;
-          maskLayer.addTo(this._map);
-          const maskEl = layerEl(maskLayer);
-          if (maskEl) maskEl.style.opacity = '0';
-        }
-      }
 
       const status = await layerSettled(layer);
       if (myGen !== this._frameGeneration) return;
@@ -1949,13 +2013,11 @@ export class RadarPlayer {
         if (!newestShown) {
           // Show newest frame as a static preview before the loop starts.
           // Layer opacity is 1 — radar_opacity is carried by the radar
-          // pane (see _ensureRadarPane).
+          // pane (see _ensureRadarPane). The shared coverage mask is
+          // already visible (always on), so the preview has its
+          // coverage overlay from the start.
           newestShown = true;
           if (el) el.style.opacity = '1';
-          // Surface the matching mask too, so the preview already has
-          // its in-sync coverage overlay before the loop begins.
-          const maskEl = layerEl(this._radarMask[fi]);
-          if (maskEl) maskEl.style.opacity = '1';
           this._setTimestamp(fi);
           this._highlightSegment(fi);
           // Track this as the visible slot so _settleVisibility (called
@@ -2100,29 +2162,18 @@ export class RadarPlayer {
     const newLayer = this._createLayer(latestFrame);
     newLayer.addTo(this._map);
     const newTime = this._getTimeString(latestFrame.time * 1000);
-    const dwdActive = (this._cfg.data_source ?? 'RainViewer') === 'DWD';
-    let newMask: FetchWmsTileLayer | null = null;
-    if (dwdActive) {
-      newMask = this._createDwdMaskLayer(latestFrame, this._dwdLayerName());
-      if (newMask) {
-        newMask.addTo(this._map);
-        const maskEl = layerEl(newMask);
-        if (maskEl) maskEl.style.opacity = '0';
-      }
-    }
+    // The DWD coverage mask is a single shared layer — nothing to
+    // create or shift on refresh; the no-data geometry doesn't change.
 
     this._radarImage[0]?.remove();
-    this._radarMask[0]?.remove();
     // _radarPaths shifts alongside the others because nearestFrameIndex() reads .time off it.
     for (let i = 0; i < frameCount - 1; i++) {
       this._radarImage[i] = this._radarImage[i + 1];
-      this._radarMask[i] = this._radarMask[i + 1] ?? null;
       this._radarTime[i] = this._radarTime[i + 1];
       this._radarPaths[i] = this._radarPaths[i + 1];
       this._frameStatuses[i] = this._frameStatuses[i + 1];
     }
     this._radarImage[frameCount - 1] = newLayer;
-    this._radarMask[frameCount - 1] = newMask;
     this._radarTime[frameCount - 1] = newTime;
     this._radarPaths[frameCount - 1] = latestFrame;
     this._lastFrameRefreshAt = Date.now();
