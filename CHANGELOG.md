@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.7.0-alpha3] - 2026-06-10
+
+> **Alpha pre-release.** Stability wave for the 3.7 line: fixes for every finding from the 2026-06-09 full-project code review plus four issues live-debugged during the alpha2 soak (DWD mask architecture, coverage clipping, rate-limit recovery, lightning-backlog UI freeze). No new features, no config surface changes. **Not recommended for production dashboards** — install to exercise the fixes and report findings.
 
 ### Fixed
 
@@ -777,7 +779,9 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.5...HEAD
+[3.7.0-alpha3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha2...v3.7.0-alpha3
+[3.7.0-alpha2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha1...v3.7.0-alpha2
+[3.7.0-alpha1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.5...v3.7.0-alpha1
 [3.6.5]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.4...v3.6.5
 [3.6.4]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.3...v3.6.4
 [3.6.3]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.2...v3.6.3

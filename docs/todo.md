@@ -312,3 +312,26 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - NOAA `intervalMin` bump 5 → 10 — matches empirical publication cadence on the eventdriven WMS service, eliminates duplicate frames at the source ✅ — 3.7.0-alpha2
 - Stale-frame full re-init on resume from long-hidden / device-sleep windows ✅ — 3.7.0-alpha2
 - Local Docker HA testbed (`npm run ha:up`) replacing the abandoned `.devcontainer/` ✅ — post-3.4.0
+
+## Canvas rendering for lightning + hazard layers
+
+Motivation (observed live on alpha2, 2026-06-09): with `lightning_max_age_minutes: 20`
+during an active storm, every strike is two DOM markers with inline SVG —
+hundreds of nodes that make pan/zoom and editor-open heavy. The time-sliced
+backlog drain (3.7.0-alpha3) fixed the open-freeze; canvas rendering is the
+structural fix for steady-state DOM weight.
+
+Design sketch (clickability confirmed feasible for both):
+
+- **Hazard polygons (NWS alerts, wildfire perimeters)**: near-free — pass a
+  shared `L.canvas()` renderer to the existing `L.polygon`/`L.geoJSON` layers.
+  Leaflet's canvas renderer keeps its own hit-testing, so popups and click
+  handlers keep working unchanged. Mostly a constructor-options change plus
+  regression-testing popup behaviour.
+- **Lightning strikes**: custom `L.Layer` painting strikes into one canvas
+  per map (redraw on move/zoom/age-tick; age-based fade becomes a cheap
+  global-alpha pass instead of per-marker style writes). Markers lose DOM
+  hit-testing, so add a DIY hit test: map `click` → nearest strike within
+  ~10 px tolerance → open the existing popup content at that latlng.
+  ~200–250 lines incl. tests; the strike data model and `_collectStrikes`
+  pipeline stay as-is.
