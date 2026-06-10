@@ -109,6 +109,7 @@ describe('WildfireLayer transient-failure resilience', () => {
     l._timer = null;
     l._pausedAt = null;
     l._getConfig = () => ({});
+    l._failureCount = 0;
     l._features = [{ id: 'existing-fire' }];
     l._inciwebSlugs = new Set<string>();
     l._inciwebReady = false;
@@ -120,13 +121,19 @@ describe('WildfireLayer transient-failure resilience', () => {
 
   it('keeps the existing perimeters when the WFIGS fetch fails (null)', async () => {
     const l = bareFetchable();
+    l._scheduleRetry = vi.fn();
     l._fetchWfigs = vi.fn(async () => null);          // transient 503
     l._fetchInciwebSlugs = vi.fn(async () => null);
     await l._fetch();
     expect(l._features).toEqual([{ id: 'existing-fire' }]);  // NOT blanked
     expect(l._filter).not.toHaveBeenCalled();
     expect(l._render).toHaveBeenCalled();             // still re-renders
-    expect(l._scheduleNext).toHaveBeenCalled();       // chain continues
+    // Chain continues via the BACKOFF path, not the normal cadence —
+    // retrying a rate-limited host on the normal interval kept the
+    // block alive.
+    expect(l._scheduleRetry).toHaveBeenCalled();
+    expect(l._failureCount).toBe(1);
+    expect(l._scheduleNext).not.toHaveBeenCalled();
   });
 
   it('replaces features on a successful fetch — including a genuinely empty feed', async () => {
@@ -225,5 +232,113 @@ describe('WindFlowOverlay pause/resume', () => {
     expect(w._restart).toHaveBeenCalledOnce();
     expect(w._refreshTimer).not.toBeNull();
     clearTimeout(w._refreshTimer);
+  });
+});
+
+// ── Failure backoff (live-debugged: api.weather.gov rate-limit) ─────────
+//
+// "TypeError: Failed to fetch" from api.weather.gov is its rate limiter
+// blocking without CORS headers. Retrying on the normal cadence (60 s
+// with alerts displayed) hammered the blocking host and kept the block
+// alive indefinitely — observed live as repeated fetch-failed errors
+// with no recovery. Both polling layers now back off exponentially on
+// consecutive failures and reset on success.
+
+describe('failure backoff ladders', () => {
+  it('alerts: 60s doubling to a 30-minute cap', () => {
+    const l = Object.create(NwsAlertsLayer.prototype) as any;
+    expect(l._retryDelayMs(1)).toBe(60_000);
+    expect(l._retryDelayMs(2)).toBe(120_000);
+    expect(l._retryDelayMs(3)).toBe(240_000);
+    expect(l._retryDelayMs(6)).toBe(30 * 60_000);    // capped
+    expect(l._retryDelayMs(50)).toBe(30 * 60_000);   // no 2**huge blowup
+  });
+
+  it('wildfire: 5min doubling to a 60-minute cap', () => {
+    const l = Object.create(WildfireLayer.prototype) as any;
+    expect(l._retryDelayMs(1)).toBe(5 * 60_000);
+    expect(l._retryDelayMs(2)).toBe(10 * 60_000);
+    expect(l._retryDelayMs(5)).toBe(60 * 60_000);    // capped
+  });
+
+  it('alerts: a failed fetch increments the counter and arms the backoff timer', async () => {
+    const l = Object.create(NwsAlertsLayer.prototype) as any;
+    l._gen = 0;
+    l._abortCtrl = null;
+    l._zoneAbortCtrl = null;
+    l._timer = null;
+    l._pausedAt = null;
+    l._failureCount = 0;
+    l._features = [];
+    l._getConfig = () => ({});
+    const realFetch = global.fetch;
+    global.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as any;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await l._fetch();
+      expect(l._failureCount).toBe(1);
+      expect(l._timer).not.toBeNull();               // backoff retry armed
+      clearTimeout(l._timer);
+    } finally {
+      global.fetch = realFetch;
+      warn.mockRestore();
+    }
+  });
+
+  it('alerts: backoff retry respects pause', () => {
+    const l = Object.create(NwsAlertsLayer.prototype) as any;
+    l._timer = null;
+    l._pausedAt = Date.now();
+    l._failureCount = 3;
+    l._scheduleRetry();
+    expect(l._timer).toBeNull();
+  });
+});
+
+// ── Lightning strike-backlog drain (live-debugged: editor-open lockup) ──
+//
+// Each strike materialises as two DOM markers with inline SVG; a fresh
+// mount during an active storm used to build the whole backlog (often
+// hundreds of strikes, and editor-open runs TWO card instances) in one
+// synchronous pass — multi-second UI freeze. Additions now queue and
+// drain newest-first in time-budgeted slices per animation frame.
+
+describe('LightningLayer pending-add drain', () => {
+  async function bareLightning(): Promise<any> {
+    const { LightningLayer } = await import('../src/lightning-layer');
+    const l = Object.create(LightningLayer.prototype);
+    l._strikes = new Map();
+    l._pendingAdds = [];
+    l._drainScheduled = false;
+    l._addMarker = vi.fn();
+    l._removeMarker = vi.fn();
+    return l;
+  }
+
+  it('drains newest-first and stops at the time budget', async () => {
+    const l = await bareLightning();
+    for (let i = 0; i < 5; i++) {
+      const id = `geo_location.s${i}`;
+      const strike = { ts: 1000 + i, lat: 0, lon: 0, isBolt: false };
+      l._strikes.set(id, strike);
+      l._pendingAdds.push([id, strike]);
+    }
+    // Make each _addMarker "cost" enough that a 0ms budget stops after one.
+    l._drainPendingAdds(0);
+    expect(l._addMarker).toHaveBeenCalledTimes(1);
+    // Newest strike (largest ts) materialised first.
+    expect(l._addMarker.mock.calls[0][1].ts).toBe(1004);
+    // Generous budget drains the rest.
+    l._drainPendingAdds(1000);
+    expect(l._addMarker).toHaveBeenCalledTimes(5);
+    expect(l._pendingAdds).toHaveLength(0);
+  });
+
+  it('skips strikes removed while queued', async () => {
+    const l = await bareLightning();
+    const strike = { ts: 1000, lat: 0, lon: 0, isBolt: false };
+    l._pendingAdds.push(['geo_location.gone', strike]);   // NOT in _strikes
+    l._drainPendingAdds(1000);
+    expect(l._addMarker).not.toHaveBeenCalled();
   });
 });

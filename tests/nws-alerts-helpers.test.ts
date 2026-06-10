@@ -32,6 +32,7 @@ import {
   buildPopupHtml,
   readZoneFromLocalStorage,
   writeZoneToLocalStorage,
+  sweepExpiredZonesFromLocalStorage,
   ZONE_LS_KEY_PREFIX,
   ZONE_LS_TTL_MS,
 } from '../src/nws-alerts-layer';
@@ -423,5 +424,41 @@ describe('buildPopupHtml — link URL escaping', () => {
     const html = buildPopupHtml(minimal('https://api.weather.gov/alerts/?a=<b>&c=d'));
     expect(html).toContain('a=&lt;b&gt;&amp;c=d');
     expect(html).not.toContain('?a=<b>');
+  });
+});
+
+
+// ── Zone-cache sweep (2026-06 review backlog) ────────────────────────────
+
+describe('sweepExpiredZonesFromLocalStorage', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('removes expired and corrupt zone entries, keeps fresh ones and foreign keys', () => {
+    const geom: GeoJSON.Geometry = { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] };
+    // Fresh entry — must survive.
+    writeZoneToLocalStorage('https://api.weather.gov/zones/fresh', geom);
+    // Expired entry — ts beyond the 30-day TTL.
+    localStorage.setItem(
+      ZONE_LS_KEY_PREFIX + 'https://api.weather.gov/zones/stale',
+      JSON.stringify({ geometry: geom, ts: Date.now() - ZONE_LS_TTL_MS - 1000 }),
+    );
+    // Corrupt entry — unparseable JSON.
+    localStorage.setItem(ZONE_LS_KEY_PREFIX + 'https://api.weather.gov/zones/corrupt', '{not json');
+    // Foreign key — not ours, must be untouched.
+    localStorage.setItem('some-other-app-key', 'keep me');
+
+    const removed = sweepExpiredZonesFromLocalStorage();
+
+    expect(removed).toBe(2);
+    expect(readZoneFromLocalStorage('https://api.weather.gov/zones/fresh')).toEqual(geom);
+    expect(localStorage.getItem(ZONE_LS_KEY_PREFIX + 'https://api.weather.gov/zones/stale')).toBeNull();
+    expect(localStorage.getItem(ZONE_LS_KEY_PREFIX + 'https://api.weather.gov/zones/corrupt')).toBeNull();
+    expect(localStorage.getItem('some-other-app-key')).toBe('keep me');
+  });
+
+  it('returns 0 on an empty store', () => {
+    expect(sweepExpiredZonesFromLocalStorage()).toBe(0);
   });
 });

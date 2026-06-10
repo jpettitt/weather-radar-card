@@ -87,6 +87,10 @@ export class WildfireLayer {
   // resolve point doesn't match, the fetch is stale (config changed mid-flight,
   // teardown happened, etc.) and we discard the result.
   private _gen = 0;
+  // Consecutive WFIGS fetch failures — drives the retry backoff. NIFC's
+  // ArcGIS endpoint rate-limits intermittently; retrying on the normal
+  // cadence keeps the block alive. Reset on success.
+  private _failureCount = 0;
   // Abort the in-flight fetches (NIFC + InciWeb) when a new fetch starts
   // or the layer tears down, so the browser doesn't keep downloading
   // payloads we've already decided to discard via the gen check.
@@ -188,15 +192,35 @@ export class WildfireLayer {
     // retry. Same convention _fetchInciwebSlugs already uses. A
     // SUCCESSFUL fetch returning [] is real data ("no active fires in
     // the feed") and replaces as before.
-    if (features !== null) {
-      this._features = this._filter(features);
-    }
     if (inciwebSlugs) {
       this._inciwebSlugs = inciwebSlugs;
       this._inciwebReady = true;
     }
-    this._render();
-    this._scheduleNext();
+    if (features !== null) {
+      this._features = this._filter(features);
+      this._failureCount = 0;
+      this._render();
+      this._scheduleNext();
+    } else {
+      // WFIGS failed (kept the displayed perimeters) — back off instead
+      // of retrying on the normal cadence, mirroring the alerts layer.
+      this._failureCount++;
+      this._render();
+      this._scheduleRetry();
+    }
+  }
+
+  /** Backoff delay for the Nth consecutive failure (1-based): 5 min
+   * doubling to a 60-minute cap. */
+  private _retryDelayMs(failures: number): number {
+    const capped = Math.min(failures - 1, 10);
+    return Math.min(DEFAULT_REFRESH_VISIBLE_MS * 2 ** capped, 60 * 60_000);
+  }
+
+  private _scheduleRetry(): void {
+    if (this._pausedAt != null) return;
+    if (this._timer) clearTimeout(this._timer);
+    this._timer = setTimeout(() => void this._fetch(), this._retryDelayMs(this._failureCount));
   }
 
   // Returns null on failure so the caller can keep the existing feature

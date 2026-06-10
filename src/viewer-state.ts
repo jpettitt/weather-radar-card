@@ -93,6 +93,10 @@ export class ViewerState {
 
   private _writeTimer: ReturnType<typeof setTimeout> | null = null;
   private _hydrated = false;
+  // In-flight hydrate promise, so concurrent hydrate() calls (and
+  // _flush()'s wait-for-hydrate) share one WS round-trip instead of
+  // racing two GETs whose second response would clobber the first.
+  private _hydratePromise: Promise<void> | null = null;
   private _errorLogged = false;
 
   constructor(opts: ViewerStateOptions) {
@@ -190,17 +194,36 @@ export class ViewerState {
   /**
    * One-time read of the persisted state into the in-memory cache. Call
    * from `connectedCallback` or after the first `ensureIdentity` succeeds.
-   * Safe to call multiple times; subsequent calls are no-ops.
+   * Safe to call multiple times; subsequent calls are no-ops, and
+   * concurrent calls share one in-flight WS round-trip.
    */
   async hydrate(): Promise<void> {
     if (this._hydrated || !this.isActive) return;
+    if (this._hydratePromise) return this._hydratePromise;
+    this._hydratePromise = this._doHydrate();
+    try {
+      await this._hydratePromise;
+    } finally {
+      this._hydratePromise = null;
+    }
+  }
+
+  private async _doHydrate(): Promise<void> {
     try {
       const result = await this._hass.callWS<{ value?: Record<string, unknown> } | null>({
         type: 'frontend/get_user_data',
         key: this.storageKey!,
       });
       if (result?.value && typeof result.value === 'object') {
-        this._cache = { ...result.value };
+        // Merge UNDER the in-memory cache, not wholesale replace. set()
+        // is legal while the WS round-trip is in flight (isActive is
+        // true as soon as the nonce registers, before hydrate resolves)
+        // — a replace would silently discard those optimistic writes,
+        // and the already-scheduled debounced flush would then persist
+        // the replaced cache, losing the user's change on disk too.
+        // Optimistic in-memory keys win over persisted values: they are
+        // strictly newer.
+        this._cache = { ...result.value, ...this._cache };
       }
       this._hydrated = true;
       this._emit({ key: null, value: this._cache, source: 'hydrate' });
@@ -290,11 +313,25 @@ export class ViewerState {
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
 
-  /** Cancel any pending write and deregister from the live-instance map. */
+  /**
+   * Flush any pending debounced write, then deregister from the
+   * live-instance map.
+   *
+   * The flush MUST happen (and start synchronously) before _deregister:
+   * _flush captures the storage key at entry, and deregistering first
+   * would null the key and silently drop the user's last ≤500 ms of
+   * changes — which in HA happens constantly (dashboard navigation,
+   * edit mode, view switches all tear the card down). Fire-and-forget
+   * is fine; callWS dispatches on the still-open socket in the common
+   * SPA-navigation case. When hydration never completed, _flush's
+   * key-recheck after the hydrate await sees the deregistered state
+   * and drops the write rather than risk wiping persisted keys.
+   */
   dispose(): void {
     if (this._writeTimer) {
       clearTimeout(this._writeTimer);
       this._writeTimer = null;
+      void this._flush();
     }
     this._listeners.clear();
     this._deregister();
@@ -314,14 +351,30 @@ export class ViewerState {
    * Internal: flush the cache to WS. Exposed via the test seam so tests
    * can deterministically wait on a write without sleeping for the
    * debounce window.
+   *
+   * Waits for hydration first when it hasn't happened yet: the persisted
+   * record is the union of every key ever set, while a pre-hydrate cache
+   * holds ONLY the keys set this session. Writing that thin cache would
+   * destroy every other persisted key for this card. After hydrate's
+   * merge-under, the write is safe. The storage key is captured up front
+   * so a dispose()/re-mint that lands during the await can't misroute
+   * the write to a different identity — we just drop it instead.
    * @internal
    */
   async _flush(): Promise<void> {
-    if (!this.isActive) return;
+    const key = this.storageKey;
+    if (!key) return;
+    if (!this._hydrated) {
+      await this.hydrate();
+      // Disposed or re-minted while hydrating — the cache no longer
+      // belongs to `key`; writing it would corrupt another identity's
+      // record (or write under a dead key). Drop the flush.
+      if (this.storageKey !== key) return;
+    }
     try {
       await this._hass.callWS({
         type: 'frontend/set_user_data',
-        key: this.storageKey!,
+        key,
         value: { ...this._cache },
       });
     } catch (err) {

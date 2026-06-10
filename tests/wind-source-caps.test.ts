@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  bboxInUsCoverage,
   defaultWindSourceForLocation,
   getWindSourceCaps,
   WIND_SOURCE_CAPS,
@@ -116,5 +117,20 @@ describe('getWindSourceCaps', () => {
       expect(caps.label.length).toBeGreaterThan(0);
       expect(caps.cadenceNote.length).toBeGreaterThan(0);
     }
+  });
+});
+
+// ── Antimeridian normalisation (2026-06 review backlog) ──────────────────
+
+describe('bboxInUsCoverage — unwrapped longitudes', () => {
+  it('handles a viewport whose centre exceeds 180 after world-wrap panning', () => {
+    // Leaflet supplies continuous longitudes; a viewport over western
+    // Alaska reached by panning east can centre at e.g. lon 200
+    // (= -160). The NDFD auto-fallback used to misfire there.
+    expect(bboxInUsCoverage(58, 190, 65, 210)).toBe(true);   // centre lon 200 → -160 (Alaska)
+  });
+
+  it('still rejects genuinely non-US centres in wrapped space', () => {
+    expect(bboxInUsCoverage(50, 130, 60, 150)).toBe(false);  // Siberia
   });
 });

@@ -4,6 +4,15 @@
  * URL are assumed to be served from the browser cache and don't count against
  * the rate limit.
  */
+// Cap on the fetched-URL memo. Radar tile URLs are timestamped, so every
+// ~5-10 min refresh adds a fresh batch of unique URLs forever — on the
+// canonical wall-mounted-dashboard use case (a tab alive for weeks) the
+// unbounded Set was a slow memory leak, and it also conflated "fetched
+// once ever" with "still in the browser's HTTP cache". 1000 entries
+// comfortably covers every URL whose tile could plausibly still be
+// cached, at ~150 KB worst case.
+const URL_CACHE_MAX = 1000;
+
 export class RateLimiter {
   private _window: Array<{ time: number; url: string }> = [];
   private _cache = new Set<string>();
@@ -30,7 +39,14 @@ export class RateLimiter {
   }
 
   recordSuccess(url: string): void {
+    // Re-insert to refresh recency (Set preserves insertion order, so
+    // the first entry is always the least recently confirmed).
+    this._cache.delete(url);
     this._cache.add(url);
+    if (this._cache.size > URL_CACHE_MAX) {
+      const oldest = this._cache.values().next().value;
+      if (oldest !== undefined) this._cache.delete(oldest);
+    }
   }
 
   /** Milliseconds until the oldest window entry expires (plus 50ms buffer). */

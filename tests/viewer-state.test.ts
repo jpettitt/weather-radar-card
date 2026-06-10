@@ -278,8 +278,15 @@ describe('ViewerState — set + debounced writes', () => {
     vi.advanceTimersByTime(500);
     await vi.runAllTimersAsync();
 
-    expect(m.callWS).toHaveBeenCalledOnce();
-    expect(m.callWS).toHaveBeenCalledWith({
+    // The flush hydrates first (one get_user_data — the persisted
+    // record is the union of every key ever set, so writing a
+    // pre-hydrate cache would wipe keys from previous sessions), then
+    // does exactly ONE coalesced set_user_data.
+    const setCalls = m.callWS.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'frontend/set_user_data',
+    );
+    expect(setCalls).toHaveLength(1);
+    expect(setCalls[0][0]).toEqual({
       type: 'frontend/set_user_data',
       key: 'weather-radar-card.viewer-state.setdeb1',
       value: { a: 3, b: 2 },
@@ -436,17 +443,117 @@ describe('ViewerState — dispose', () => {
     vi.useFakeTimers();
   });
 
-  it('cancels pending writes, clears listeners, deregisters the nonce', () => {
+  it('flushes the pending write before deregistering the nonce', async () => {
+    // Regression: dispose() used to DROP the pending debounced write,
+    // silently losing up to 500 ms of the user's most recent changes on
+    // every card teardown (dashboard navigation, edit mode, view
+    // switches). It must flush instead. Hydrate first so the flush
+    // doesn't take the wait-for-hydrate path (covered separately).
     const m = makeState({
       viewer_layer_control: true,
       _layer_state_id: { dash: '/lovelace/0', nonce: 'dispos1' },
     });
     m.state.ensureIdentity();
+    await m.state.hydrate();
     m.state.set('a', 1);   // schedules a write 500ms out
-    m.state.dispose();
+    m.state.dispose();     // must flush it, not drop it
 
+    await vi.runAllTimersAsync();
+    const setCalls = m.callWS.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'frontend/set_user_data',
+    );
+    expect(setCalls).toHaveLength(1);
+    expect(setCalls[0][0]).toMatchObject({ value: { a: 1 } });
+    expect(_liveCardsForTests().size).toBe(0);
+  });
+
+  it('dispose without a pending write makes no WS call', () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'dispos2' },
+    });
+    m.state.ensureIdentity();
+    m.state.dispose();
     vi.advanceTimersByTime(1000);
     expect(m.callWS).not.toHaveBeenCalled();
     expect(_liveCardsForTests().size).toBe(0);
+  });
+});
+
+// ── Hydrate/set races (regressions from the 2026-06-09 review) ──────────
+
+describe('ViewerState — hydrate/set races', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it('set() during the hydrate round-trip survives the hydrate (merge-under)', async () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'race001' },
+    });
+    m.state.ensureIdentity();
+
+    // get_user_data resolves only when we release it, so we can
+    // interleave a set() mid-flight.
+    let releaseGet!: (v: unknown) => void;
+    m.callWS.mockImplementation((msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') {
+        return new Promise((res) => { releaseGet = res; });
+      }
+      return Promise.resolve({});
+    });
+
+    const hydratePromise = m.state.hydrate();
+    m.state.set('playback_speed', 4);          // optimistic write mid-hydrate
+    releaseGet({ value: { other_key: 'persisted' } });
+    await hydratePromise;
+
+    // The optimistic key survives; the persisted key arrives underneath.
+    expect(m.state.get('playback_speed')).toBe(4);
+    expect(m.state.get('other_key')).toBe('persisted');
+  });
+
+  it('flush before hydrate completes does not wipe previously persisted keys', async () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'race002' },
+    });
+    m.state.ensureIdentity();
+    m.callWS.mockImplementation((msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') {
+        return Promise.resolve({ value: { old_key: 'precious' } });
+      }
+      return Promise.resolve({});
+    });
+
+    // set() with NO hydrate() call beforehand — the debounced flush
+    // fires first. It must hydrate internally and write the union,
+    // not just the fresh key (which would destroy old_key on disk).
+    m.state.set('playback_speed', 2);
+    await vi.runAllTimersAsync();
+
+    const setCalls = m.callWS.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'frontend/set_user_data',
+    );
+    expect(setCalls).toHaveLength(1);
+    expect(setCalls[0][0]).toMatchObject({
+      value: { old_key: 'precious', playback_speed: 2 },
+    });
+  });
+
+  it('concurrent hydrate() calls share one WS round-trip', async () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'race003' },
+    });
+    m.state.ensureIdentity();
+    const p1 = m.state.hydrate();
+    const p2 = m.state.hydrate();
+    await Promise.all([p1, p2]);
+    const getCalls = m.callWS.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'frontend/get_user_data',
+    );
+    expect(getCalls).toHaveLength(1);
   });
 });

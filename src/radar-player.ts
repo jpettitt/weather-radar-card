@@ -160,6 +160,90 @@ function makeDwdMaskOnlyFilter(
   };
 }
 
+/**
+ * Build a CSS `clip-path: path(...)` string covering the coverage
+ * INTERIOR, from the shared coverage-mask layer's captured pixels.
+ *
+ * Input: RGBA from the coverage-mask tiles drawn to a (downscaled)
+ * canvas — wash/outline pixels carry alpha > 0 (the no-data EXTERIOR),
+ * interior pixels are transparent. Output: a path made of scanline-run
+ * rectangles over interior pixels, with vertically-identical runs
+ * merged (a fully-interior viewport collapses to a single rect).
+ * Returns '' when no interior pixel exists.
+ *
+ * Why clip-path and not mask-image: Leaflet panes are 0×0 positioned
+ * containers, and CSS masking clips its painting area to the element
+ * box — `mask-clip: border-box` (default) masked everything out, and
+ * Chrome's `mask-clip: no-clip` misrenders on a zero box (verified
+ * with a standalone repro: a thin strip instead of the masked image).
+ * clip-path is a geometric clip with no painting-area concept; pixel
+ * coordinates resolve from the reference-box origin — the pane origin
+ * — regardless of box size, which the same repro confirmed working.
+ *
+ * Why clip at all: nowcast frames carry a different no-data geometry
+ * than the analysis frame the displayed boundary is pinned to, so
+ * forecast rain can legitimately extend past the drawn outline; and
+ * motion compensation slides whole layers, pushing edge rain over the
+ * boundary during transitions. Clipping the pane solves both. The
+ * rectangle quantisation (one canvas pixel ≈ 2 screen px) is hidden
+ * under the drawn boundary outline.
+ *
+ * scaleX/scaleY map canvas pixels → screen px; offsetX/offsetY place
+ * canvas (0,0) in the pane's (layer-point) coordinate space.
+ *
+ * Exported for unit tests.
+ */
+export function coverageClipPath(
+  data: Uint8ClampedArray, w: number, h: number,
+  scaleX: number, scaleY: number, offsetX: number, offsetY: number,
+): string {
+  // Alpha above this = exterior (wash/outline). The wash's antialiased
+  // fringe (tiny alphas) counts as interior so the clip sits slightly
+  // outside the visual boundary line rather than inside it.
+  const EXTERIOR_ALPHA = 8;
+  interface Rect { x0: number; x1: number; y0: number; y1: number; }
+  const open = new Map<string, Rect>();   // runs continuing from the previous row
+  const done: Rect[] = [];
+  for (let y = 0; y < h; y++) {
+    const next = new Map<string, Rect>();
+    let runStart = -1;
+    for (let x = 0; x <= w; x++) {
+      const interior = x < w && data[(y * w + x) * 4 + 3] <= EXTERIOR_ALPHA;
+      if (interior && runStart < 0) runStart = x;
+      if (!interior && runStart >= 0) {
+        const key = `${runStart}:${x}`;
+        const prev = open.get(key);
+        if (prev && prev.y1 === y) {
+          prev.y1 = y + 1;            // identical span continues — extend
+          next.set(key, prev);
+        } else {
+          next.set(key, { x0: runStart, x1: x, y0: y, y1: y + 1 });
+        }
+        runStart = -1;
+      }
+    }
+    // Runs that didn't continue into this row are finished.
+    for (const [key, rect] of open) {
+      if (!next.has(key) || next.get(key) !== rect) done.push(rect);
+    }
+    open.clear();
+    for (const [key, rect] of next) open.set(key, rect);
+  }
+  done.push(...open.values());
+
+  if (done.length === 0) return '';
+  const fmt = (n: number): string => (Math.round(n * 10) / 10).toString();
+  let path = '';
+  for (const r of done) {
+    const x = offsetX + r.x0 * scaleX;
+    const y = offsetY + r.y0 * scaleY;
+    const rw = (r.x1 - r.x0) * scaleX;
+    const rh = (r.y1 - r.y0) * scaleY;
+    path += `M${fmt(x)} ${fmt(y)}h${fmt(rw)}v${fmt(rh)}h${fmt(-rw)}Z`;
+  }
+  return path;
+}
+
 // Parse any CSS colour ("rgba(0,0,0,0.3)", "#ff00ff", "magenta",
 // "transparent", …) into [r, g, b, a] bytes via the canvas 2D context.
 // Returns null if the string didn't parse — assigning an invalid value
@@ -179,12 +263,6 @@ function parseCssColor(value: string): [number, number, number, number] | null {
   return [d[0], d[1], d[2], d[3]];
 }
 
-// Leaflet's tile-layer container is the DOM element holding the
-// rendered tiles — this is where we apply opacity for the snap-switch.
-// Typed loosely because the public API doesn't expose `getContainer`.
-function layerEl(layer: { getContainer?: () => HTMLElement | null } | null | undefined): HTMLElement | null {
-  return layer?.getContainer?.() ?? null;
-}
 
 export interface RadarPlayerOptions {
   map: L.Map;
@@ -212,12 +290,17 @@ export class RadarPlayer {
   private _dwdLimiter: RateLimiter;
   private _dwdSwapLogged = false;
 
-  // Per-frame coverage overlay (DWD only). Parallel to _radarImage,
-  // each entry fetches the same WMS layer at the matching frame's TIME
-  // with makeDwdMaskOnlyFilter so only the wash + outline survive
-  // (recoloured to theme variables). _showSlot snap-switches visibility
-  // — never crossfades — so two stacked masks can't compound the dim.
-  private _radarMask: (FetchWmsTileLayer | null)[] = [];
+  // Coverage overlay (DWD only) — a SINGLE shared layer, not per-frame.
+  // Fetches the same WMS layer with makeDwdMaskOnlyFilter so only the
+  // wash + outline survive (recoloured to theme variables). The
+  // coverage geometry is the radar composite's no-data region, which
+  // is identical in every frame — the original per-frame design built
+  // one mask layer per radar frame and snap-switched between N
+  // identical images, which at a 12 h history (~144 frames, ~6 tiles
+  // each) meant ~900 redundant WMS requests per init that saturated
+  // the browser's per-origin connection pool. One layer, fetched once
+  // per init at the newest past frame's TIME, always visible.
+  private _coverageMask: FetchWmsTileLayer | null = null;
   private _radarPaneCreated = false;
   private _dwdMaskPaneCreated = false;
   private _dwdDimRgba: [number, number, number, number] | null = null;
@@ -239,8 +322,49 @@ export class RadarPlayer {
   // aborting just stops the wire bandwidth too. Only used by the
   // RainViewer path; DWD / NOAA derive frame timestamps locally.
   private _pathsAbortCtrl: AbortController | null = null;
+  // Displayed frame count. Starts as the caller's request but is
+  // re-derived from reality as frames arrive: _initRadar sets it to the
+  // number of frames the API actually returned, and _dedupFrames shrinks
+  // it when duplicate frames are pruned from the loop.
   private _configFrameCount = 5;
+  // The frame count the CARD asked for (from getEffectiveTimeRange).
+  // Kept separately because onNavSettled's "did frame_count change?"
+  // comparison must run against what was REQUESTED, not what's
+  // displayed — _configFrameCount legitimately diverges from the
+  // request (API returned fewer frames; dedup pruned duplicates), and
+  // comparing the nav callback's requested count against the displayed
+  // count made every pan/zoom take the full teardown + refetch branch
+  // forever once they diverged.
+  private _requestedFrameCount = 5;
   private _doRadarUpdate = false;
+  // Trailing debounce for the post-view-change refresh work
+  // (motion-comp resnapshot + coverage-clip rebuild). Tracked-marker
+  // configs re-centre on every GPS jitter, firing moveend several
+  // times a minute — each used to run the full pipeline (tile decode
+  // awaits + canvas draws + an LK call per adjacent frame pair).
+  // Coalescing behind 250 ms costs one debounce window of staleness
+  // on work that is purely cosmetic for that window. Snapshot
+  // INVALIDATION stays immediate in the event handlers, so stale
+  // vectors can't be applied while the refresh is pending.
+  private _viewRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private _scheduleViewRefresh(): void {
+    if (this._viewRefreshTimer) clearTimeout(this._viewRefreshTimer);
+    this._viewRefreshTimer = setTimeout(() => {
+      this._viewRefreshTimer = null;
+      void this._resnapshotAll();
+      void this._updateCoverageClip();
+    }, 250);
+  }
+
+  // Cancel function for the currently armed periodic-update timer.
+  // _scheduleUpdate maintains a single-chain invariant by cancelling
+  // this before arming a replacement; clear() cancels it on teardown.
+  private _cancelScheduledUpdate: (() => void) | null = null;
+  // Generation of the _initRadar currently loading frames, or -1 when
+  // none. Read via the _initInFlight getter by onNavSettled's guard
+  // against tearing down an in-flight init on every moveend.
+  private _initFlightGen = -1;
   // Wall-clock ms of the last time we fetched fresh frame paths
   // (either via _initRadar or _updateRadar). Read by onVisibilityVisible
   // to decide whether resuming from a hidden state needs a full
@@ -403,7 +527,7 @@ export class RadarPlayer {
     // new zoom level; _onLayerLoaded will run again if new tiles also
     // arrive, overwriting with a fresher snapshot.
     this._invalidateSnapshots();
-    void this._resnapshotAll();
+    this._scheduleViewRefresh();
   };
 
   private _onMoveEnd = (): void => {
@@ -417,7 +541,7 @@ export class RadarPlayer {
     // larger pan also triggers new tile fetches, _onLayerLoaded picks
     // those up later and overwrites with the fresher snapshot.
     this._invalidateSnapshots();
-    void this._resnapshotAll();
+    this._scheduleViewRefresh();
   };
 
   // Map container size changed (window resize, parent reflow, theme
@@ -429,7 +553,7 @@ export class RadarPlayer {
   // with stale viewport data.
   private _onResize = (): void => {
     this._invalidateSnapshots();
-    void this._resnapshotAll();
+    this._scheduleViewRefresh();
   };
 
   // ── Motion compensation: snapshot + LK pipeline ──────────────────────
@@ -794,25 +918,32 @@ export class RadarPlayer {
       ? this._loadedSlots[this._prev1Slot]
       : -1;
 
-    // Build the kept-fi list in slot order (oldest → newest), then
-    // tear down the dropped layers (return their tiles + DOM to
-    // Leaflet) so duplicates don't linger as invisible attached
-    // layers consuming memory.
+    // Build the kept-fi list in slot order (oldest → newest).
     const keptFi: number[] = [];
     for (let i = 0; i < this._loadedSlots.length; i++) {
-      if (isDuplicate[i]) {
-        const fi = this._loadedSlots[i];
-        const layer = this._radarImage[fi];
-        if (layer && (layer as { remove?: () => void }).remove) {
-          (layer as { remove: () => void }).remove();
-        }
-        const mask = this._radarMask[fi];
-        if (mask && (mask as { remove?: () => void }).remove) {
-          (mask as { remove: () => void }).remove();
-        }
-      } else {
-        keptFi.push(this._loadedSlots[i]);
+      if (!isDuplicate[i]) keptFi.push(this._loadedSlots[i]);
+    }
+
+    // Tear down EVERY radar layer not being kept — not just the
+    // duplicates. The arrays can hold entries for frames that never
+    // made it into _loadedSlots (a frame that failed mid-init, or one
+    // whose tiles were still settling when init was superseded). The
+    // compaction below maps the arrays through keptFi, so anything not
+    // in keptFi vanishes from our tracking — if it isn't removed from
+    // the map HERE, no later sweep (_clearLayers iterates the tracked
+    // arrays) can ever find it again. That was a real leak: every init
+    // cycle orphaned the layers of its not-loaded frames into the
+    // radar pane. (The DWD coverage mask is a single shared layer now
+    // and isn't touched by dedup at all.)
+    const keptSet = new Set(keptFi);
+    const removeLayer = (l: unknown): void => {
+      if (l && (l as { remove?: () => void }).remove) {
+        (l as { remove: () => void }).remove();
       }
+    };
+    for (let fi = 0; fi < this._radarImage.length; fi++) {
+      if (keptSet.has(fi)) continue;
+      removeLayer(this._radarImage[fi]);
     }
 
     // Compact every per-frame array. New index == position in
@@ -824,7 +955,6 @@ export class RadarPlayer {
     this._frameSnapshot = keptFi.map((fi) => this._frameSnapshot[fi]);
     this._frameSnapshotNz = keptFi.map((fi) => this._frameSnapshotNz[fi]);
     this._frameMotion = keptFi.map((fi) => this._frameMotion[fi]);
-    this._radarMask = keptFi.map((fi) => this._radarMask[fi] ?? null);
 
     // _loadedSlots becomes the identity mapping; _configFrameCount
     // reflects what's actually displayed.
@@ -960,6 +1090,7 @@ export class RadarPlayer {
 
   /** Start loading radar frames for the current map view. */
   async start(frameCount: number): Promise<void> {
+    this._requestedFrameCount = frameCount;
     this._configFrameCount = frameCount;
     await this._initRadar();
   }
@@ -974,6 +1105,13 @@ export class RadarPlayer {
     this._map?.off('moveend', this._onMoveEnd);
     this._map?.off('resize', this._onResize);
     if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
+    // Cancel the armed periodic-update timer before terminating the
+    // worker — for the setTimeout-fallback path the worker teardown
+    // wouldn't kill it, and a post-clear() fire would act on a player
+    // the card has already discarded.
+    this._cancelScheduledUpdate?.();
+    this._cancelScheduledUpdate = null;
+    if (this._viewRefreshTimer) { clearTimeout(this._viewRefreshTimer); this._viewRefreshTimer = null; }
     this._worker?.terminate();
     this._worker = null;
     this._workerCallbacks.clear();
@@ -999,12 +1137,37 @@ export class RadarPlayer {
   async onNavSettled(frameCount: number): Promise<void> {
     this.navPaused = false;
 
+    // An init is currently loading frames and the request shape hasn't
+    // changed → let it finish. Without this guard, any moveend while
+    // `_radarReady` is still false tore down the in-flight init and
+    // started over — and on configs that pan programmatically (tracked
+    // device markers re-centre on every GPS jitter), that loop is
+    // self-sustaining: a DWD+forecast init loads ~48 frames
+    // sequentially and needs the first two before _radarReady flips,
+    // the restart makes the connection pool more saturated and thus
+    // the next attempt slower, and the next pan lands before that.
+    // Observed live as continuous tile requests + the mask pane
+    // re-filling on every cycle. The in-flight init handles the new
+    // viewport on its own — its layers are attached, so Leaflet
+    // fetches tiles for wherever the map now points.
+    if (this._initInFlight && !this._radarReady
+        && this._requestedFrameCount === frameCount) {
+      return;
+    }
+
     // Full re-init only when state needs rebuilding: initial load not yet
-    // complete, or frame_count changed. Pan, zoom, and programmatic view
-    // changes leave layers attached — Leaflet fetches only the tiles
-    // entering the new viewport.
-    if (!this._radarReady || this._configFrameCount !== frameCount) {
+    // complete, or the REQUESTED frame_count changed (i.e. the user edited
+    // past_minutes / stride / source). Compared against
+    // _requestedFrameCount, not _configFrameCount — the displayed count
+    // legitimately diverges from the request (API returned fewer frames
+    // than asked; _dedupFrames pruned duplicates), and comparing against
+    // the displayed count made every pan/zoom take this full
+    // teardown + refetch branch forever once they diverged. Pan, zoom,
+    // and programmatic view changes leave layers attached — Leaflet
+    // fetches only the tiles entering the new viewport.
+    if (!this._radarReady || this._requestedFrameCount !== frameCount) {
       this._clearLayers();
+      this._requestedFrameCount = frameCount;
       this._configFrameCount = frameCount;
       await this._initRadar();
       return;
@@ -1335,10 +1498,8 @@ export class RadarPlayer {
 
     this._prev1Slot = slot;
 
-    // Coverage overlay snap-switch — only the new slot's mask is visible.
-    // Done unconditionally; non-DWD sources have an empty _radarMask array
-    // and the loop is a no-op.
-    this._showDwdMaskForSlot(slot);
+    // The DWD coverage mask is a single always-visible shared layer
+    // (see _coverageMask) — nothing to switch per tick.
 
     const fi = this._loadedSlots[slot];
     if (fi !== undefined) {
@@ -1349,16 +1510,30 @@ export class RadarPlayer {
 
   // ── Progress bar ─────────────────────────────────────────────────────────
 
+  // Cached segment elements, rebuilt by _buildSegments. The per-tick
+  // paths (_applyNowMarker / _highlightSegment via _showSlot) used to do
+  // a getElementById per segment per tick — at 4× speed with a 48-frame
+  // DWD loop that was ~770 shadow-DOM lookups+writes per second for
+  // state that almost never changes. The cache plus the changed-only
+  // updates below reduce that to a handful of writes per tick.
+  private _segEls: HTMLElement[] = [];
+  private _lastNowMarkerIndex = -1;
+  private _lastHighlightFi = -1;
+
   private _buildSegments(): void {
     const track = this._shadowRoot.getElementById('div-progress-track');
     if (!track) return;
     track.innerHTML = '';
+    this._segEls = [];
+    this._lastNowMarkerIndex = -1;
+    this._lastHighlightFi = -1;
     this._frameStatuses = new Array(this._configFrameCount).fill('empty') as FrameStatus[];
     for (let i = 0; i < this._configFrameCount; i++) {
       const seg = document.createElement('div');
       seg.id = `seg-${i}`;
       seg.style.cssText = `flex:1;height:100%;background-color:${this._segColor('empty', false)}`;
       track.appendChild(seg);
+      this._segEls.push(seg);
     }
     this._updateLoadingSpinner();
   }
@@ -1377,8 +1552,8 @@ export class RadarPlayer {
 
   private _setSegment(fi: number, status: FrameStatus): void {
     this._frameStatuses[fi] = status;
-    const seg = this._shadowRoot.getElementById(`seg-${fi}`);
-    if (seg) seg.style.backgroundColor = this._segColor(status, false);
+    const seg = this._segEls[fi];
+    if (seg) seg.style.backgroundColor = this._segColor(status, fi === this._lastHighlightFi);
     this._updateLoadingSpinner();
   }
 
@@ -1401,14 +1576,19 @@ export class RadarPlayer {
   }
 
   private _applyNowMarker(): void {
-    for (let i = 0; i < this._configFrameCount; i++) {
-      const seg = this._shadowRoot.getElementById(`seg-${i}`);
-      if (!seg) continue;
-      const isNow = i === this._nowFrameIndex;
+    // Touch only the segments whose now-state changed (the previous
+    // marker holder and the new one) — this runs every tick.
+    if (this._nowFrameIndex === this._lastNowMarkerIndex) return;
+    const apply = (i: number, isNow: boolean): void => {
+      const seg = this._segEls[i];
+      if (!seg) return;
       seg.title = isNow ? localize('ui.now_tooltip') : '';
       // boxShadow (not backgroundColor) so _segColor doesn't clobber it on each tick.
       seg.style.boxShadow = isNow ? 'inset 0 2px 0 0 var(--warning-color, #ff9800)' : '';
-    }
+    };
+    if (this._lastNowMarkerIndex >= 0) apply(this._lastNowMarkerIndex, false);
+    if (this._nowFrameIndex >= 0) apply(this._nowFrameIndex, true);
+    this._lastNowMarkerIndex = this._nowFrameIndex;
   }
 
   /**
@@ -1444,10 +1624,17 @@ export class RadarPlayer {
   }
 
   private _highlightSegment(fi: number): void {
-    for (let j = 0; j < this._configFrameCount; j++) {
-      const seg = this._shadowRoot.getElementById(`seg-${j}`);
-      if (seg) seg.style.backgroundColor = this._segColor(this._frameStatuses[j] ?? 'empty', j === fi);
-    }
+    // Repaint only the segment losing the highlight and the one gaining
+    // it — this runs every tick, and segment STATUS changes repaint
+    // through _setSegment independently.
+    if (fi === this._lastHighlightFi) return;
+    const paint = (j: number, isCurrent: boolean): void => {
+      const seg = this._segEls[j];
+      if (seg) seg.style.backgroundColor = this._segColor(this._frameStatuses[j] ?? 'empty', isCurrent);
+    };
+    if (this._lastHighlightFi >= 0) paint(this._lastHighlightFi, false);
+    paint(fi, true);
+    this._lastHighlightFi = fi;
   }
 
   // ── Rate limit banner ────────────────────────────────────────────────────
@@ -1498,7 +1685,7 @@ export class RadarPlayer {
     this._frameSnapshot = [];
     this._frameSnapshotNz = [];
     this._frameMotion = [];
-    this._clearDwdMaskLayers();
+    this._clearCoverageMask();
   }
 
   // Resolve the DWD WMS layer the player is currently using. Niederschlagsradar
@@ -1585,20 +1772,132 @@ export class RadarPlayer {
     } as any);
   }
 
-  private _clearDwdMaskLayers(): void {
-    for (const layer of this._radarMask) layer?.remove();
-    this._radarMask = [];
+  private _clearCoverageMask(): void {
+    this._coverageMask?.remove();
+    this._coverageMask = null;
+    this._clearCoverageClip();
   }
 
-  // Show only the active slot's mask. No transition — two stacked masks
-  // during a data crossfade would compound the dim into a pulse.
-  private _showDwdMaskForSlot(slot: number): void {
-    for (let s = 0; s < this._loadedSlots.length; s++) {
-      const el = layerEl(this._radarMask[this._loadedSlots[s]]);
-      if (!el) continue;
-      el.style.transition = 'none';
-      el.style.opacity = s === slot ? '1' : '0';
+  // Remove the pane clip — non-DWD sources and teardown must leave the
+  // radar pane unclipped.
+  private _clearCoverageClip(): void {
+    const pane = this._map?.getPane(RADAR_PANE_NAME);
+    if (!pane) return;
+    pane.style.clipPath = '';
+  }
+
+  // Build / refresh the clip-path that confines the radar pane to the
+  // coverage region. Captures the shared coverage-mask layer's tiles
+  // into a half-resolution canvas covering the viewport plus a 25%
+  // margin on each side (so interactive pans don't reveal unclipped
+  // edges before the moveend rebuild), then converts the interior into
+  // scanline-run rectangles via coverageClipPath and applies them as
+  // `clip-path: path(...)` on the radar pane, in layer-point
+  // coordinates so the clip stays glued to geography while Leaflet
+  // translates the map pane.
+  //
+  // Re-run on: coverage-mask 'load' (tiles arrived/refreshed), and
+  // moveend / zoomend / resize (viewport changed — same events that
+  // already invalidate motion-comp snapshots). _snapshotGen guards
+  // against a stale async capture applying after the view changed.
+  private async _updateCoverageClip(): Promise<void> {
+    const mask = this._coverageMask;
+    if (!mask || !this._map) return;
+    const container = (mask as { getContainer?: () => HTMLElement | null }).getContainer?.();
+    if (!container) return;
+    const tiles = container.querySelectorAll<HTMLImageElement>('img.leaflet-tile');
+    if (tiles.length === 0) return;
+    const genAtStart = this._snapshotGen;
+    await Promise.all(Array.from(tiles).map((t) => {
+      if (t.complete && t.naturalWidth > 0) return Promise.resolve();
+      return t.decode().catch(() => { /* broken tile; skipped at draw */ });
+    }));
+    if (genAtStart !== this._snapshotGen) return;
+    if (this._coverageMask !== mask) return;
+
+    const size = this._map.getSize();
+    // 25% margin each side: Leaflet keeps a buffer ring of loaded tiles
+    // around the viewport, so the captured area beyond the viewport is
+    // usually real data; areas with no tile read as alpha-0 → interior
+    // → unclipped, which fails open (rain visible) rather than black.
+    const padX = Math.ceil(size.x / 4);
+    const padY = Math.ceil(size.y / 4);
+    const fullW = size.x + 2 * padX;
+    const fullH = size.y + 2 * padY;
+    const w = Math.max(1, Math.ceil(fullW / 2));
+    const h = Math.max(1, Math.ceil(fullH / 2));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const mapRect = this._map.getContainer().getBoundingClientRect();
+    const xScale = w / fullW;
+    const yScale = h / fullH;
+    for (const tileImg of Array.from(tiles)) {
+      if (!tileImg.complete || tileImg.naturalWidth === 0) continue;
+      const tr = tileImg.getBoundingClientRect();
+      try {
+        ctx.drawImage(
+          tileImg,
+          (tr.left - mapRect.left + padX) * xScale,
+          (tr.top - mapRect.top + padY) * yScale,
+          tr.width * xScale,
+          tr.height * yScale,
+        );
+      } catch { /* tainted/broken tile — skip */ }
     }
+    const imgData = ctx.getImageData(0, 0, w, h);
+
+    const pane = this._map.getPane(RADAR_PANE_NAME);
+    if (!pane) return;
+    // Canvas (0,0) corresponds to container point (-padX, -padY);
+    // express it in layer-point space (the pane's coordinate system).
+    const origin = this._map.containerPointToLayerPoint([-padX, -padY]);
+    const path = coverageClipPath(
+      imgData.data, w, h,
+      fullW / w, fullH / h,
+      origin.x, origin.y,
+    );
+    // Empty path = no interior pixel anywhere in the captured area
+    // (viewport fully outside coverage). Hide the pane's rain — there
+    // is no valid radar data to show there anyway.
+    pane.style.clipPath = path ? `path("${path}")` : 'inset(100%)';
+  }
+
+  // Create the single shared coverage mask. Uses the newest PAST
+  // frame's TIME: a past timestamp is guaranteed to exist on the
+  // server, whereas the newest nowcast frame may not have been
+  // published yet at request time.
+  //
+  // Deliberate approximation: the coverage geometry is NOT strictly
+  // identical across nowcast lead times — probing real WN tiles
+  // showed the no-data boundary shifting slightly and the wash area
+  // growing with lead time (outline pixel count 1104 → 1006 from
+  // analysis to +120 min). The old per-frame mask design rendered
+  // each frame's own boundary and snap-switched between them, which
+  // made the boundary visibly wobble during the forecast segment of
+  // the loop. Pinning one analysis-frame boundary for the whole loop
+  // trades a marginal coverage inaccuracy on forecast frames for a
+  // rock-steady outline — and cuts ~N redundant mask WMS layers down
+  // to one (at 12 h history that was ~900 tile requests per init).
+  // Always visible from creation; it lives alone in its own pane, so
+  // there is no crossfade interplay and nothing to switch per tick.
+  private _ensureCoverageMask(frames: RadarFrame[], layerName: string): void {
+    this._clearCoverageMask();
+    const nowSec = Date.now() / 1000;
+    // Newest frame at-or-before "now", else the oldest frame we have
+    // (all-forecast configs are not currently possible, but be safe).
+    const pastFrames = frames.filter((f) => f.time <= nowSec);
+    const anchor = pastFrames.length > 0 ? pastFrames[pastFrames.length - 1] : frames[0];
+    if (!anchor) return;
+    const mask = this._createDwdMaskLayer(anchor, layerName);
+    if (!mask) return;
+    this._coverageMask = mask;
+    // Rebuild the radar-pane clip whenever the mask's tiles settle —
+    // initial load and any pan/zoom refetches alike.
+    mask.on('load', () => { void this._updateCoverageClip(); });
+    if (this._map) mask.addTo(this._map);
   }
 
   // ── Radar fetching ───────────────────────────────────────────────────────
@@ -1810,6 +2109,23 @@ export class RadarPlayer {
     this._stopLoop();
     this._frameGeneration++;
     const myGen = this._frameGeneration;
+    // Mark this init as in flight for onNavSettled's churn guard. The
+    // generation-scoped clear in the finally means a superseded init
+    // can't clear the flag out from under its successor.
+    this._initFlightGen = myGen;
+    try {
+      await this._initRadarBody(myGen);
+    } finally {
+      if (this._initFlightGen === myGen) this._initFlightGen = -1;
+    }
+  }
+
+  /** True while an _initRadar belonging to the CURRENT generation is loading. */
+  private get _initInFlight(): boolean {
+    return this._initFlightGen === this._frameGeneration && this._initFlightGen !== -1;
+  }
+
+  private async _initRadarBody(myGen: number): Promise<void> {
     this._loadedSlots = [];
     this._currentSlot = 0;
 
@@ -1836,11 +2152,15 @@ export class RadarPlayer {
     this._applyNowMarker();
 
     const dwdActive = (this._cfg.data_source ?? 'RainViewer') === 'DWD';
+    const dwdLayerName = dwdActive ? this._dwdLayerName() : '';
     if (dwdActive) {
       this._refreshDwdMaskColors();
-      this._radarMask = new Array(frameCount).fill(null);
+      // ONE shared coverage mask for the whole loop — the no-data
+      // geometry is identical in every frame, so per-frame masks were
+      // pure waste (at 12 h history: ~144 extra WMS layers ≈ ~900
+      // redundant tile requests per init).
+      this._ensureCoverageMask(pastFrames, dwdLayerName);
     }
-    const dwdLayerName = dwdActive ? this._dwdLayerName() : '';
 
     // Initialise motion-compensation state for the fresh set of
     // frames. _captureFrameSnapshot writes into these as each frame's
@@ -1869,16 +2189,6 @@ export class RadarPlayer {
       this._setLayerZ(layer, fi + 1);
       const el = (layer as any).getContainer?.() as HTMLElement | undefined;
       if (el) el.style.opacity = '0';
-
-      if (dwdActive) {
-        const maskLayer = this._createDwdMaskLayer(this._radarPaths[fi], dwdLayerName);
-        if (maskLayer) {
-          this._radarMask[fi] = maskLayer;
-          maskLayer.addTo(this._map);
-          const maskEl = layerEl(maskLayer);
-          if (maskEl) maskEl.style.opacity = '0';
-        }
-      }
 
       const status = await layerSettled(layer);
       if (myGen !== this._frameGeneration) return;
@@ -1918,13 +2228,11 @@ export class RadarPlayer {
         if (!newestShown) {
           // Show newest frame as a static preview before the loop starts.
           // Layer opacity is 1 — radar_opacity is carried by the radar
-          // pane (see _ensureRadarPane).
+          // pane (see _ensureRadarPane). The shared coverage mask is
+          // already visible (always on), so the preview has its
+          // coverage overlay from the start.
           newestShown = true;
           if (el) el.style.opacity = '1';
-          // Surface the matching mask too, so the preview already has
-          // its in-sync coverage overlay before the loop begins.
-          const maskEl = layerEl(this._radarMask[fi]);
-          if (maskEl) maskEl.style.opacity = '1';
           this._setTimestamp(fi);
           this._highlightSegment(fi);
           // Track this as the visible slot so _settleVisibility (called
@@ -2000,10 +2308,24 @@ export class RadarPlayer {
   // ── Periodic update ──────────────────────────────────────────────────────
 
   private _scheduleUpdate(): void {
+    // Single-chain invariant: exactly one armed update timer at any
+    // time. Several paths can arm a fresh chain while an old timer is
+    // still pending (rate-limit retry → _initRadar → _scheduleUpdate;
+    // sleep/wake → stale re-init → _scheduleUpdate), and without
+    // cancellation each survivor kept firing — every parallel chain
+    // doubled the refresh rate and, before the newness guard, the rate
+    // of destructive duplicate-shifts too. Cancel-before-arm plus the
+    // generation check below makes forking impossible.
+    this._cancelScheduledUpdate?.();
     const framePeriod = 300_000;
     // RainViewer publishes ~1 min after the timestamp; DWD ~1–3 min; NOAA's lag is already baked in.
     const lag = (this._cfg.data_source ?? 'RainViewer') === 'NOAA' ? 0 : 60_000;
-    this._workerTimeout(() => {
+    const genAtArm = this._frameGeneration;
+    this._cancelScheduledUpdate = this._workerTimeout(() => {
+      this._cancelScheduledUpdate = null;
+      // A teardown / re-init happened after this timer was armed. The
+      // re-init path arms its own chain; acting here would fork.
+      if (genAtArm !== this._frameGeneration) return;
       if (this._radarReady && !this.navPaused && !this.viewPaused) {
         this._updateRadar();
       } else {
@@ -2024,35 +2346,49 @@ export class RadarPlayer {
     }
     if (myGen !== this._frameGeneration) return; // torn down while fetching
     if (pastFrames.length === 0) { this._scheduleUpdate(); return; } // no frames from API
+
+    // Newness guard: only shift the loop when the source actually
+    // published a frame newer than what we hold. The refresh cycle
+    // (~6 min) is faster than every source's publication cadence
+    // (RainViewer 10 min; NOAA ~5-9 min with server-side snapping; DWD
+    // 5 min but the locally computed timestamps can land on the same
+    // grid slot) — so roughly every other refresh used to fetch the
+    // SAME newest frame, append it as a duplicate, and destroy a real
+    // historical frame at slot 0. On a long-running dashboard the loop
+    // monotonically filled with adjacent duplicate pairs while its time
+    // span shrank. For RainViewer the timestamps come from the
+    // weather-maps.json frame listing, so this comparison is exactly
+    // "did the listing gain a new entry"; for NOAA/DWD the computed
+    // timestamps serve the same role.
+    const currentNewestTime = this._radarPaths[this._radarPaths.length - 1]?.time ?? 0;
     const latestFrame = pastFrames[pastFrames.length - 1];
+    if (latestFrame.time <= currentNewestTime) {
+      // Nothing new published. The fetch itself succeeded, so the data
+      // is verifiably current — bump the freshness clock so the
+      // visibility-resume staleness heuristic doesn't trigger a full
+      // re-init just because the source was slow to publish.
+      this._lastFrameRefreshAt = Date.now();
+      this._doRadarUpdate = false;
+      this._scheduleUpdate();
+      return;
+    }
     const frameCount = this._configFrameCount;
 
     const newLayer = this._createLayer(latestFrame);
     newLayer.addTo(this._map);
     const newTime = this._getTimeString(latestFrame.time * 1000);
-    const dwdActive = (this._cfg.data_source ?? 'RainViewer') === 'DWD';
-    let newMask: FetchWmsTileLayer | null = null;
-    if (dwdActive) {
-      newMask = this._createDwdMaskLayer(latestFrame, this._dwdLayerName());
-      if (newMask) {
-        newMask.addTo(this._map);
-        const maskEl = layerEl(newMask);
-        if (maskEl) maskEl.style.opacity = '0';
-      }
-    }
+    // The DWD coverage mask is a single shared layer — nothing to
+    // create or shift on refresh; the no-data geometry doesn't change.
 
     this._radarImage[0]?.remove();
-    this._radarMask[0]?.remove();
     // _radarPaths shifts alongside the others because nearestFrameIndex() reads .time off it.
     for (let i = 0; i < frameCount - 1; i++) {
       this._radarImage[i] = this._radarImage[i + 1];
-      this._radarMask[i] = this._radarMask[i + 1] ?? null;
       this._radarTime[i] = this._radarTime[i + 1];
       this._radarPaths[i] = this._radarPaths[i + 1];
       this._frameStatuses[i] = this._frameStatuses[i + 1];
     }
     this._radarImage[frameCount - 1] = newLayer;
-    this._radarMask[frameCount - 1] = newMask;
     this._radarTime[frameCount - 1] = newTime;
     this._radarPaths[frameCount - 1] = latestFrame;
     this._lastFrameRefreshAt = Date.now();
@@ -2127,18 +2463,42 @@ export class RadarPlayer {
         }
       };
     `;
-    this._workerBlobUrl = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
-    this._worker = new Worker(this._workerBlobUrl);
-    this._worker.onmessage = (e) => {
-      const cb = this._workerCallbacks.get(e.data.id);
-      if (cb) { this._workerCallbacks.delete(e.data.id); cb(); }
-    };
+    // Guarded like createLkWorker in lk-worker.ts: strict CSPs block
+    // blob: workers, and an unguarded throw here aborts the
+    // RadarPlayer constructor mid-_initMap, killing the whole card.
+    // On failure _worker stays null and _workerTimeout's setTimeout
+    // fallback takes over — timers then throttle in hidden tabs, but
+    // the stale-resume re-init covers that case.
+    try {
+      this._workerBlobUrl = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+      this._worker = new Worker(this._workerBlobUrl);
+      this._worker.onmessage = (e) => {
+        const cb = this._workerCallbacks.get(e.data.id);
+        if (cb) { this._workerCallbacks.delete(e.data.id); cb(); }
+      };
+    } catch {
+      if (this._workerBlobUrl) { URL.revokeObjectURL(this._workerBlobUrl); this._workerBlobUrl = null; }
+      this._worker = null;
+    }
   }
 
-  private _workerTimeout(cb: () => void, delay: number): void {
-    if (!this._worker) { setTimeout(cb, delay); return; }
+  /**
+   * Arm a timer (worker-side when available so it keeps ticking in
+   * throttled background tabs; setTimeout fallback otherwise). Returns
+   * a cancel function — both paths support cancellation so callers can
+   * maintain a single-armed-timer invariant.
+   */
+  private _workerTimeout(cb: () => void, delay: number): () => void {
+    if (!this._worker) {
+      const handle = setTimeout(cb, delay);
+      return () => clearTimeout(handle);
+    }
     const id = this._workerNextId++;
     this._workerCallbacks.set(id, cb);
     this._worker.postMessage({ type: 'setTimeout', id, delay });
+    return () => {
+      this._workerCallbacks.delete(id);
+      this._worker?.postMessage({ type: 'clearTimeout', id });
+    };
   }
 }

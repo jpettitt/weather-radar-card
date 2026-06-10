@@ -95,7 +95,7 @@ export interface EffectiveTimeRange {
   forecastMin: number;
   /** Effective frame interval in minutes — stride override or source native. */
   strideMin: number;
-  /** Number of frames to load: floor((past + forecast) / stride) + 1, min 2. */
+  /** Number of frames to load: floor((past + forecast) / stride) + 1, min 1. */
   frameCount: number;
 }
 

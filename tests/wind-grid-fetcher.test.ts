@@ -861,3 +861,31 @@ describe('WindGridFetcher cache (silent fallback)', () => {
     expect(calls).toBe(2);
   });
 });
+
+// ── Cache eviction (2026-06 review backlog) ──────────────────────────────
+
+describe('WindGridFetcher cache eviction', () => {
+  it('sweeps expired entries on fetch instead of accreting them forever', async () => {
+    // Expired entries used to be replaced only when their exact key was
+    // requested again — panning around after TTL expiry accreted
+    // resolved WindGrid promises (single-digit MB each) for the page
+    // session, since the module-level singleton never goes away.
+    let t = 1_000_000;
+    const upstream = vi.fn(async () => ({
+      south: 0, west: 0, latStep: 1, lonStep: 1, rows: 1, cols: 1,
+      u: new Float32Array(1), v: new Float32Array(1),
+    })) as any;
+    const fetcher = new WindGridFetcher({ ttlMs: 100, now: () => t, fetchImpl: upstream });
+
+    // Three distinct keys → three cache entries.
+    await fetcher.fetch({ south: 10, west: 10, north: 11, east: 11, source: 'dwd_icon' });
+    await fetcher.fetch({ south: 20, west: 20, north: 21, east: 21, source: 'dwd_icon' });
+    await fetcher.fetch({ south: 30, west: 30, north: 31, east: 31, source: 'dwd_icon' });
+    expect((fetcher as any)._cache.size).toBe(3);
+
+    // All expire; one NEW fetch must sweep the stale three.
+    t += 1_000;
+    await fetcher.fetch({ south: 40, west: 40, north: 41, east: 41, source: 'dwd_icon' });
+    expect((fetcher as any)._cache.size).toBe(1);
+  });
+});

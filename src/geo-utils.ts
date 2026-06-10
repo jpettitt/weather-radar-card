@@ -6,22 +6,28 @@
 // null for unsupported geometry types (Point, LineString, etc.) or empty
 // coordinate arrays. Skips coordinate pairs whose values aren't numbers.
 //
-// NOTE: bounding-box logic does not handle the antimeridian (180°E/W).
-// A polygon spanning the dateline would report a bbox covering most of
-// the planet. Acceptable for our current US-mainland use cases; revisit
-// if Alaska/Aleutian zones become important.
+// Antimeridian handling: a geometry genuinely crossing 180°E/W (Aleutian
+// fires; NWS Alaska marine zones carry coordinates on both sides) would
+// produce a naive min/max bbox spanning ~360° of longitude, putting the
+// bbox-centre near lon 0 (mid-Atlantic) — which made the radius filters
+// drop/keep those features wrongly and forced screen-wide polygon
+// rendering. When the naive span exceeds 180° we renormalise negative
+// longitudes into a continuous 0..360 window and recompute, so the
+// returned bbox may legitimately have maxLng > 180 (continuous-window
+// convention; Leaflet accepts unwrapped longitudes). centroidLngLat
+// wraps its result back into [-180, 180].
 export function geometryLngLatBounds(
   geom: GeoJSON.Geometry,
 ): { minLng: number; minLat: number; maxLng: number; maxLat: number } | null {
-  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  const lngs: number[] = [];
+  let minLat = Infinity, maxLat = -Infinity;
   let any = false;
   const visit = (ring: GeoJSON.Position[]): void => {
     for (const p of ring) {
       const [lng, lat] = p;
       if (typeof lng !== 'number' || typeof lat !== 'number') continue;
-      if (lng < minLng) minLng = lng;
+      lngs.push(lng);
       if (lat < minLat) minLat = lat;
-      if (lng > maxLng) maxLng = lng;
       if (lat > maxLat) maxLat = lat;
       any = true;
     }
@@ -33,17 +39,38 @@ export function geometryLngLatBounds(
   } else {
     return null;
   }
-  return any ? { minLng, minLat, maxLng, maxLat } : null;
+  if (!any) return null;
+
+  let minLng = Math.min(...lngs);
+  let maxLng = Math.max(...lngs);
+  if (maxLng - minLng > 180) {
+    // Suspected dateline crossing — recompute in a 0..360 window.
+    // (A real single geometry spanning >180° of longitude without
+    // crossing the dateline doesn't exist in our data sources.)
+    const shifted = lngs.map((l) => (l < 0 ? l + 360 : l));
+    const sMin = Math.min(...shifted);
+    const sMax = Math.max(...shifted);
+    // Only adopt the shifted window if it's actually tighter —
+    // degenerate geometries keep the naive answer.
+    if (sMax - sMin < maxLng - minLng) {
+      minLng = sMin;
+      maxLng = sMax;
+    }
+  }
+  return { minLng, minLat, maxLng, maxLat };
 }
 
 // Bbox-centre, NOT a true polygon centroid — good enough for icon
 // placement and rough distance filtering, and avoids pulling in
 // @turf/centroid for a few KB. Returns [lng, lat] or null for empty
-// / unsupported geometries.
+// / unsupported geometries. Longitude is wrapped to [-180, 180] (the
+// bbox may use a continuous >180 window across the dateline).
 export function centroidLngLat(geom: GeoJSON.Geometry): [number, number] | null {
   const b = geometryLngLatBounds(geom);
   if (!b) return null;
-  return [(b.minLng + b.maxLng) / 2, (b.minLat + b.maxLat) / 2];
+  let lng = (b.minLng + b.maxLng) / 2;
+  if (lng > 180) lng -= 360;
+  return [lng, (b.minLat + b.maxLat) / 2];
 }
 
 // Great-circle distance between two lat/lon points in kilometres.

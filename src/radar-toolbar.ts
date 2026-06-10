@@ -87,9 +87,16 @@ export class RadarToolbar extends L.Control {
    * stays in sync with the player's active speed.
    */
   setSpeed(multiplier: number): void {
-    this._speed = multiplier;
+    // Snap to the nearest preset, mirroring onAdd's initialSpeed
+    // handling. A raw non-preset value (e.g. YAML playback_speed: 1.5)
+    // made SPEED_STEPS.indexOf return -1 in the cycle handler, so the
+    // first click jumped to ¼× instead of the next step up.
+    this._speed = SPEED_STEPS.reduce(
+      (best, st) => (Math.abs(st - multiplier) < Math.abs(best - multiplier) ? st : best),
+      SPEED_STEPS[0],
+    );
     if (this._speedBtn) {
-      this._speedBtn.textContent = formatSpeed(multiplier);
+      this._speedBtn.textContent = formatSpeed(this._speed);
     }
   }
 

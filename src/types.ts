@@ -54,6 +54,11 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    */
   frame_stride_minutes?: number;
   frame_delay?: number;
+  /** Extra milliseconds to hold the last frame before the loop wraps back
+   * to the first. Previously only present via LovelaceCardConfig's index
+   * signature even though the editor exposes it and the player consumes
+   * it (default 1000). */
+  restart_delay?: number;
   animated_transitions?: boolean;
   transition_time?: number;
   radar_opacity?: number;
@@ -63,8 +68,9 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * fade-out starts when fade-in ends, no dip but cushion is held).
    * 1 = simultaneous (both fade through the entire frame_delay window
    * at the same time, brief alpha dip mid-transition). Default 1.
-   * Only takes effect when `smooth_animation: true`. YAML-only; for
-   * tuning the look of the crossfade.
+   * Only takes effect when `smooth_animation: true`. Exposed as a
+   * slider in the editor's Animation section; for tuning the look of
+   * the crossfade.
    */
   smooth_overlap?: number;
   /**
@@ -137,11 +143,11 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * generalised wind source system in 3.7 — kept for config compatibility.
    * Both styles are client-rendered from the WindSource U/V grid. */
   dwd_wind?: 'off' | 'barbs' | 'arrows';
-  /** DWD-only: grid-density multiplier for the wind overlay (0.25–4). 1 = default. Higher = more arrows on screen. */
+  /** Grid-density multiplier for the wind overlay (0.25–4). 1 = default. Higher = more arrows on screen. Applies to every wind source — the "dwd_" prefix is legacy naming (see dwd_wind). */
   dwd_wind_density?: number;
-  /** DWD-only: icon-size multiplier for the wind overlay (0.5–2). 1 = default 22px. */
+  /** Icon-size multiplier for the wind overlay (0.5–2). 1 = default 22px. Applies to every wind source. */
   dwd_wind_size?: number;
-  /** DWD-only: animated wind streamline overlay (à la DWD WarnWetter app). Stacks with dwd_wind. */
+  /** Animated wind streamline overlay (à la DWD WarnWetter app). Stacks with dwd_wind. Applies to every wind source. */
   dwd_wind_flow?: boolean;
   /** YAML-only: stroke colour for streamline particles on light basemaps (osm / light / auto-light).
    * Any CSS colour string. Default `rgba(25,30,45,1)`. Editor doesn't expose this. */

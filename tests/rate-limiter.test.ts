@@ -123,3 +123,36 @@ describe('RateLimiter', () => {
     expect(rl.msUntilSlot()).toBe(20_050);
   });
 });
+
+describe('RateLimiter — bounded URL cache (2026-06 review backlog)', () => {
+  it('evicts the least recently confirmed URL beyond the cap', () => {
+    // Radar tile URLs are timestamped, so every refresh adds unique
+    // URLs forever — the unbounded Set was a slow leak on wall-mounted
+    // dashboards. Cap is 1000; insert 1001 and the first should fall out.
+    const rl = new RateLimiter(1000000);
+    for (let i = 0; i < 1001; i++) rl.recordSuccess(`https://t.test/${i}.png`);
+    // url 0 evicted → no longer treated as cached → counts against window.
+    expect(rl.canFetch('https://t.test/0.png')).toBe(true);   // window empty, allowed
+    rl.record('https://t.test/0.png');
+    // url 1000 still cached → record() is a no-op for it.
+    rl.record('https://t.test/1000.png');
+    // Only the evicted URL consumed a window slot.
+    const rl2 = new RateLimiter(1);
+    for (let i = 0; i < 1001; i++) rl2.recordSuccess(`https://t.test/${i}.png`);
+    rl2.record('https://t.test/0.png');         // evicted → consumes the only slot
+    expect(rl2.canFetch('https://t.test/0.png')).toBe(false);
+    expect(rl2.canFetch('https://t.test/1000.png')).toBe(true); // still cached
+  });
+
+  it('re-confirming a URL refreshes its recency', () => {
+    const rl = new RateLimiter(1);
+    rl.recordSuccess('https://t.test/keep.png');
+    for (let i = 0; i < 1000; i++) rl.recordSuccess(`https://t.test/f${i}.png`);
+    // keep.png was first in, but NOT re-confirmed → at cap+1 it evicts...
+    // unless re-added. Re-confirm and push one more: now f0 evicts instead.
+    rl.recordSuccess('https://t.test/keep.png');
+    rl.recordSuccess('https://t.test/extra.png');
+    rl.record('https://t.test/keep.png');       // still cached → no slot used
+    expect(rl.canFetch('https://t.test/anything.png')).toBe(true);
+  });
+});

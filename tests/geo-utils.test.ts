@@ -154,3 +154,39 @@ describe('formatDistance — display in HA preferred length unit', () => {
     expect(formatDistance(0, 'mi')).toBe('0 mi');
   });
 });
+
+// ── Antimeridian handling (2026-06 review backlog) ───────────────────────
+//
+// A geometry genuinely crossing 180°E/W (Aleutian fires, NWS Alaska
+// marine zones) used to produce a naive min/max bbox spanning ~360° of
+// longitude with its centre near lon 0 (mid-Atlantic) — radius filters
+// then dropped/kept those features wrongly.
+
+describe('geometryLngLatBounds — antimeridian', () => {
+  const datelinePoly: GeoJSON.Polygon = {
+    type: 'Polygon',
+    coordinates: [[
+      [178, 51], [179.5, 51], [-179, 52], [-178.5, 51.5], [178, 51],
+    ]],
+  };
+
+  it('uses a continuous >180 window instead of a planet-wide bbox', () => {
+    const b = geometryLngLatBounds(datelinePoly)!;
+    expect(b.minLng).toBe(178);
+    expect(b.maxLng).toBeCloseTo(181.5, 5);   // -178.5 + 360
+    expect(b.maxLng - b.minLng).toBeLessThan(10);
+  });
+
+  it('centroid lands near the dateline, wrapped into [-180, 180]', () => {
+    const [lng, lat] = centroidLngLat(datelinePoly)!;
+    expect(Math.abs(Math.abs(lng) - 180)).toBeLessThan(2);  // ~±180
+    expect(lng).toBeGreaterThanOrEqual(-180);
+    expect(lng).toBeLessThanOrEqual(180);
+    expect(lat).toBeCloseTo(51.5, 1);
+  });
+
+  it('non-crossing geometries keep ordinary bounds', () => {
+    const b = geometryLngLatBounds(unitSquare)!;
+    expect(b).toEqual({ minLng: -1, minLat: -1, maxLng: 1, maxLat: 1 });
+  });
+});

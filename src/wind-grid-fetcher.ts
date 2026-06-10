@@ -588,6 +588,17 @@ export class WindGridFetcher {
     const existing = this._cache.get(key);
     if (existing && existing.expiresAt > now) return existing.promise;
 
+    // Sweep expired entries. Without this, an expired entry was only
+    // ever REPLACED when its exact key was requested again — panning
+    // around after TTL expiry accreted resolved promises each holding
+    // a WindGrid of up to 50k {u,v} objects (single-digit MB per
+    // entry) for the life of the page, since the module-level
+    // singleton never goes away. The map stays small (a handful of
+    // keys), so an O(n) sweep per fetch is effectively free.
+    for (const [k, entry] of this._cache) {
+      if (entry.expiresAt <= now) this._cache.delete(k);
+    }
+
     const promise = this._fetchImpl(opts);
     // Set expiry now so concurrent calls during the in-flight window all
     // share. On rejection, drop the entry so the next caller retries.

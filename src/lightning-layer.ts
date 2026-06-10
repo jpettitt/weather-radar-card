@@ -91,6 +91,11 @@ export class LightningLayer {
   // Splitting + signs into two markers on different panes is what
   // prevents stacked outlines obscuring stacked colours at low zoom:
   // outlines pile up harmlessly underneath, fills stay clean on top.
+  // Strike markers awaiting materialisation (see _refreshFromHass) and
+  // the single-flight flag for the rAF drain loop.
+  private _pendingAdds: Array<[string, Strike]> = [];
+  private _drainScheduled = false;
+
   private _strikes: Map<string, Strike> = new Map();
   private _markers: Map<string, L.Marker> = new Map();
   private _outlines: Map<string, L.Marker> = new Map();
@@ -136,6 +141,9 @@ export class LightningLayer {
   }
 
   clear(): void {
+    // Drop queued-but-unmaterialised strike markers; the in-flight rAF
+    // drain (if any) finds an empty queue and no-ops.
+    this._pendingAdds = [];
     if (this._ageTimer) { clearInterval(this._ageTimer); this._ageTimer = null; }
     for (const marker of this._markers.values()) this._map.removeLayer(marker);
     for (const outline of this._outlines.values()) this._map.removeLayer(outline);
@@ -181,20 +189,67 @@ export class LightningLayer {
     const current = this._collectStrikes();
 
     // Additions: strikes in hass that we don't have a marker for yet.
+    // QUEUED, not materialised inline: each strike costs two DOM
+    // markers with inline SVG (fill + outline panes), and on a fresh
+    // card mount during an active storm the backlog can be hundreds to
+    // thousands of strikes — building them all in one synchronous pass
+    // froze the UI for seconds (observed live: opening the edit pane,
+    // which mounts a preview card AND re-attaches the original, ran
+    // two full builds at once; dropping lightning_max_age_minutes to 2
+    // made it disappear). The drain below materialises newest-first in
+    // ~8 ms slices per animation frame, so the most relevant strikes
+    // appear immediately and the UI never blocks. Steady-state ticks
+    // add 1-2 strikes — those land on the next frame, imperceptible.
     for (const [id, strike] of current) {
       if (!this._strikes.has(id)) {
         this._strikes.set(id, strike);
-        this._addMarker(id, strike);
+        this._pendingAdds.push([id, strike]);
       }
     }
 
     // Removals: strikes we tracked that hass no longer has (integration
-    // dropped them past its max-age cap).
+    // dropped them past its max-age cap). _removeMarker tolerates ids
+    // whose markers were still queued and never materialised; the drain
+    // re-checks _strikes membership before building.
     for (const id of Array.from(this._strikes.keys())) {
       if (!current.has(id)) {
         this._strikes.delete(id);
         this._removeMarker(id);
       }
+    }
+
+    if (this._pendingAdds.length > 0) this._scheduleDrain();
+  }
+
+  private _scheduleDrain(): void {
+    if (this._drainScheduled) return;
+    this._drainScheduled = true;
+    const raf: (cb: () => void) => void =
+      typeof requestAnimationFrame === 'function'
+        ? (cb) => requestAnimationFrame(cb)
+        : (cb) => void setTimeout(cb, 16);
+    raf(() => {
+      this._drainScheduled = false;
+      this._drainPendingAdds();
+      if (this._pendingAdds.length > 0) this._scheduleDrain();
+    });
+  }
+
+  /**
+   * Materialise queued strike markers, newest-first, until the time
+   * budget is spent. @internal — exposed for tests, which call it
+   * directly instead of waiting on animation frames.
+   */
+  _drainPendingAdds(budgetMs = 8): void {
+    // Newest first: during a large backlog drain the freshest strikes
+    // (the ones the user is watching for) appear in the first slice.
+    this._pendingAdds.sort((a, b) => b[1].ts - a[1].ts);
+    const start = performance.now();
+    while (this._pendingAdds.length > 0) {
+      const [id, strike] = this._pendingAdds.shift()!;
+      if (!this._strikes.has(id)) continue;   // removed while queued
+      this._addMarker(id, strike);
+      if (performance.now() - start >= budgetMs) break;
     }
   }
 
@@ -209,8 +264,16 @@ export class LightningLayer {
     if (!this._hass?.states) return out;
     const maxAgeSec = this._displayMaxAgeSec();
     const now = Date.now();
-    for (const [id, st] of Object.entries(this._hass.states)) {
+    // for-in with an early prefix test rather than Object.entries: this
+    // runs on EVERY hass tick (any state change in the whole install),
+    // and Object.entries allocates a [key, value] pair array for
+    // potentially thousands of entities each time. for-in touches only
+    // the keys until the prefix matches — scales with installation
+    // size, which entity-heavy installs hit several times per second.
+    const states = this._hass.states as Record<string, unknown>;
+    for (const id in states) {
       if (!id.startsWith('geo_location.')) continue;
+      const st = states[id];
       const attrs = (st as any)?.attributes;
       if (!attrs || attrs.source !== 'blitzortung') continue;
       const lat = attrs.latitude;
