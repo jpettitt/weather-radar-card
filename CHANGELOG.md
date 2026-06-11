@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.7.0-beta1] - 2026-06-10
+
+> **Beta pre-release — 3.7 is feature complete.** The 3.7 line (per-user state → motion compensation → stability wave → canvas rendering) now enters the beta phase: no further features before 3.7.0, fixes only. Suitable for adventurous daily-driver dashboards; please report anything odd, especially around lightning at storm scale and hazard-polygon clicks.
 
 ### Changed
 
@@ -786,7 +788,7 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha3...HEAD
+[3.7.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha3...v3.7.0-beta1
 [3.7.0-alpha3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha2...v3.7.0-alpha3
 [3.7.0-alpha2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha1...v3.7.0-alpha2
 [3.7.0-alpha1]: https://github.com/jpettitt/weather-radar-card/compare/v3.6.5...v3.7.0-alpha1
