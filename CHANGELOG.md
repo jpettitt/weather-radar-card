@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The newest-frame label now reads "Latest" instead of "Now"** (progress-bar tooltip and the time-display suffix). "Now" overstated freshness — radar frames lag real time by source (NOAA's newest frame is ~15–20 min old, measured; DWD ~5 min; RainViewer ~1–2 min). Localised in all 11 languages.
+- **Translations brought up to date**: the 3.7 editor strings (playback speed block, per-user persistence, motion compensation) shipped in English in all 10 non-English locales — now properly translated (de, es, fr, it, nb, nl, pl, pt_BR, sk, sv), plus unit-name fixes where the language has its own word for acres (it: Acri, pl: Akry, sk: Akre).
+
 ## [3.7.0-beta1] - 2026-06-10
 
 > **Beta pre-release — 3.7 is feature complete.** The 3.7 line (per-user state → motion compensation → stability wave → canvas rendering) now enters the beta phase: no further features before 3.7.0, fixes only. Suitable for adventurous daily-driver dashboards; please report anything odd, especially around lightning at storm scale and hazard-polygon clicks.
@@ -788,6 +795,7 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta1...HEAD
 [3.7.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha3...v3.7.0-beta1
 [3.7.0-alpha3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha2...v3.7.0-alpha3
 [3.7.0-alpha2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha1...v3.7.0-alpha2

@@ -18,7 +18,7 @@
       "dwd_de_only": "Radar DWD pokrýva Nemecko a jeho bezprostredných susedov. Vaša poloha v Home Assistante je mimo tohto regiónu — mapa môže zobrazovať len „žiadne údaje\"."
     },
     "wildfire": {
-      "acres": "Akrov",
+      "acres": "Akre",
       "contained": "Zvládnutý",
       "discovered": "Zistený",
       "more_info": "Viac info → NIFC",
@@ -38,8 +38,8 @@
       "see_readme": "Pozri README"
     },
     "loading_radar_tiles": "Načítavanie radarových dlaždic",
-    "now": "(teraz)",
-    "now_tooltip": "Teraz",
+    "now": "(najnovšia)",
+    "now_tooltip": "Najnovšia",
     "lightning": {
       "popup_title": "Úder blesku",
       "source_label": "Zdroj: Blitzortung",
@@ -172,17 +172,17 @@
       "smooth_animation": "Plynulá animácia (plynulý prechod)",
       "smooth_overlap": "Prekrytie prechodu",
       "smooth_overlap_helper": "Iba v plynulom režime. 0 = sekvenčne (bez poklesu jasu, snímka udržaná). 1 = súčasne (krátky pokles v strede prechodu). Predvolené: 1",
-      "playback_speed": "Playback Speed",
-      "playback_speed_helper": "Multiplier applied to frame delay. The toolbar speed button can also change this at runtime; that runtime choice is remembered per browser and overrides this default.",
-      "playback_speed_quarter": "¼× (slowest)",
-      "playback_speed_half": "½× (slower)",
-      "playback_speed_normal": "1× (normal)",
-      "playback_speed_double": "2× (faster)",
-      "playback_speed_quad": "4× (fastest)",
-      "viewer_layer_control": "Per-user persistence (admin opt-in)",
-      "viewer_layer_control_helper": "When enabled, the toolbar speed button persists per user and follows them across browsers and devices via Home Assistant frontend storage. When off the button still works for the current session but the choice is not saved.",
-      "motion_compensation": "Motion Compensation (drift rain between frames)",
-      "motion_compensation_helper": "Slides each frame in the direction of rain motion during the crossfade so the rain appears to drift smoothly between frames instead of teleporting to its new position. Motion is recovered from the frame pair via pyramidal Lucas-Kanade optical flow — no external wind data, works for all radar sources. Pairs naturally with Smooth Animation. Default off."
+      "playback_speed": "Rýchlosť prehrávania",
+      "playback_speed_helper": "Násobiteľ oneskorenia medzi snímkami. Tlačidlo rýchlosti na paneli nástrojov ho môže zmeniť aj za behu; táto voľba sa pamätá pre každý prehliadač a prepíše toto predvolené nastavenie.",
+      "playback_speed_quarter": "¼× (najpomalšie)",
+      "playback_speed_half": "½× (pomalšie)",
+      "playback_speed_normal": "1× (normálne)",
+      "playback_speed_double": "2× (rýchlejšie)",
+      "playback_speed_quad": "4× (najrýchlejšie)",
+      "viewer_layer_control": "Ukladanie pre používateľa (zapína administrátor)",
+      "viewer_layer_control_helper": "Ak je zapnuté, voľba tlačidla rýchlosti sa ukladá pre každého používateľa a nasleduje ho naprieč prehliadačmi a zariadeniami cez frontendové úložisko Home Assistant. Ak je vypnuté, tlačidlo stále funguje v aktuálnej relácii, ale voľba sa neuloží.",
+      "motion_compensation": "Kompenzácia pohybu (posúvanie dažďa medzi snímkami)",
+      "motion_compensation_helper": "Počas prelínania posúva každú snímku v smere pohybu dažďa, takže dážď medzi snímkami plynulo drifuje namiesto skoku na novú pozíciu. Pohyb sa získava z dvojice snímok pyramídovým optickým tokom Lucas-Kanade — bez externých údajov o vetre, funguje so všetkými zdrojmi radaru. Dobre sa dopĺňa s plynulou animáciou. Predvolene vypnuté."
     },
     "appearance": {
       "height": "Výška",
