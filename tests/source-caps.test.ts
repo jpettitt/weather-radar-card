@@ -25,11 +25,12 @@ describe('getSourceCaps', () => {
 
   it('exposes the right per-source intervals', () => {
     expect(SOURCE_CAPS.RainViewer.intervalMin).toBe(10);
-    // NOAA's empirical publication cadence is 5-9 min (mean ~7);
-    // we quantise to 10 min to avoid the duplicate-frame churn
-    // produced when our stride is finer than NOAA's actual grid.
-    // See SOURCE_CAPS.NOAA doc-block.
-    expect(SOURCE_CAPS.NOAA.intervalMin).toBe(10);
+    // NOAA serves from the opengeo GeoServer whose listing carries the
+    // real ~2-min scan cadence; the user-facing stride is a free pick
+    // from strideChoices (default 5). See SOURCE_CAPS.NOAA doc-block.
+    expect(SOURCE_CAPS.NOAA.intervalMin).toBe(2);
+    expect(SOURCE_CAPS.NOAA.strideChoices).toEqual([2, 5, 10]);
+    expect(SOURCE_CAPS.NOAA.defaultStrideMin).toBe(5);
     expect(SOURCE_CAPS.DWD.intervalMin).toBe(5);
   });
 

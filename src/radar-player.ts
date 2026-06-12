@@ -7,6 +7,9 @@ import { FetchTileLayer, FetchWmsTileLayer, layerSettled } from './fetch-tile-la
 import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
 import { getEffectiveTimeRange } from './source-caps';
+import {
+  fetchNoaaFrameTimes, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
+} from './noaa-frame-list';
 import { extractChannel } from './lk';
 import { createLkWorker, LkWorkerClient, estimateMotionLk } from './lk-worker';
 
@@ -42,9 +45,19 @@ export interface RadarFrame { time: number; path: string; host?: string; }
  */
 interface MotionVector { dx: number; dy: number; confidence: number; }
 
-const NOAA_WMS_URL =
+// Legacy NOAA endpoint — fallback ONLY. The primary NOAA source is the
+// NCEP opengeo GeoServer (radar.weather.gov's own backend) whose
+// GetCapabilities lists actual frame times (~2-min cadence, ~2-min
+// lag) — see src/noaa-frame-list.ts. This eventdriven ImageServer
+// refuses browser metadata requests, so its frames are computed on a
+// blind 10-min grid behind a 15-min lag (the server rejects anything
+// fresher — measured in `.dev/noaa-lag-probe.mjs`): correct but stale
+// by 15-25 min. Used when the opengeo listing can't be fetched/parsed.
+const NOAA_LEGACY_WMS_URL =
   'https://mapservices.weather.noaa.gov/eventdriven/services/radar/radar_base_reflectivity_time/ImageServer/WMSServer';
-const NOAA_WMS_LAYER = 'radar_base_reflectivity_time';
+const NOAA_LEGACY_WMS_LAYER = 'radar_base_reflectivity_time';
+const NOAA_LEGACY_STRIDE_MIN = 10;
+const NOAA_LEGACY_LAG_MS = 15 * 60 * 1000;
 
 const DWD_WMS_URL = 'https://maps.dwd.de/geoserver/dwd/wms';
 const DWD_WMS_LAYER_DEFAULT = 'Niederschlagsradar';
@@ -322,6 +335,11 @@ export class RadarPlayer {
   // aborting just stops the wire bandwidth too. Only used by the
   // RainViewer path; DWD / NOAA derive frame timestamps locally.
   private _pathsAbortCtrl: AbortController | null = null;
+  // True while NOAA is running on the legacy eventdriven fallback
+  // (opengeo frame listing unavailable). Decides which WMS endpoint
+  // the tile layers point at; reset to false on the next successful
+  // listing fetch.
+  private _noaaLegacyMode = false;
   // Displayed frame count. Starts as the caller's request but is
   // re-derived from reality as frames arrive: _initRadar sets it to the
   // number of frames the API actually returned, and _dedupFrames shrinks
@@ -860,14 +878,14 @@ export class RadarPlayer {
 
   // Detect frames that are byte-identical to their predecessor and
   // remove them from the playback loop, compacting every per-frame
-  // array. Caused by source-side publication-cycle quirks — NOAA's
-  // eventdriven WMS service snaps any TIME query within a single
-  // ~6-7 min publication window to the same physical frame, so
-  // requests at the source-caps `intervalMin: 5` stride return
-  // duplicates at roughly every 3-4th position. NOAA's metadata
-  // endpoints (queryRasters, query, GetCapabilities) all refuse
-  // browser requests, so the only way to learn the true cadence is
-  // empirically — from the snapshot nz fingerprints LK already has.
+  // array. Caused by source-side publication-cycle quirks. The
+  // canonical producer was NOAA's legacy eventdriven WMS (snaps any
+  // TIME within a ~6-7 min publication window to the same physical
+  // frame, and its metadata endpoints refuse browsers so the true
+  // cadence couldn't be discovered) — since the opengeo frame-listing
+  // switch, NOAA frames are unique by construction and this runs as
+  // belt-and-braces there (still primary for the legacy fallback path
+  // and for any grid-computed source landing on a stale slot).
   //
   // Detection criterion: consecutive snapshots with identical nz
   // (non-zero pixel count). When two snapshots have the same number
@@ -1910,26 +1928,43 @@ export class RadarPlayer {
     const frameCount = range.frameCount;
 
     if (dataSource === 'NOAA') {
-      const now = Date.now();
-      const lag = 15 * 60 * 1000;
-      const snap = Math.trunc((now - lag) / strideMs) * strideMs;
-      const frames: RadarFrame[] = [];
-      // forecast_minutes is irrelevant for NOAA (maxForecastMin: 0) so the
-      // anchor is just the latest past frame.
+      // forecast_minutes is irrelevant for NOAA (maxForecastMin: 0) so
+      // the anchor is just the latest past frame.
       //
-      // Note: NOAA's eventdriven WMS server snaps any TIME query within
-      // a single ~6-7 min publication window to the same physical
-      // frame, so requests at the source-caps `intervalMin: 5` stride
-      // produce periodic duplicate frames (every 3-4 stride positions,
-      // empirically). NOAA's metadata endpoints (/queryRasters, /query,
-      // GetCapabilities) all refuse browser requests so we can't
-      // discover the actual frame times in advance. Instead, _initRadar
-      // detects duplicates from the captured snapshot statistics and
-      // prunes them via _dedupFrames, leaving the playback loop with
-      // only unique frames. See the doc-block on _dedupFrames for the
-      // full reasoning.
-      for (let i = frameCount - 1; i >= 0; i--) {
-        frames.push({ time: (snap - i * strideMs) / 1000, path: '' });
+      // Primary path: fetch the opengeo frame-time listing and snap an
+      // ideal stride grid to the server's ACTUAL scan times — every
+      // frame is real and unique, the newest is ~2 min behind wall
+      // clock, and the loop honours past_minutes exactly. (_dedupFrames
+      // stays armed downstream as belt-and-braces, but duplicates can
+      // no longer occur by construction.)
+      try {
+        this._pathsAbortCtrl?.abort();
+        this._pathsAbortCtrl = new AbortController();
+        const listed = await fetchNoaaFrameTimes(this._pathsAbortCtrl.signal);
+        const times = pickFrameTimes(listed, range.pastMin, range.strideMin);
+        if (times.length > 0) {
+          this._noaaLegacyMode = false;
+          return times.map((t) => ({ time: t, path: '' }));
+        }
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') throw e;
+        // fall through to the legacy grid below
+      }
+      // Fallback: legacy eventdriven server with a blind 10-min grid
+      // behind its measured 15-min availability lag. Stale but correct;
+      // recovers automatically — the next refresh cycle retries the
+      // listing. The fixed legacy stride deliberately ignores the
+      // user's stride choice: the legacy server snaps finer requests
+      // to duplicates of the same physical frame.
+      // eslint-disable-next-line no-console
+      console.warn('[weather-radar-card] NOAA frame listing unavailable; falling back to legacy eventdriven grid');
+      this._noaaLegacyMode = true;
+      const legacyStrideMs = NOAA_LEGACY_STRIDE_MIN * 60_000;
+      const snap = Math.trunc((Date.now() - NOAA_LEGACY_LAG_MS) / legacyStrideMs) * legacyStrideMs;
+      const legacyCount = Math.max(1, Math.floor(range.pastMin / NOAA_LEGACY_STRIDE_MIN) + 1);
+      const frames: RadarFrame[] = [];
+      for (let i = legacyCount - 1; i >= 0; i--) {
+        frames.push({ time: (snap - i * legacyStrideMs) / 1000, path: '' });
       }
       return frames;
     }
@@ -2024,8 +2059,14 @@ export class RadarPlayer {
     };
     if (dataSource === 'NOAA') {
       const isoTime = new Date(frame.time * 1000).toISOString().split('.')[0] + 'Z';
-      return wireSpinner(new FetchWmsTileLayer(NOAA_WMS_URL, {
-        layers: NOAA_WMS_LAYER,
+      // Endpoint follows the mode _fetchPaths resolved: opengeo when the
+      // frame listing worked (frame.time is then an exact listed scan
+      // time), legacy eventdriven when it didn't (frame.time is a blind
+      // grid slot the legacy server snaps internally).
+      const url = this._noaaLegacyMode ? NOAA_LEGACY_WMS_URL : NOAA_OPENGEO_WMS_URL;
+      const layer = this._noaaLegacyMode ? NOAA_LEGACY_WMS_LAYER : NOAA_OPENGEO_LAYER;
+      return wireSpinner(new FetchWmsTileLayer(url, {
+        layers: layer,
         format: 'image/png',
         transparent: true,
         version: '1.3.0',
@@ -2035,7 +2076,9 @@ export class RadarPlayer {
         tileSize,
         zoomOffset,
         minNativeZoom: this._pinnedNativeZoom,
-        // NOAA's 4 km MRMS native; cap to keep upscaled appearance.
+        // Both endpoints serve ~1 km MRMS-derived mosaics but the
+        // rendering is smooth past zoom 7 anyway; cap to keep the
+        // upscaled appearance consistent with the legacy behaviour.
         maxNativeZoom: 7 + Math.max(0, -zoomOffset),
         rateLimiter: this._noaaLimiter,
         on429: () => this._onRateLimited(),
@@ -2317,9 +2360,18 @@ export class RadarPlayer {
     // of destructive duplicate-shifts too. Cancel-before-arm plus the
     // generation check below makes forking impossible.
     this._cancelScheduledUpdate?.();
-    const framePeriod = 300_000;
-    // RainViewer publishes ~1 min after the timestamp; DWD ~1–3 min; NOAA's lag is already baked in.
-    const lag = (this._cfg.data_source ?? 'RainViewer') === 'NOAA' ? 0 : 60_000;
+    // _updateRadar shifts in at most ONE new frame per cycle, so the
+    // refresh period must not exceed the frame spacing or the loop
+    // silently degrades to refresh-period spacing. Only NOAA's 2-min
+    // stride goes below the 5-min default (its opengeo listing
+    // publishes ~every 2 min); floor at 2 min to stay polite to the
+    // capabilities endpoint.
+    const isNoaa = (this._cfg.data_source ?? 'RainViewer') === 'NOAA';
+    const strideMs = getEffectiveTimeRange(this._cfg).strideMin * 60_000;
+    const framePeriod = isNoaa ? Math.max(120_000, Math.min(300_000, strideMs)) : 300_000;
+    // RainViewer publishes ~1 min after the timestamp; DWD ~1–3 min;
+    // NOAA's newest listed frame is itself the publication signal.
+    const lag = isNoaa ? 0 : 60_000;
     const genAtArm = this._frameGeneration;
     this._cancelScheduledUpdate = this._workerTimeout(() => {
       this._cancelScheduledUpdate = null;
@@ -2349,17 +2401,17 @@ export class RadarPlayer {
 
     // Newness guard: only shift the loop when the source actually
     // published a frame newer than what we hold. The refresh cycle
-    // (~6 min) is faster than every source's publication cadence
-    // (RainViewer 10 min; NOAA ~5-9 min with server-side snapping; DWD
-    // 5 min but the locally computed timestamps can land on the same
-    // grid slot) — so roughly every other refresh used to fetch the
-    // SAME newest frame, append it as a duplicate, and destroy a real
-    // historical frame at slot 0. On a long-running dashboard the loop
-    // monotonically filled with adjacent duplicate pairs while its time
-    // span shrank. For RainViewer the timestamps come from the
-    // weather-maps.json frame listing, so this comparison is exactly
-    // "did the listing gain a new entry"; for NOAA/DWD the computed
-    // timestamps serve the same role.
+    // can be faster than the source's publication cadence (RainViewer
+    // 10 min vs 6-min refresh; DWD's locally computed timestamps can
+    // land on the same grid slot) — so roughly every other refresh
+    // used to fetch the SAME newest frame, append it as a duplicate,
+    // and destroy a real historical frame at slot 0. On a long-running
+    // dashboard the loop monotonically filled with adjacent duplicate
+    // pairs while its time span shrank. For RainViewer and NOAA the
+    // timestamps come from the source's own frame listing
+    // (weather-maps.json / opengeo GetCapabilities), so this
+    // comparison is exactly "did the listing gain a new entry"; for
+    // DWD the computed timestamps serve the same role.
     const currentNewestTime = this._radarPaths[this._radarPaths.length - 1]?.time ?? 0;
     const latestFrame = pastFrames[pastFrames.length - 1];
     if (latestFrame.time <= currentNewestTime) {

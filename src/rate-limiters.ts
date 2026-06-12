@@ -16,14 +16,23 @@
 // Limits chosen per source:
 //   - RainViewer 500/min — RainViewer's TOS doesn't publish a per-IP
 //     limit; 500 is what we've used historically without issues.
-//   - NOAA 120/min — conservative for the public mapservices.weather
-//     .noaa.gov endpoint, which has no documented limit but is a
-//     small federal government service.
+//   - NOAA 500/min — opengeo.ncep.noaa.gov is the radar.weather.gov
+//     production backend (Akamai-fronted, GeoWebCache, cache-control
+//     max-age=120), sized for the US public checking radar during
+//     storms; 500 matches the RainViewer/DWD budgets. The budget
+//     exists for the INIT BURST: the worst-case loop (120-min history
+//     at the 2-min frame interval = 61 frames x ~8 tiles ≈ 490
+//     requests) must clear in about a minute, then steady-state drops
+//     to one frame per refresh cycle. The old 120/min was sized for
+//     the small legacy mapservices host (which the fallback path
+//     still uses) and stretched even a default init over minutes of
+//     visible throttling. The legacy fallback never exceeds ~13
+//     frames per loop, so sharing one budget is safe.
 //   - DWD 500/min — maps.dwd.de is fronted by Akamai with no
 //     documented per-IP limit; 500 matches RainViewer.
 
 import { RateLimiter } from './rate-limiter';
 
 export const rainviewerLimiter = new RateLimiter(500);
-export const noaaLimiter = new RateLimiter(120);
+export const noaaLimiter = new RateLimiter(500);
 export const dwdLimiter = new RateLimiter(500);

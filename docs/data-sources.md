@@ -5,7 +5,7 @@ The `data_source` config field selects where radar tile data comes from.
 | Value        | Coverage | Notes                                                                                                                                                                                                                                            |
 | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `RainViewer` | Global   | Default. Updated every 5 minutes, ~1–6 minute lag. No API key required. Personal/educational use only per RainViewer terms.                                                                                                                      |
-| `NOAA`       | US only  | Experimental. Uses NOAA/NWS MRMS base reflectivity composite via `mapservices.weather.noaa.gov`. Government data — free, no API key. 15-minute lag, 5-minute frame steps.                                                                        |
+| `NOAA`       | US only  | Uses NOAA/NWS MRMS QC'd base reflectivity via `opengeo.ncep.noaa.gov` — the same GeoServer that powers radar.weather.gov. Government data — free, no API key. Frame times come from the server's own listing: ~2-minute lag, real ~2-minute scan cadence, selectable 2 / 5 / 10-minute frame interval (default 5).                                                                        |
 | `DWD`        | Germany  | Deutscher Wetterdienst's `Niederschlagsradar` WMS at `maps.dwd.de`. 5-minute frame steps, ~3 days of history, +2 hours of nowcast forecast available. Government data — free, no API key. Coverage is the German radar network footprint.        |
 
 ## Per-source caps
@@ -19,14 +19,18 @@ The card knows each source's capabilities (native frame interval, max past, max 
 | Source       | Native interval   | Max past (API)   | Editor cap     | Max forecast   |
 | ------------ | ----------------- | ---------------- | -------------- | -------------- |
 | RainViewer   | 10 min            | 120 min          | 120 min        | 0              |
-| NOAA         | 5 min             | 120 min          | 120 min        | 0              |
+| NOAA         | ~2 min (native); frame interval selectable 2 / 5 / 10 | 120 min          | 120 min        | 0              |
 | DWD          | 5 min             | 5040 min (84 h)  | 720 min (12 h) | 120 min        |
 
-NOAA's `mapservices.weather.noaa.gov` advertises 4 h of history but in practice frames > 2 h back come back as empty tiles, so we cap at 120 min until that's understood. DWD's editor cap is lower than the API cap because at 5-min intervals, 84 h × 12 frames/h = 1008 frames is impractical for tile fetching; YAML configs can still set `past_minutes` higher (and combine with `frame_stride_minutes` to keep the frame count sane).
+NOAA's opengeo frame listing holds ~60 frames ≈ 2 h of history, hence the 120-min cap. DWD's editor cap is lower than the API cap because at 5-min intervals, 84 h × 12 frames/h = 1008 frames is impractical for tile fetching; YAML configs can still set `past_minutes` higher (and combine with `frame_stride_minutes` to keep the frame count sane).
 
 ## NOAA note
 
-This is an experimental feature using a public government service with no documented rate limits. It is US-only. Radar tiles are fetched at a maximum of zoom 7 (the native 1 km MRMS resolution) and upscaled for display.
+US-only (CONUS mosaic). Radar tiles are fetched at a maximum of zoom 7 (the native ~1 km MRMS resolution) and upscaled for display.
+
+Since 3.7, NOAA serves from NCEP's opengeo GeoServer (`conus_bref_qcd` — the radar.weather.gov backend). Its per-layer `GetCapabilities` lists the layer's actual frame timestamps, so the card requests exact scan times: the newest frame is ~2 minutes behind real time, every frame in the loop is a distinct scan, and the **Frame interval** dropdown (2 / 5 / 10 min) controls loop density. The colour bar matches the modern radar.weather.gov reflectivity ramp.
+
+If the frame listing is unavailable, the card falls back to the legacy `mapservices.weather.noaa.gov` eventdriven server for that cycle (10-minute computed grid behind its ~15-minute availability lag — correct but stale) and retries the listing on the next refresh.
 
 ## Wind overlay
 

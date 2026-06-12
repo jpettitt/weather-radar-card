@@ -32,6 +32,19 @@ export interface SourceCaps {
   defaultPastMin: number;
   /** Default forecast_minutes when nothing is configured. */
   defaultForecastMin: number;
+  /**
+   * Frame-listing sources (currently NOAA/opengeo): the server
+   * publishes its actual frame timestamps, frames are picked by
+   * snapping an ideal grid to the listing, and the stride is a free
+   * choice rather than a multiple of intervalMin. When set:
+   *  - strideChoices are the editor-offered strides (minutes);
+   *    a YAML frame_stride_minutes snaps to the nearest choice.
+   *  - defaultStrideMin is the stride when none is configured, and
+   *    the basis for the legacy frame_count migration (so a 3.6-era
+   *    `frame_count: 12` still maps to the time span the user saw).
+   */
+  strideChoices?: number[];
+  defaultStrideMin?: number;
 }
 
 export const SOURCE_CAPS: Record<string, SourceCaps> = {
@@ -44,33 +57,29 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
     defaultForecastMin: 0,
   },
   NOAA: {
-    // Empirically measured publication cadence on
-    // mapservices.weather.noaa.gov/.../eventdriven is ~5-9 min
-    // (alternating short/long, mean ~7 min) — see
-    // `.dev/noaa-cadence-probe.mjs`. NOAA's metadata endpoints
-    // (queryRasters / query / GetCapabilities) all refuse browser
-    // requests, so we can't discover the actual grid in advance.
+    // NOAA serves from NCEP's opengeo GeoServer (the radar.weather.gov
+    // backend) as of 3.7: its per-layer GetCapabilities lists the
+    // layer's ACTUAL frame timestamps (~2-min scan cadence, newest
+    // ~2 min behind wall clock) and is CORS-open to browsers — see
+    // src/noaa-frame-list.ts and `.dev/opengeo-noaa-research.md`.
+    // This replaced the eventdriven ImageServer flow whose metadata
+    // refused browsers and forced blind 10-min quantisation plus a
+    // 15-min lag constant (3.7.0-alpha2's "math isn't mathing" era).
     //
-    // Setting `intervalMin: 10` over-quantises slightly relative to
-    // the mean, but avoids the duplicate-frame churn produced when
-    // the requested stride is finer than the publication interval —
-    // NOAA's WMS server snaps any TIME within a publication window
-    // to the same physical frame, so finer requests just return
-    // byte-identical content for multiple slots.
-    //
-    // Tracking a server-side improvement upstream at
-    // https://github.com/weather-gov/api/ — a metadata endpoint that
-    // exposes actual publication times would let us snap exactly to
-    // the grid and drop this conservative quantisation.
-    intervalMin: 10,
-    // mapservices.weather.noaa.gov advertises 4h of history but in
-    // practice frames > 2h back fail intermittently — observed empty
-    // tiles past that point. Cap at 2h until we understand why.
+    // intervalMin reflects the native scan cadence; the user-facing
+    // stride is a free pick from strideChoices because frame times
+    // come from the listing, not from a computed grid. Default 5 min
+    // restores the 3.6-era loop density (12-13 frames/h) — with
+    // genuinely unique frames this time.
+    intervalMin: 2,
+    // The opengeo listing holds ~60 frames ≈ 2 h of history.
     maxPastMin: 120,
     editorMaxPastMin: 120,
     maxForecastMin: 0,
     defaultPastMin: 60,
     defaultForecastMin: 0,
+    strideChoices: [2, 5, 10],
+    defaultStrideMin: 5,
   },
   DWD: {
     intervalMin: 5,
@@ -118,14 +127,29 @@ export function getEffectiveTimeRange(cfg: WeatherRadarCardConfig): EffectiveTim
   const pastMin = Math.max(0, Math.min(caps.maxPastMin, rawPast));
   const forecastMin = Math.max(0, Math.min(caps.maxForecastMin, rawForecast));
 
-  // Stride must be a positive multiple of the native interval; anything
-  // else falls back to native. Snapping to a multiple keeps frame
-  // timestamps aligned to the API's served times.
-  let strideMin = caps.intervalMin;
+  // Stride resolution differs by source kind:
+  //  - Frame-listing sources (strideChoices set): stride is a free
+  //    pick — frame times snap to the server's listing afterwards, so
+  //    grid alignment is irrelevant. A YAML value snaps to the nearest
+  //    offered choice; absent → defaultStrideMin.
+  //  - Grid sources: stride must be a positive multiple of the native
+  //    interval; anything else falls back to native. Snapping to a
+  //    multiple keeps frame timestamps aligned to the API's served
+  //    times.
+  let strideMin: number;
   const rawStride = cfg.frame_stride_minutes;
-  if (typeof rawStride === 'number' && rawStride >= caps.intervalMin) {
-    const k = Math.round(rawStride / caps.intervalMin);
-    strideMin = Math.max(1, k) * caps.intervalMin;
+  if (caps.strideChoices && caps.strideChoices.length > 0) {
+    strideMin = caps.defaultStrideMin ?? caps.strideChoices[0];
+    if (typeof rawStride === 'number' && rawStride > 0) {
+      strideMin = caps.strideChoices.reduce((best, c) =>
+        Math.abs(c - rawStride) < Math.abs(best - rawStride) ? c : best);
+    }
+  } else {
+    strideMin = caps.intervalMin;
+    if (typeof rawStride === 'number' && rawStride >= caps.intervalMin) {
+      const k = Math.round(rawStride / caps.intervalMin);
+      strideMin = Math.max(1, k) * caps.intervalMin;
+    }
   }
 
   // frameCount = (history span / stride) + 1, floored at 1 — past_minutes=0
