@@ -38,8 +38,8 @@
       "see_readme": "Siehe README"
     },
     "loading_radar_tiles": "Radarkacheln werden geladen",
-    "now": "(jetzt)",
-    "now_tooltip": "Jetzt",
+    "now": "(aktuell)",
+    "now_tooltip": "Aktuell",
     "lightning": {
       "popup_title": "Blitzeinschlag",
       "source_label": "Quelle: Blitzortung",
@@ -173,16 +173,16 @@
       "smooth_overlap": "Überblendungsüberlappung",
       "smooth_overlap_helper": "Nur im Sanftmodus. 0 = sequentiell (kein Helligkeitsabfall, Bild gehalten). 1 = gleichzeitig (kurzer Helligkeitsabfall in der Mitte). Standard: 1",
       "playback_speed": "Wiedergabegeschwindigkeit",
-      "playback_speed_helper": "Multiplikator für die Frame-Verzögerung. Die Geschwindigkeitstaste in der Werkzeugleiste kann dies auch zur Laufzeit ändern; diese Laufzeitwahl wird pro Browser gespeichert und überschreibt diese Voreinstellung.",
-      "playback_speed_quarter": "¼× (langsamste)",
+      "playback_speed_helper": "Multiplikator für die Frame-Verzögerung. Die Geschwindigkeitstaste in der Werkzeugleiste kann dies zur Laufzeit ändern; diese Wahl wird pro Browser gespeichert und überschreibt den Standardwert.",
+      "playback_speed_quarter": "¼× (am langsamsten)",
       "playback_speed_half": "½× (langsamer)",
       "playback_speed_normal": "1× (normal)",
       "playback_speed_double": "2× (schneller)",
-      "playback_speed_quad": "4× (schnellste)",
-      "viewer_layer_control": "Benutzerbezogene Speicherung (Admin-Opt-in)",
-      "viewer_layer_control_helper": "Wenn aktiviert, wird die Geschwindigkeitswahl pro Benutzer gespeichert und folgt dem Benutzer über Browser und Geräte hinweg über den Home-Assistant-Frontend-Speicher. Wenn deaktiviert, funktioniert die Schaltfläche weiterhin für die aktuelle Sitzung, die Auswahl wird jedoch nicht gespeichert.",
-      "motion_compensation": "Motion Compensation (drift rain between frames)",
-      "motion_compensation_helper": "Slides each frame in the direction of rain motion during the crossfade so the rain appears to drift smoothly between frames instead of teleporting to its new position. Motion is recovered from the frame pair via pyramidal Lucas-Kanade optical flow — no external wind data, works for all radar sources. Pairs naturally with Smooth Animation. Default off."
+      "playback_speed_quad": "4× (am schnellsten)",
+      "viewer_layer_control": "Speicherung pro Benutzer (Admin-Opt-in)",
+      "viewer_layer_control_helper": "Wenn aktiviert, wird die Wahl der Geschwindigkeitstaste pro Benutzer gespeichert und folgt ihm über den Frontend-Speicher von Home Assistant auf alle Browser und Geräte. Wenn deaktiviert, funktioniert die Taste weiterhin für die aktuelle Sitzung, die Wahl wird aber nicht gespeichert.",
+      "motion_compensation": "Bewegungskompensation (Regen zwischen Frames driften lassen)",
+      "motion_compensation_helper": "Verschiebt jedes Frame während der Überblendung in Richtung der Regenbewegung, sodass der Regen gleichmäßig zwischen den Frames driftet, statt an die neue Position zu springen. Die Bewegung wird per pyramidalem Lucas-Kanade-Optical-Flow aus dem Frame-Paar berechnet — keine externen Winddaten, funktioniert mit allen Radarquellen. Passt gut zur flüssigen Animation. Standardmäßig aus."
     },
     "appearance": {
       "height": "Höhe",

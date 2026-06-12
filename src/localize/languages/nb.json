@@ -38,8 +38,8 @@
       "see_readme": "Se README"
     },
     "loading_radar_tiles": "Laster radarfliser",
-    "now": "(nå)",
-    "now_tooltip": "Nå",
+    "now": "(siste)",
+    "now_tooltip": "Siste",
     "lightning": {
       "popup_title": "Lynnedslag",
       "source_label": "Kilde: Blitzortung",
@@ -172,17 +172,17 @@
       "smooth_animation": "Jevn animasjon (kontinuerlig overgang)",
       "smooth_overlap": "Overgangsoverlapping",
       "smooth_overlap_helper": "Kun jevn modus. 0 = sekvensiell (ingen lysstyrkesvikt, bilde holdt). 1 = samtidig (kort svikt midt i overgangen). Standard: 1",
-      "playback_speed": "Playback Speed",
-      "playback_speed_helper": "Multiplier applied to frame delay. The toolbar speed button can also change this at runtime; that runtime choice is remembered per browser and overrides this default.",
-      "playback_speed_quarter": "¼× (slowest)",
-      "playback_speed_half": "½× (slower)",
+      "playback_speed": "Avspillingshastighet",
+      "playback_speed_helper": "Multiplikator for forsinkelsen mellom bilder. Hastighetsknappen i verktøylinjen kan også endre dette under kjøring; det valget huskes per nettleser og overstyrer denne standarden.",
+      "playback_speed_quarter": "¼× (tregest)",
+      "playback_speed_half": "½× (tregere)",
       "playback_speed_normal": "1× (normal)",
-      "playback_speed_double": "2× (faster)",
-      "playback_speed_quad": "4× (fastest)",
-      "viewer_layer_control": "Per-user persistence (admin opt-in)",
-      "viewer_layer_control_helper": "When enabled, the toolbar speed button persists per user and follows them across browsers and devices via Home Assistant frontend storage. When off the button still works for the current session but the choice is not saved.",
-      "motion_compensation": "Motion Compensation (drift rain between frames)",
-      "motion_compensation_helper": "Slides each frame in the direction of rain motion during the crossfade so the rain appears to drift smoothly between frames instead of teleporting to its new position. Motion is recovered from the frame pair via pyramidal Lucas-Kanade optical flow — no external wind data, works for all radar sources. Pairs naturally with Smooth Animation. Default off."
+      "playback_speed_double": "2× (raskere)",
+      "playback_speed_quad": "4× (raskest)",
+      "viewer_layer_control": "Lagring per bruker (admin må aktivere)",
+      "viewer_layer_control_helper": "Når aktivert lagres hastighetsknappens valg per bruker og følger dem på tvers av nettlesere og enheter via Home Assistants frontend-lagring. Når av fungerer knappen fortsatt for gjeldende økt, men valget lagres ikke.",
+      "motion_compensation": "Bevegelseskompensasjon (la regnet drive mellom bilder)",
+      "motion_compensation_helper": "Skyver hvert bilde i regnets bevegelsesretning under overgangen, slik at regnet ser ut til å drive jevnt mellom bildene i stedet for å hoppe til ny posisjon. Bevegelsen beregnes fra bildeparet med pyramidal Lucas-Kanade optisk flyt — ingen eksterne vinddata, fungerer med alle radarkilder. Passer godt sammen med jevn animasjon. Av som standard."
     },
     "appearance": {
       "height": "Høyde",

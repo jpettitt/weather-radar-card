@@ -38,8 +38,8 @@
       "see_readme": "Veja o README"
     },
     "loading_radar_tiles": "Carregando blocos de radar",
-    "now": "(agora)",
-    "now_tooltip": "Agora",
+    "now": "(última)",
+    "now_tooltip": "Última",
     "lightning": {
       "popup_title": "Impacto de raio",
       "source_label": "Fonte: Blitzortung",
@@ -172,17 +172,17 @@
       "smooth_animation": "Animação suave (transição contínua)",
       "smooth_overlap": "Sobreposição da transição",
       "smooth_overlap_helper": "Apenas no modo suave. 0 = sequencial (sem queda de brilho, quadro mantido). 1 = simultâneo (breve queda no meio da transição). Padrão: 1",
-      "playback_speed": "Playback Speed",
-      "playback_speed_helper": "Multiplier applied to frame delay. The toolbar speed button can also change this at runtime; that runtime choice is remembered per browser and overrides this default.",
-      "playback_speed_quarter": "¼× (slowest)",
-      "playback_speed_half": "½× (slower)",
+      "playback_speed": "Velocidade de reprodução",
+      "playback_speed_helper": "Multiplicador aplicado ao atraso entre quadros. O botão de velocidade da barra de ferramentas também pode alterá-lo em tempo de execução; essa escolha é lembrada por navegador e substitui este padrão.",
+      "playback_speed_quarter": "¼× (mais lento)",
+      "playback_speed_half": "½× (lento)",
       "playback_speed_normal": "1× (normal)",
-      "playback_speed_double": "2× (faster)",
-      "playback_speed_quad": "4× (fastest)",
-      "viewer_layer_control": "Per-user persistence (admin opt-in)",
-      "viewer_layer_control_helper": "When enabled, the toolbar speed button persists per user and follows them across browsers and devices via Home Assistant frontend storage. When off the button still works for the current session but the choice is not saved.",
-      "motion_compensation": "Motion Compensation (drift rain between frames)",
-      "motion_compensation_helper": "Slides each frame in the direction of rain motion during the crossfade so the rain appears to drift smoothly between frames instead of teleporting to its new position. Motion is recovered from the frame pair via pyramidal Lucas-Kanade optical flow — no external wind data, works for all radar sources. Pairs naturally with Smooth Animation. Default off."
+      "playback_speed_double": "2× (rápido)",
+      "playback_speed_quad": "4× (mais rápido)",
+      "viewer_layer_control": "Persistência por usuário (ativação pelo admin)",
+      "viewer_layer_control_helper": "Quando ativado, a escolha do botão de velocidade é salva por usuário e o acompanha em navegadores e dispositivos via armazenamento do frontend do Home Assistant. Quando desativado, o botão ainda funciona na sessão atual, mas a escolha não é salva.",
+      "motion_compensation": "Compensação de movimento (deriva da chuva entre quadros)",
+      "motion_compensation_helper": "Desliza cada quadro na direção do movimento da chuva durante a transição, de modo que a chuva pareça derivar suavemente entre os quadros em vez de saltar para a nova posição. O movimento é calculado do par de quadros por fluxo óptico piramidal Lucas-Kanade — sem dados externos de vento, funciona com todas as fontes de radar. Combina bem com a animação suave. Desativado por padrão."
     },
     "appearance": {
       "height": "Altura",
