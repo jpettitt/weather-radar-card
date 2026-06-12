@@ -98,7 +98,9 @@
       "helper": "≈ {n} images à intervalles de {interval} min",
       "helper_stride": "≈ {n} images à 1 par {stride} min (pas YAML)",
       "past_off": "Désactivé (image fixe, sans animation)",
-      "helper_static": "Image fixe — pas d'animation, actualisée toutes les 5 min"
+      "helper_static": "Image fixe — pas d'animation, actualisée toutes les 5 min",
+      "stride": "Intervalle entre images",
+      "stride_option": "{n} min"
     },
     "location": {
       "centre_latitude": "Latitude du centre",

@@ -98,7 +98,9 @@
       "helper": "≈ {n} Bilder, alle {interval} Min.",
       "helper_stride": "≈ {n} Bilder, alle {stride} Min. (YAML-Schrittweite)",
       "past_off": "Aus (statisches Bild, keine Animation)",
-      "helper_static": "Statisches Bild — keine Animation, Aktualisierung alle 5 Min"
+      "helper_static": "Statisches Bild — keine Animation, Aktualisierung alle 5 Min",
+      "stride": "Frame-Intervall",
+      "stride_option": "{n} Min."
     },
     "location": {
       "centre_latitude": "Breitengrad des Mittelpunkts",

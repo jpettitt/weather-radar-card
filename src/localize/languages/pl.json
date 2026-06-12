@@ -98,7 +98,9 @@
       "helper": "≈ {n} klatek co {interval} min",
       "helper_stride": "≈ {n} klatek, 1 na {stride} min (krok YAML)",
       "past_off": "Wył. (statyczna klatka, bez animacji)",
-      "helper_static": "Statyczna klatka — bez animacji, odświeżana co 5 min"
+      "helper_static": "Statyczna klatka — bez animacji, odświeżana co 5 min",
+      "stride": "Odstęp między klatkami",
+      "stride_option": "{n} min"
     },
     "location": {
       "centre_latitude": "Szerokość geograficzna środka",

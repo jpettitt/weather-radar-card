@@ -1044,13 +1044,26 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       ? String(config.forecast_minutes ?? caps.defaultForecastMin)
       : '';
 
+    // Frame-interval dropdown for frame-listing sources (NOAA): the
+    // stride is a first-class editor knob there, not a YAML-only
+    // override — the server lists real scan times and the card snaps
+    // an ideal grid of this spacing onto them.
+    const strideOptions = caps.strideChoices
+      ? caps.strideChoices.map((v) => ({
+          value: String(v),
+          label: localize('editor.time_range.stride_option').replace('{n}', String(v)),
+        }))
+      : null;
+
     // Helper text: "≈ N frames at X-min intervals", flagged when a
     // YAML-only stride override is in effect so the user knows the
-    // editor isn't the source of truth for that knob. Single-frame
-    // case (past_minutes=0 + no forecast) gets a distinct line — the
-    // generic helper would read "≈ 1 frames at 5-min intervals" which
-    // is both grammatically wrong and misleading.
-    const isStrideOverride = range.strideMin !== caps.intervalMin;
+    // editor isn't the source of truth for that knob. Sources with a
+    // stride dropdown never flag — the dropdown IS the source of
+    // truth. Single-frame case (past_minutes=0 + no forecast) gets a
+    // distinct line — the generic helper would read "≈ 1 frames at
+    // 5-min intervals" which is both grammatically wrong and
+    // misleading.
+    const isStrideOverride = !caps.strideChoices && range.strideMin !== caps.intervalMin;
     const helper = range.frameCount === 1
       ? localize('editor.time_range.helper_static')
       : isStrideOverride
@@ -1059,7 +1072,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           .replace('{stride}', String(range.strideMin))
         : localize('editor.time_range.helper')
           .replace('{n}', String(range.frameCount))
-          .replace('{interval}', String(caps.intervalMin));
+          .replace('{interval}', String(range.strideMin));
 
     return html`
       <div class="side-by-side">
@@ -1071,6 +1084,16 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           .configValue=${'past_minutes'}
           @value-changed=${this._handleSelectorNumberChanged}
         ></ha-selector>
+        ${strideOptions ? html`
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ select: { options: strideOptions } }}
+            .value=${String(range.strideMin)}
+            .label=${localize('editor.time_range.stride')}
+            .configValue=${'frame_stride_minutes'}
+            @value-changed=${this._handleSelectorNumberChanged}
+          ></ha-selector>
+        ` : ''}
         ${forecastOptions ? html`
           <ha-selector
             .hass=${this.hass}

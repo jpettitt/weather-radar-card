@@ -24,7 +24,13 @@ function migrateTimeRange(config: WeatherRadarCardConfig): WeatherRadarCardConfi
   const next = { ...config };
   if (needsPast) {
     const caps = getSourceCaps(config.data_source);
-    next.past_minutes = Math.max(0, (config.frame_count! - 1) * caps.intervalMin);
+    // Frame-listing sources migrate on the DEFAULT STRIDE, not the
+    // native interval: a 3.6-era NOAA `frame_count: 12` ran at the old
+    // 5-min stride and covered ~55 min — defaultStrideMin (5) keeps
+    // that span. Using intervalMin (the 2-min native scan cadence)
+    // would silently shrink the loop to ~22 min.
+    const stride = caps.defaultStrideMin ?? caps.intervalMin;
+    next.past_minutes = Math.max(0, (config.frame_count! - 1) * stride);
   }
   if (needsForecast) {
     next.forecast_minutes = Math.max(0, config.dwd_forecast_hours! * 60);
