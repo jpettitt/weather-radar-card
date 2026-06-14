@@ -374,13 +374,18 @@ time-range fields by `getEffectiveTimeRange()`
 frameCount = max(2, floor((past_minutes + forecast_minutes) / strideMin) + 1)
 ```
 
-`strideMin` defaults to the source's native frame interval (10 min for
-RainViewer, 5 min for NOAA / DWD) but can be overridden by
-`frame_stride_minutes` (snapped to a multiple of native).
+`strideMin` defaults to the source's default frame interval (10 min for
+RainViewer, 5 min for DWD, 5 min for NOAA) and can be overridden by
+`frame_stride_minutes`. For the grid sources (RainViewer / DWD) the
+override snaps to a multiple of the native interval; for NOAA — whose
+frames come from the opengeo time listing rather than a computed grid —
+it snaps to the nearest offered step (2 / 5 / 10 min, exposed as the
+editor's "Frame interval" dropdown).
 
-The legacy `frame_count` field auto-migrates to
-`past_minutes = (frame_count - 1) × intervalMin`, preserving roughly
-the same time window across the change.
+The legacy `frame_count` field, when set alone, auto-migrates to
+`past_minutes = (frame_count - 1) × defaultStride`, preserving roughly
+the same time window across the change. It is ignored (with a console
+warning) when a time-based field is also present.
 
 See [data-sources.md](data-sources.md#per-source-caps) for the full
 per-source cap table.

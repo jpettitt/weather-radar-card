@@ -48,9 +48,12 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    */
   forecast_minutes?: number;
   /**
+   * Custom frame interval (minutes). For NOAA this is surfaced in the
+   * editor as the "Frame interval" dropdown (2/5/10) and snaps to the
+   * nearest offered step. For the grid sources (RainViewer/DWD) it's a
    * YAML-only escape hatch for the perf cost of large past_minutes
-   * ranges: forces a custom frame interval (snapped to a multiple of
-   * the source's native interval). Defaults to the native interval.
+   * ranges, snapped to a multiple of the source's native interval.
+   * Defaults to the source's default interval.
    */
   frame_stride_minutes?: number;
   frame_delay?: number;
