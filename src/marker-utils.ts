@@ -38,6 +38,21 @@ function migrateTimeRange(config: WeatherRadarCardConfig): WeatherRadarCardConfi
   return next;
 }
 
+/**
+ * True when `frame_count` is present but doing nothing because a time-based
+ * field (`past_minutes` / `frame_stride_minutes`) is also set. `frame_count`
+ * has been deprecated since 3.5 and only feeds migration when it stands
+ * alone (see `migrateTimeRange`); combined with the time fields it is a
+ * silent no-op that reads as a self-contradictory config to the user
+ * (issue #191). Pure predicate so the card can warn without duplicating
+ * the precedence rule; the warning itself lives in the card's runtime
+ * `_migrateConfig` wrapper so it fires on load, not per editor keystroke.
+ */
+export function frameCountIsOverridden(config: WeatherRadarCardConfig): boolean {
+  return config.frame_count !== undefined
+    && (config.past_minutes !== undefined || config.frame_stride_minutes !== undefined);
+}
+
 export function migrateConfig(config: WeatherRadarCardConfig): WeatherRadarCardConfig {
   config = migrateTimeRange(config);
 

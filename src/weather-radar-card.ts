@@ -96,7 +96,7 @@ import {
   resolveCoordinatePair,
 } from './coordinate-utils';
 import { createMarkerIconForMarker, HOME_PATH } from './marker-icon';
-import { migrateConfig, resolveMarkerPosition, resolveTracking } from './marker-utils';
+import { migrateConfig, frameCountIsOverridden, resolveMarkerPosition, resolveTracking } from './marker-utils';
 import { WildfireLayer } from './wildfire-layer';
 import { NwsAlertsLayer } from './nws-alerts-layer';
 import { LightningLayer } from './lightning-layer';
@@ -422,6 +422,22 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   }
 
   private _migrateConfig(config: WeatherRadarCardConfig): WeatherRadarCardConfig {
+    // Over-determined time-range config (issue #191): frame_count is
+    // silently ignored once a time-based field is present (migrateTimeRange
+    // only consumes it when past_minutes is absent). A config carrying both
+    // — e.g. frame_count: 12 + past_minutes: 60 + frame_stride_minutes: 2 —
+    // reads as self-contradictory but runs purely on the time fields, so
+    // tell the user frame_count is doing nothing. Kept in this runtime
+    // wrapper (not the shared migrateConfig) so it fires on card load, not
+    // on every editor keystroke — same placement as the single-marker
+    // warning below.
+    if (frameCountIsOverridden(config)) {
+      console.warn(
+        '[weather-radar-card] frame_count is deprecated and ignored when '
+        + 'past_minutes or frame_stride_minutes is set — your loop is controlled '
+        + 'by those. Remove frame_count to silence this warning.',
+      );
+    }
     const result = migrateConfig(config);
     if (result !== config) {
       // Only warn when legacy fields were actually present — not for the

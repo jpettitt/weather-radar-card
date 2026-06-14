@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { migrateConfig } from '../src/marker-utils';
+import { migrateConfig, frameCountIsOverridden } from '../src/marker-utils';
 import { WeatherRadarCardConfig } from '../src/types';
 
 const base: WeatherRadarCardConfig = {
@@ -199,6 +199,35 @@ describe('migrateConfig', () => {
       const r = migrateConfig(cfg);
       expect(r.past_minutes).toBe(60);  // (13 - 1) × 5
       expect(r.forecast_minutes).toBe(120); // 2 × 60
+    });
+  });
+
+  // issue #191: an over-determined config (frame_count alongside the
+  // time-based fields) silently ignores frame_count. frameCountIsOverridden
+  // is the predicate the card uses to warn the user that frame_count is
+  // doing nothing — it must fire for the over-determined cases and stay
+  // quiet for the legitimate legacy-migration case (frame_count alone).
+  describe('frameCountIsOverridden', () => {
+    it('is true when frame_count is set alongside past_minutes', () => {
+      expect(frameCountIsOverridden({ ...base, frame_count: 12, past_minutes: 60 })).toBe(true);
+    });
+
+    it('is true when frame_count is set alongside frame_stride_minutes', () => {
+      expect(frameCountIsOverridden({ ...base, frame_count: 12, frame_stride_minutes: 2 })).toBe(true);
+    });
+
+    it('is true for the exact over-determined config from issue #191', () => {
+      expect(frameCountIsOverridden({
+        ...base, data_source: 'NOAA', frame_count: 12, past_minutes: 60, frame_stride_minutes: 2,
+      })).toBe(true);
+    });
+
+    it('is false for frame_count alone (the supported legacy auto-migration)', () => {
+      expect(frameCountIsOverridden({ ...base, frame_count: 12 })).toBe(false);
+    });
+
+    it('is false when no frame_count is present, even with both time fields set', () => {
+      expect(frameCountIsOverridden({ ...base, past_minutes: 60, frame_stride_minutes: 5 })).toBe(false);
     });
   });
 });

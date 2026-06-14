@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Over-determined time-range configs now warn instead of silently ignoring `frame_count`** ([#191](https://github.com/jpettitt/weather-radar-card/issues/191)). `frame_count` has been deprecated since 3.5 and is only consumed when no time-based field is present; a config carrying both (e.g. `frame_count: 12` + `past_minutes: 60` + `frame_stride_minutes: 2`) runs purely on the time fields, which looked self-contradictory with no signal that `frame_count` was doing nothing. The card now logs a console warning on load when `frame_count` appears alongside `past_minutes` or `frame_stride_minutes`, and the deprecated-field documentation spells out the precedence. (`frame_count` will be removed entirely in the next major.)
+
 ## [3.7.0-beta2] - 2026-06-12
 
 > **Beta pre-release.** One scoped feature exception to the beta freeze, reopened deliberately: the NOAA source switch below — it directly resolves live beta feedback ("frame increment is 10 instead of 5") and removes the line's biggest data-freshness deficit. Plus the "Latest" label rename and a full translation catch-up. Everything else remains fixes-only until 3.7.0.
@@ -799,6 +805,7 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta2...HEAD
 [3.7.0-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta1...v3.7.0-beta2
 [3.7.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha3...v3.7.0-beta1
 [3.7.0-alpha3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha2...v3.7.0-alpha3
