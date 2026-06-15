@@ -19,18 +19,7 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 
 [![Watch the demo on YouTube](https://img.youtube.com/vi/xfbZRElOi0o/maxresdefault.jpg)](https://youtu.be/xfbZRElOi0o)
 
-## What's new in 3.6 (current stable line)
-
-- **Real-time lightning strikes** when the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung) is installed — bolt + pulse for first 30 s, then a coloured + sign on a two-pane outline-vs-fill split (dense storm clusters read clean instead of black-blob). Card-side max-age cap defaults to 30 min. ([3.6.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.0))
-- **Wind overlay** — barbs, arrows, animated streamlines from DWD's ICON-D2 model. Bulk WCS fetch with 60 s coalescing cache, zoom-aware streamlines. See [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#wind). ([3.6.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.0))
-- **Wind source registry** — choose `dwd_icon`, `dwd_aicon` (DWD's AI-augmented variant), or `ndfd_wind` (NWS NDFD 2.5 km CONUS / AK / HI / PR). Fresh US installs default to `ndfd_wind` automatically. ([3.6.1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.1))
-- **AbortController** on tile + data fetches — superseded fetches no longer complete on the wire after a pan / zoom / teardown. ([3.6.2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.2))
-- **Tablet-friendly progress-bar touch target** via `progress_bar_touch_height` YAML option, contributed by [@cgjolberg](https://github.com/cgjolberg). ([3.6.4](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.4))
-- **Per-user state framework** (dormant) — `ViewerState` wraps HA's frontend-storage WebSocket API. First user-visible consumer (adjustable playback speed) ships in 3.7. ([3.6.5](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.5))
-
-## What's new in 3.7 (beta — feature complete)
-
-3.7 is in beta: the feature set is frozen, fixes only until 3.7.0 stable. Toggle **Show beta versions** in HACS to try it.
+## What's new in 3.7 (current stable)
 
 **Headline features:**
 
@@ -46,6 +35,15 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 - **Translations completed** for all 3.7 editor strings across the card's 11 languages.
 
 For the full release history see [CHANGELOG](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md).
+
+## What's new in 3.6
+
+- **Real-time lightning strikes** when the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung) is installed — bolt + pulse for first 30 s, then a coloured + sign on a two-pane outline-vs-fill split (dense storm clusters read clean instead of black-blob). Card-side max-age cap defaults to 30 min. ([3.6.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.0))
+- **Wind overlay** — barbs, arrows, animated streamlines from DWD's ICON-D2 model. Bulk WCS fetch with 60 s coalescing cache, zoom-aware streamlines. See [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#wind). ([3.6.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.0))
+- **Wind source registry** — choose `dwd_icon`, `dwd_aicon` (DWD's AI-augmented variant), or `ndfd_wind` (NWS NDFD 2.5 km CONUS / AK / HI / PR). Fresh US installs default to `ndfd_wind` automatically. ([3.6.1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.1))
+- **AbortController** on tile + data fetches — superseded fetches no longer complete on the wire after a pan / zoom / teardown. ([3.6.2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.2))
+- **Tablet-friendly progress-bar touch target** via `progress_bar_touch_height` YAML option, contributed by [@cgjolberg](https://github.com/cgjolberg). ([3.6.4](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.4))
+- **Per-user state framework** (dormant) — `ViewerState` wraps HA's frontend-storage WebSocket API. First user-visible consumer (adjustable playback speed) ships in 3.7. ([3.6.5](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.6.5))
 
 ## Roadmap
 

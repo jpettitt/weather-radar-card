@@ -5,11 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.7.0] - 2026-06-15
+
+> **Stable release.** Graduates the 3.7 line (per-user state → adjustable playback speed → motion compensation → canvas rendering → opengeo NOAA) to stable. Drop-in upgrade from 3.6.x and any 3.7 pre-release — no breaking changes, no config changes required. The headline features are opt-in **smooth motion** (`motion_compensation`) and **adjustable playback speed**; see the release notes for the full line summary. The entries below are what changed since `3.7.0-beta2`.
 
 ### Changed
 
-- **Over-determined time-range configs now warn instead of silently ignoring `frame_count`** ([#191](https://github.com/jpettitt/weather-radar-card/issues/191)). `frame_count` has been deprecated since 3.5 and is only consumed when no time-based field is present; a config carrying both (e.g. `frame_count: 12` + `past_minutes: 60` + `frame_stride_minutes: 2`) runs purely on the time fields, which looked self-contradictory with no signal that `frame_count` was doing nothing. The card now logs a console warning on load when `frame_count` appears alongside `past_minutes` or `frame_stride_minutes`, and the deprecated-field documentation spells out the precedence. (`frame_count` will be removed entirely in the next major.)
+- **Over-determined time-range configs now warn instead of silently ignoring `frame_count`** ([#191](https://github.com/jpettitt/weather-radar-card/issues/191)). `frame_count` has been deprecated since 3.5 and is only consumed when no time-based field is present; a config carrying both (e.g. `frame_count: 12` + `past_minutes: 60` + `frame_stride_minutes: 2`) runs purely on the time fields, which looked self-contradictory with no signal that `frame_count` was doing nothing. The card now logs a single console warning when `frame_count` appears alongside `past_minutes` or `frame_stride_minutes`, and the deprecated-field documentation spells out the precedence. (`frame_count` will be removed entirely in the next major.)
+
+### Fixed
+
+- **NOAA stayed stale longer than necessary after a tab-hide.** The visibility-resume "is the loop stale?" threshold was hardcoded at 10 minutes — fine for the old cadence, too loose for NOAA's new 2-minute stride. The threshold now scales with the source's actual refresh period (NOAA at a 2-minute interval re-initialises after ~4 minutes hidden instead of 10), so a resumed NOAA loop catches up promptly.
+- **A NOAA frame-listing failure no longer hides its cause.** The opengeo→legacy fallback logged a generic "listing unavailable"; it now logs the actual error, so a genuine defect surfaces instead of masquerading as a network outage (the fallback to the legacy server is unchanged).
+- **Lightning canvas guards against a non-finite projection** (bad integration coordinates near the poles, or a repaint before the map is ready) that could otherwise corrupt the canvas transform.
 
 ## [3.7.0-beta2] - 2026-06-12
 
@@ -805,7 +813,7 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta2...HEAD
+[3.7.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta2...v3.7.0
 [3.7.0-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta1...v3.7.0-beta2
 [3.7.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha3...v3.7.0-beta1
 [3.7.0-alpha3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha2...v3.7.0-alpha3
