@@ -1228,13 +1228,15 @@ export class RadarPlayer {
     // initialised with. After a long hidden / sleep window, the entire
     // loop is many cycles outdated and one update isn't enough.
     //
-    // Heuristic: if more than 2× the refresh period (= 10 min) has
-    // elapsed since the last successful path-fetch, scrap the loop
-    // entirely and let _initRadar refetch every slot from scratch.
-    // Shorter gaps fall through to the existing _doRadarUpdate-driven
-    // single-frame path (or just a loop resume).
-    const FRAME_PERIOD_MS = 300_000;
-    const STALE_THRESHOLD_MS = 2 * FRAME_PERIOD_MS;
+    // Heuristic: if more than 2× the refresh period has elapsed since
+    // the last successful path-fetch (10 min for most sources, 4 min for
+    // a 2-min NOAA loop), scrap the loop entirely and let _initRadar
+    // refetch every slot from scratch. Shorter gaps fall through to the
+    // existing _doRadarUpdate-driven single-frame path (or a loop resume).
+    // Threshold tracks the source's actual refresh cadence (NOAA's 2-min
+    // stride → 4-min threshold; others → 10 min) so a fast source isn't
+    // judged "fresh" for the full 10 min after a long hide.
+    const STALE_THRESHOLD_MS = 2 * this._refreshPeriodMs();
     const ageMs = this._lastFrameRefreshAt > 0
       ? Date.now() - this._lastFrameRefreshAt
       : 0;
@@ -1948,16 +1950,24 @@ export class RadarPlayer {
         }
       } catch (e) {
         if ((e as Error)?.name === 'AbortError') throw e;
-        // fall through to the legacy grid below
+        // Keep the actual error visible: this catch is deliberately
+        // broad (any failure falls through to the legacy grid so radar
+        // keeps working), but logging the cause means a real defect —
+        // e.g. a TypeError from a future parse/snap refactor — surfaces
+        // instead of masquerading silently as "listing unavailable".
+        // eslint-disable-next-line no-console
+        console.warn('[weather-radar-card] NOAA frame listing fetch/parse failed; falling back to legacy eventdriven grid:', e);
+        // _noaaLegacyMode is set unconditionally below — both this caught
+        // path and the empty-listing fall-through land there.
       }
       // Fallback: legacy eventdriven server with a blind 10-min grid
       // behind its measured 15-min availability lag. Stale but correct;
       // recovers automatically — the next refresh cycle retries the
       // listing. The fixed legacy stride deliberately ignores the
       // user's stride choice: the legacy server snaps finer requests
-      // to duplicates of the same physical frame.
-      // eslint-disable-next-line no-console
-      console.warn('[weather-radar-card] NOAA frame listing unavailable; falling back to legacy eventdriven grid');
+      // to duplicates of the same physical frame. (Also reached when the
+      // listing was fetched but empty — times.length === 0 — hence the
+      // _noaaLegacyMode set here too, not only in the catch.)
       this._noaaLegacyMode = true;
       const legacyStrideMs = NOAA_LEGACY_STRIDE_MIN * 60_000;
       const snap = Math.trunc((Date.now() - NOAA_LEGACY_LAG_MS) / legacyStrideMs) * legacyStrideMs;
@@ -2350,6 +2360,23 @@ export class RadarPlayer {
 
   // ── Periodic update ──────────────────────────────────────────────────────
 
+  // Periodic-refresh cadence (ms). _updateRadar shifts in at most ONE
+  // new frame per cycle, so the period must not exceed the source's
+  // frame spacing or the loop silently degrades to refresh-period
+  // spacing. Only NOAA's selectable 2-min stride goes below the 5-min
+  // default (its opengeo listing publishes ~every 2 min); floor at 2 min
+  // to stay polite to the capabilities endpoint, cap at 5 min so coarser
+  // strides still refresh on the standard cadence. Shared by the
+  // scheduler and the visibility-resume staleness check so both track
+  // the same cadence (a 2-min NOAA loop must not be judged "fresh" for a
+  // full 10 min after a tab-hide).
+  private _refreshPeriodMs(): number {
+    const isNoaa = (this._cfg.data_source ?? 'RainViewer') === 'NOAA';
+    if (!isNoaa) return 300_000;
+    const strideMs = getEffectiveTimeRange(this._cfg).strideMin * 60_000;
+    return Math.max(120_000, Math.min(300_000, strideMs));
+  }
+
   private _scheduleUpdate(): void {
     // Single-chain invariant: exactly one armed update timer at any
     // time. Several paths can arm a fresh chain while an old timer is
@@ -2362,13 +2389,9 @@ export class RadarPlayer {
     this._cancelScheduledUpdate?.();
     // _updateRadar shifts in at most ONE new frame per cycle, so the
     // refresh period must not exceed the frame spacing or the loop
-    // silently degrades to refresh-period spacing. Only NOAA's 2-min
-    // stride goes below the 5-min default (its opengeo listing
-    // publishes ~every 2 min); floor at 2 min to stay polite to the
-    // capabilities endpoint.
+    // silently degrades to refresh-period spacing.
     const isNoaa = (this._cfg.data_source ?? 'RainViewer') === 'NOAA';
-    const strideMs = getEffectiveTimeRange(this._cfg).strideMin * 60_000;
-    const framePeriod = isNoaa ? Math.max(120_000, Math.min(300_000, strideMs)) : 300_000;
+    const framePeriod = this._refreshPeriodMs();
     // RainViewer publishes ~1 min after the timestamp; DWD ~1–3 min;
     // NOAA's newest listed frame is itself the publication signal.
     const lag = isNoaa ? 0 : 60_000;

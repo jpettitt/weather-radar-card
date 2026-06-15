@@ -488,6 +488,11 @@ export class LightningLayer {
       const lp = this._map.latLngToLayerPoint([s.lat, s.lon]);
       const x = lp.x - this._originLayerPoint.x;
       const y = lp.y - this._originLayerPoint.y;
+      // Guard against a non-finite projection (bad integration lat/lon
+      // near ±90, or a redraw before the map CRS is ready): NaN passes
+      // every cull comparison below (all NaN comparisons are false) and
+      // would reach ctx.translate(NaN, …), so drop the point here.
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       if (x < -cullMarginPx || y < -cullMarginPx || x > wCss + cullMarginPx || y > hCss + cullMarginPx) continue;
       out.push({ x, y, ts: s.ts, ageSec, isBolt: ageSec < BOLT_DURATION_SEC, pulseUntil: s.pulseUntil });
     }

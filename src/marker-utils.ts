@@ -6,10 +6,12 @@ import { getSourceCaps } from './source-caps';
  * Convert legacy time-related fields to the source-agnostic
  * past_minutes / forecast_minutes model introduced in 3.5.
  *
- *   - frame_count → past_minutes = (frame_count - 1) × intervalMin,
- *     using the configured source's native interval. Existing configs
- *     get a time-range that closely matches what their frame_count
- *     was producing on the prior version.
+ *   - frame_count → past_minutes = (frame_count - 1) × defaultStride,
+ *     using the source's default frame interval (defaultStrideMin where
+ *     defined, else the native interval). Existing configs get a
+ *     time-range that closely matches what their frame_count produced
+ *     on the prior version. Only applied when frame_count stands alone;
+ *     see frameCountIsOverridden for the ignored-alongside-time-fields case.
  *   - dwd_forecast_hours → forecast_minutes = hours × 60.
  *
  * Only fills missing fields; user-set past_minutes / forecast_minutes
