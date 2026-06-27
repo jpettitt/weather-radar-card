@@ -111,6 +111,10 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   center_longitude?: CoordinateConfig;
   center_latitude?: CoordinateConfig;
   zoom_level?: number;
+  /** Pan the map horizontally (pixels) after initialization. Positive = right, negative = left. */
+  pan_offset_x?: number;
+  /** Pan the map vertically (pixels) after initialization. Positive = down, negative = up. */
+  pan_offset_y?: number;
   markers?: Marker[];
   cluster_markers?: boolean;
   // Legacy single-marker fields — read-only; used only by _migrateConfig()
