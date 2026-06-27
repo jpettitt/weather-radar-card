@@ -716,6 +716,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       wheelPxPerZoomLevel: 120, attributionControl: false,
       minZoom: 3, maxZoom: 16,
     }).setView([center.lat, center.lon], cfg.zoom_level ?? 7);
+    
+    // Pan the map if configured
+    if (cfg.pan_offset_x || cfg.pan_offset_y) {
+      this._map.panBy([cfg.pan_offset_x ?? 0, cfg.pan_offset_y ?? 0]);
+    }
 
     if (cfg.disable_scroll === true && !isStatic) {
       this._map.dragging.disable();
