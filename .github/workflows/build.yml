@@ -1,4 +1,5 @@
 name: "Build"
+
 on:
   push:
     branches:
@@ -7,9 +8,13 @@ on:
     branches:
       - main
   workflow_dispatch:
+
+# Cancel an older run of the same workflow on the same ref when a new push
+# arrives. Saves CI minutes on rapid force-pushes / quick fixups.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
   build:
     name: Test build
@@ -19,12 +24,18 @@ jobs:
         node-version: [20, 22]
     steps:
       - uses: actions/checkout@v5
+
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
+
       - name: Install dependencies
         run: npm install --legacy-peer-deps
+
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
