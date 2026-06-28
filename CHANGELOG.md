@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.1] - 2026-06-28
+
+> Add 2 new options to configuration to pan the map on x and y axis
+
+### Changed
+
+- Add pan_offset_x and pan_offset_y to configuration
+
 ## [3.7.0] - 2026-06-15
 
 > **Stable release.** Graduates the 3.7 line (per-user state → adjustable playback speed → motion compensation → canvas rendering → opengeo NOAA) to stable. Drop-in upgrade from 3.6.x and any 3.7 pre-release — no breaking changes, no config changes required. The headline features are opt-in **smooth motion** (`motion_compensation`) and **adjustable playback speed**; see the release notes for the full line summary. The entries below are what changed since `3.7.0-beta2`.
