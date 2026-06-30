@@ -7,6 +7,7 @@ import { migrateConfig } from './marker-utils';
 import { localize } from './localize/localize';
 import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-categories';
 import { isBlitzortungLoaded } from './lightning-helpers';
+import { isSectionHeightPinned } from './card-layout';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
 import { WIND_SOURCE_CAPS, getWindSourceCaps, DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -306,9 +307,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             // so the user isn't left wondering why nothing happened.
             // grid_options.rows: 'auto' means HA gave the card freedom
             // to pick — that counts as un-pinned.
-            const heightPinned = !!config.height
-              || (config.grid_options?.rows !== undefined
-                  && config.grid_options.rows !== 'auto');
+            const heightPinned = !!config.height || isSectionHeightPinned(config);
             return html`
               <label class=${heightPinned ? 'disabled-row' : ''}
                      title=${heightPinned ? localize('editor.display.square_map_disabled_helper') : ''}>
@@ -466,13 +465,29 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
         <!-- APPEARANCE -->
         <h3 class="section-header">${localize('editor.section.appearance')}</h3>
         <div class="side-by-side">
-          <ha-input
-            label=${localize('editor.appearance.height')}
-            .value=${config.height ? config.height : ''}
-            .configValue=${'height'}
-            @input=${this._valueChangedString}
-            hint=${localize('editor.appearance.height_helper')}
-          ></ha-input>
+          ${(() => {
+            // A fixed-row sections-grid cell owns the height (see
+            // card-layout.ts / resolveCardLayout): the `height:` config is
+            // ignored, so disable + dim the field and explain why, rather
+            // than letting the user type a value that does nothing. Same
+            // treatment as the square_map toggle above. Gated on the
+            // section constraint only — an explicit height must stay
+            // editable so the user can clear or change it.
+            const sectionLocked = isSectionHeightPinned(config);
+            return html`
+              <ha-input
+                class=${sectionLocked ? 'disabled-row' : ''}
+                label=${localize('editor.appearance.height')}
+                .value=${config.height ? config.height : ''}
+                .configValue=${'height'}
+                .disabled=${sectionLocked}
+                @input=${this._valueChangedString}
+                hint=${sectionLocked
+                  ? localize('editor.appearance.height_section_locked_helper')
+                  : localize('editor.appearance.height_helper')}
+              ></ha-input>
+            `;
+          })()}
           <ha-input
             label=${localize('editor.appearance.width')}
             .value=${config.width ? config.width : ''}
