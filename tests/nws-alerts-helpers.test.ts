@@ -30,11 +30,6 @@ import {
   relativeLuminance,
   formatDateTime,
   buildPopupHtml,
-  readZoneFromLocalStorage,
-  writeZoneToLocalStorage,
-  sweepExpiredZonesFromLocalStorage,
-  ZONE_LS_KEY_PREFIX,
-  ZONE_LS_TTL_MS,
 } from '../src/nws-alerts-layer';
 
 // ── featureKey ─────────────────────────────────────────────────────────────
@@ -314,67 +309,6 @@ describe('formatDateTime', () => {
   });
 });
 
-// ── localStorage zone cache ────────────────────────────────────────────────
-//
-// happy-dom provides a working localStorage. Tests run in isolation so we
-// clear it between runs.
-
-describe('zone localStorage cache', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  const sampleGeom: GeoJSON.Polygon = {
-    type: 'Polygon',
-    coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
-  };
-
-  it('returns null for a never-cached URL', () => {
-    expect(readZoneFromLocalStorage('https://api.weather.gov/zones/forecast/MNZ073')).toBeNull();
-  });
-
-  it('round-trips a write → read', () => {
-    writeZoneToLocalStorage('https://api.weather.gov/zones/forecast/MNZ073', sampleGeom);
-    const got = readZoneFromLocalStorage('https://api.weather.gov/zones/forecast/MNZ073');
-    expect(got).toEqual(sampleGeom);
-  });
-
-  it('uses the versioned key prefix so format changes can invalidate', () => {
-    writeZoneToLocalStorage('zone-X', sampleGeom);
-    const raw = localStorage.getItem(ZONE_LS_KEY_PREFIX + 'zone-X');
-    expect(raw).not.toBeNull();
-    expect(raw).toContain('"geometry"');
-    expect(raw).toContain('"ts"');
-  });
-
-  it('evicts and returns null for a stale entry past TTL', () => {
-    // Manually write an expired entry (timestamp older than TTL).
-    const expired = JSON.stringify({
-      geometry: sampleGeom,
-      ts: Date.now() - ZONE_LS_TTL_MS - 1000,
-    });
-    localStorage.setItem(ZONE_LS_KEY_PREFIX + 'old', expired);
-    expect(readZoneFromLocalStorage('old')).toBeNull();
-    // Eviction side-effect: the entry is removed on read.
-    expect(localStorage.getItem(ZONE_LS_KEY_PREFIX + 'old')).toBeNull();
-  });
-
-  it('returns null and silently swallows corrupt JSON', () => {
-    localStorage.setItem(ZONE_LS_KEY_PREFIX + 'broken', '{not json');
-    expect(readZoneFromLocalStorage('broken')).toBeNull();
-  });
-
-  it('does not throw when localStorage.setItem throws (quota / disabled)', () => {
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = () => { throw new Error('QuotaExceededError'); };
-    try {
-      expect(() => writeZoneToLocalStorage('any', sampleGeom)).not.toThrow();
-    } finally {
-      Storage.prototype.setItem = original;
-    }
-  });
-});
-
 // ── buildPopupHtml — XSS protection on the linkUrl interpolation ──────────
 //
 // The `more info` link in the alert popup is built from props.uri, which
@@ -424,41 +358,5 @@ describe('buildPopupHtml — link URL escaping', () => {
     const html = buildPopupHtml(minimal('https://api.weather.gov/alerts/?a=<b>&c=d'));
     expect(html).toContain('a=&lt;b&gt;&amp;c=d');
     expect(html).not.toContain('?a=<b>');
-  });
-});
-
-
-// ── Zone-cache sweep (2026-06 review backlog) ────────────────────────────
-
-describe('sweepExpiredZonesFromLocalStorage', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  it('removes expired and corrupt zone entries, keeps fresh ones and foreign keys', () => {
-    const geom: GeoJSON.Geometry = { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] };
-    // Fresh entry — must survive.
-    writeZoneToLocalStorage('https://api.weather.gov/zones/fresh', geom);
-    // Expired entry — ts beyond the 30-day TTL.
-    localStorage.setItem(
-      ZONE_LS_KEY_PREFIX + 'https://api.weather.gov/zones/stale',
-      JSON.stringify({ geometry: geom, ts: Date.now() - ZONE_LS_TTL_MS - 1000 }),
-    );
-    // Corrupt entry — unparseable JSON.
-    localStorage.setItem(ZONE_LS_KEY_PREFIX + 'https://api.weather.gov/zones/corrupt', '{not json');
-    // Foreign key — not ours, must be untouched.
-    localStorage.setItem('some-other-app-key', 'keep me');
-
-    const removed = sweepExpiredZonesFromLocalStorage();
-
-    expect(removed).toBe(2);
-    expect(readZoneFromLocalStorage('https://api.weather.gov/zones/fresh')).toEqual(geom);
-    expect(localStorage.getItem(ZONE_LS_KEY_PREFIX + 'https://api.weather.gov/zones/stale')).toBeNull();
-    expect(localStorage.getItem(ZONE_LS_KEY_PREFIX + 'https://api.weather.gov/zones/corrupt')).toBeNull();
-    expect(localStorage.getItem('some-other-app-key')).toBe('keep me');
-  });
-
-  it('returns 0 on an empty store', () => {
-    expect(sweepExpiredZonesFromLocalStorage()).toBe(0);
   });
 });

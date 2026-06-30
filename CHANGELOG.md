@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **NWS alert zone-shape cache moved to IndexedDB — fixes a shared-`localStorage`-exhaustion bug that degraded the whole dashboard.** The persistent zone cache used `localStorage`, whose ~5 MB quota is *shared* across all of Home Assistant's frontend and every custom card. The full NWS zone set is ~8,400 zones / ~170 MB of raw GeoJSON (a single marine zone can be ~120 KB), so a heavy watches-and-warnings user filled the quota. **Crucially the impact wasn't limited to this card:** once the shared quota was full, `localStorage` writes from *other* cards and Home Assistant's own frontend also began throwing `QuotaExceededError`, and any card that didn't handle that gracefully showed visible UI breakage — so one overfull radar card could degrade the entire dashboard. The cache now lives in IndexedDB (quota is a share of free disk, hundreds of MB+), which HA itself uses for bulk like its icon cache. Geometry is quantised to 4 dp (~11 m, imperceptible at the card's zoom range) and gzip-compressed (~4× smaller, stored as binary — no base64), bounded by the existing 30-day TTL plus an entry-count cap. On first run the card purges the old `wrc-zone-v1:` `localStorage` entries, immediately reclaiming the shared space they occupied. No config or visible behaviour change; zones persist reliably again — and the card is no longer a bad neighbour to the rest of the dashboard.
+
 ## [3.7.0] - 2026-06-15
 
 > **Stable release.** Graduates the 3.7 line (per-user state → adjustable playback speed → motion compensation → canvas rendering → opengeo NOAA) to stable. Drop-in upgrade from 3.6.x and any 3.7 pre-release — no breaking changes, no config changes required. The headline features are opt-in **smooth motion** (`motion_compensation`) and **adjustable playback speed**; see the release notes for the full line summary. The entries below are what changed since `3.7.0-beta2`.
@@ -813,6 +819,7 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0...HEAD
 [3.7.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta2...v3.7.0
 [3.7.0-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta1...v3.7.0-beta2
 [3.7.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-alpha3...v3.7.0-beta1
