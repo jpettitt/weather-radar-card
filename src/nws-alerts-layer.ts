@@ -9,6 +9,7 @@ import {
 } from './nws-alert-categories';
 import { centroidLngLat, haversineKm } from './geo-utils';
 import { sharedCanvasRenderer } from './shared-canvas-renderer';
+import { readZone, writeZone, sweepZones, defaultZoneKV } from './zone-store';
 import { escapeHtml, truncate } from './string-utils';
 
 // NWS public API — see docs/nws-alerts-feature-design.md.
@@ -24,12 +25,10 @@ const DEFAULT_REFRESH_EMPTY_MS = 5 * 60 * 1000;
 const DEFAULT_FILL_OPACITY = 0.25;
 const DEFAULT_MIN_SEVERITY: Severity = 'Minor';
 
-// Persistent zone-shape cache. NWS forecast zones change at most quarterly
-// (and usually less often), so a 30-day TTL is comfortably conservative.
-// The v1 suffix lets future format changes invalidate old entries by
-// switching to v2 instead of needing a migration path.
-const ZONE_LS_KEY_PREFIX = 'wrc-zone-v1:';
-const ZONE_LS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Persistent zone-shape cache lives in IndexedDB — see src/zone-store.ts
+// for the format, compression, bounds, and the rationale for IndexedDB
+// over localStorage (the full ~8,400-zone set is ~170 MB raw, far past
+// localStorage's shared ~5 MB cap).
 
 // Anchor link to the NWS Watches & Warnings section of docs/overlays.md
 // on GitHub. Surfaced after the popup's life-safety disclaimer so users
@@ -112,9 +111,10 @@ export class NwsAlertsLayer {
   }
 
   start(): void {
-    // Prune expired/corrupt persistent zone entries once per layer
-    // start so the wrc-zone-v1: keyspace can't grow to the quota.
-    sweepExpiredZonesFromLocalStorage();
+    // Prune expired/over-cap IndexedDB zones and purge the legacy
+    // localStorage caches once per layer start. Fire-and-forget — the
+    // sweep never blocks rendering and its failures are swallowed.
+    void sweepZones(defaultZoneKV(), Date.now());
     void this._fetch();
   }
 
@@ -253,7 +253,7 @@ export class NwsAlertsLayer {
     this._zoneAbortCtrl = ctrl;
 
     // _fetchZone self-registers in _zoneFetches as its first action so the
-    // entry exists before any sync return path (e.g. localStorage hit) can
+    // entry exists before any sync return path (e.g. a persistent-cache hit) can
     // hit the matching `finally { delete }`. We just collect the promises
     // here for the Promise.all join.
     const promises = Array.from(needed, (url) => this._fetchZone(url, ctrl.signal));
@@ -269,7 +269,7 @@ export class NwsAlertsLayer {
 
   private async _fetchZone(url: string, signal: AbortSignal): Promise<void> {
     // Self-register so concurrent callers dedupe. Registration must happen
-    // BEFORE the localStorage early-return path so the matching `finally
+    // BEFORE the persistent-cache early-return path so the matching `finally
     // { delete }` always pairs with a real entry, never a stale one. If
     // we're already in flight for this URL, await the existing promise
     // instead of starting a new request.
@@ -279,11 +279,11 @@ export class NwsAlertsLayer {
     const outer = new Promise<void>((r) => { resolveOuter = r; });
     this._zoneFetches.set(url, outer);
     try {
-      // localStorage hit short-circuits the network request — saves a
+      // Persistent-cache (IndexedDB) hit short-circuits the network request — saves a
       // round-trip per zone for users who've previously viewed alerts in
       // the same area. First session pays the network cost; subsequent
       // sessions read from disk.
-      const cached = readZoneFromLocalStorage(url);
+      const cached = await readZone(defaultZoneKV(), url, Date.now());
       if (cached) {
         this._zoneCache.set(url, cached);
         return;
@@ -301,7 +301,7 @@ export class NwsAlertsLayer {
       // administrative entries with no shape). Cache only real geometries.
       if (geom && (geom.type === 'Polygon' || geom.type === 'MultiPolygon')) {
         this._zoneCache.set(url, geom);
-        writeZoneToLocalStorage(url, geom);
+        await writeZone(defaultZoneKV(), url, geom, Date.now());
       }
     } catch (err) {
       // Deliberate cancellation — alert list was replaced; new
@@ -539,78 +539,6 @@ export class NwsAlertsLayer {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-// localStorage helpers for the persistent zone cache. Both functions are
-// best-effort — any storage error (quota, disabled, corrupt entry) is
-// swallowed silently so the layer still works with just the in-memory
-// cache. Keying is by zone URL with a versioned prefix; a future cache
-// format change can use ZONE_LS_KEY_PREFIX = 'wrc-zone-v2:' and old
-// entries become invisible without needing a migration.
-function readZoneFromLocalStorage(url: string): GeoJSON.Geometry | null {
-  try {
-    const raw = localStorage.getItem(ZONE_LS_KEY_PREFIX + url);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { geometry: GeoJSON.Geometry; ts: number };
-    if (Date.now() - parsed.ts > ZONE_LS_TTL_MS) {
-      // TTL expired — drop and treat as a miss so we re-fetch fresh data.
-      localStorage.removeItem(ZONE_LS_KEY_PREFIX + url);
-      return null;
-    }
-    return parsed.geometry;
-  } catch {
-    return null;
-  }
-}
-
-function writeZoneToLocalStorage(url: string, geometry: GeoJSON.Geometry): void {
-  try {
-    localStorage.setItem(
-      ZONE_LS_KEY_PREFIX + url,
-      JSON.stringify({ geometry, ts: Date.now() }),
-    );
-  } catch {
-    // Quota exceeded or storage disabled. Swallow — the in-memory cache
-    // still works for this session, the persistent cache is a bonus.
-  }
-}
-
-/**
- * One-time sweep of expired zone entries. TTL expiry was previously only
- * enforced inside readZoneFromLocalStorage for the specific zone being
- * re-read — zones cached for areas the user never revisits persisted
- * forever, and with ~30-day national alert churn the keyspace grew until
- * the quota was hit, at which point writeZoneToLocalStorage silently
- * failed and the persistent cache quietly stopped working for NEW zones.
- * Called once from start(); cost is proportional to the number of cached
- * zones (typically tens).
- *
- * Exported for tests. Returns the number of entries removed.
- */
-export function sweepExpiredZonesFromLocalStorage(): number {
-  let removed = 0;
-  try {
-    const stale: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith(ZONE_LS_KEY_PREFIX)) continue;
-      try {
-        const parsed = JSON.parse(localStorage.getItem(key) ?? '') as { ts?: number };
-        if (typeof parsed.ts !== 'number' || Date.now() - parsed.ts > ZONE_LS_TTL_MS) {
-          stale.push(key);
-        }
-      } catch {
-        stale.push(key);   // corrupt entry — remove it too
-      }
-    }
-    for (const key of stale) {
-      localStorage.removeItem(key);
-      removed++;
-    }
-  } catch {
-    // Storage disabled — nothing to sweep.
-  }
-  return removed;
-}
-
 function featureKey(f: GeoJSON.Feature): string {
   // NWS gives every alert a unique URL as feature.id. Always present in
   // practice; fall back to properties.id (a urn:oid:...) just in case.
@@ -767,8 +695,4 @@ export {
   relativeLuminance,
   formatDateTime,
   buildPopupHtml,
-  readZoneFromLocalStorage,
-  writeZoneToLocalStorage,
-  ZONE_LS_KEY_PREFIX,
-  ZONE_LS_TTL_MS,
 };
