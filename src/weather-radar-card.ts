@@ -102,6 +102,7 @@ import { NwsAlertsLayer } from './nws-alerts-layer';
 import { LightningLayer } from './lightning-layer';
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { getRegionWarnings } from './region-warning';
+import { resolveCardLayout, isValidCssSize } from './card-layout';
 import {
   PROGRESS_BAR_TRACK_HEIGHT,
   progressBarFrameIndex,
@@ -235,13 +236,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   }
 
   private _validateCssSize(value: string): boolean {
-    return /^\d+(\.\d+)?(px|%|em|rem|vh|vw)$/.test(value);
-  }
-
-  private _calculateHeight(): string {
-    const cfg = this._config;
-    if (cfg.height && this._validateCssSize(cfg.height)) return cfg.height;
-    return '400px';
+    return isValidCssSize(value);
   }
 
   /**
@@ -635,7 +630,13 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     //                div is flex:1 so it absorbs whatever vertical room
     //                is left after the fixed-height chrome (color bar,
     //                progress bar, bottom bar).
-    const isAspectMode = !!this._config.square_map && !this._config.height;
+    // A fixed-row sections-grid cell (grid_options.rows is a number) pins the
+    // card height: HA owns the cell's pixel height, so we fill it (no
+    // min-height) and ignore both `height:` and `square_map` — applying them
+    // would only make the card overflow or underflow the cell. resolveCardLayout
+    // encodes that precedence; see card-layout.ts.
+    const layout = resolveCardLayout(this._config);
+    const isAspectMode = layout.mode === 'aspect';
     const cardClasses = [
       isMapDark ? 'map-dark' : '',
       isAspectMode ? 'aspect-mode' : 'flex-mode',
@@ -644,8 +645,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (this._config.width && this._validateCssSize(this._config.width)) {
       cardStyles.push(`width:${this._config.width}`);
     }
-    if (!isAspectMode) {
-      cardStyles.push(`min-height:${this._calculateHeight()}`);
+    if (layout.minHeight) {
+      cardStyles.push(`min-height:${layout.minHeight}`);
     }
     return html`
       <ha-card class=${cardClasses} style=${cardStyles.join(';')}>

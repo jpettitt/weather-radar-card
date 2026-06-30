@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Card now fills a fixed-height sections-grid cell instead of overflowing it.** When a card was placed in a sections-view grid cell with a fixed row count (rows ≠ `auto`), the configured `height:` (or the 400 px default) was still applied as a `min-height`, so a card taller than the cell overflowed it and the resize handle appeared to do nothing. In a fixed-row cell the grid now owns the height: the card fills the cell and ignores both `height:` and `square_map` (matching the editor, which already greys those out under that constraint). `height:`/`square_map` are unchanged in masonry/panel views and in `auto`-row cells.
+
 ## [3.7.1] - 2026-06-29
 
 > **Stable release.** Graduates the 3.7.1-beta1 bug fix to stable — unchanged since the beta. Drop-in upgrade from 3.7.0; no config or behaviour changes.

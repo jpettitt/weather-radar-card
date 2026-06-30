@@ -123,6 +123,15 @@ show_progress_bar: true
 progress_bar_touch_height: 44
 ```
 
+## Sizing
+
+How tall the card renders depends on where it lives:
+
+- **Masonry / panel views, or a sections cell with `rows: auto`** — the card uses the `height:` config option (default `400px`). This is the normal case.
+- **A sections-grid cell with a fixed row count** (you've dragged the resize handle, or `rows:` is a number) — **the grid cell owns the height.** The card fills the cell and the `height:` option is ignored; resize it with the cell's drag handle instead. The editor disables the height box in this case so it's clear which control is in charge.
+
+In other words: `rows: auto` → `height:` applies; `rows: <number>` → the cell's height applies. See [sections-grid behaviour](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#sections-grid-support) for details.
+
 ## Changelog
 
 See [CHANGELOG.md](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md) for the complete history of changes.

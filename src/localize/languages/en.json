@@ -190,6 +190,7 @@
       "height": "Height",
       "width": "Width",
       "height_helper": "e.g. 400px, 50vh",
+      "height_section_locked_helper": "Controlled by the sections-grid cell — drag the card's resize handle to change its height.",
       "width_helper": "e.g. 100%, 500px",
       "radar_opacity": "Radar opacity",
       "radar_opacity_helper": "1.0 = fully opaque (default), lower = more transparent over the basemap"
