@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.2-beta1] - 2026-06-30
+
+> **Beta pre-release.** A targeted layout fix for cards in a fixed-height sections-grid cell. Drop-in upgrade from 3.7.1 — no config changes.
+
 ### Fixed
 
 - **Card now fills a fixed-height sections-grid cell instead of overflowing it.** When a card was placed in a sections-view grid cell with a fixed row count (rows ≠ `auto`), the configured `height:` (or the 400 px default) was still applied as a `min-height`, so a card taller than the cell overflowed it and the resize handle appeared to do nothing. In a fixed-row cell the grid now owns the height: the card fills the cell and ignores both `height:` and `square_map` (matching the editor, which already greys those out under that constraint). `height:`/`square_map` are unchanged in masonry/panel views and in `auto`-row cells.
@@ -831,7 +835,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.1...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...HEAD
+[3.7.2-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.1...v3.7.2-beta1
 [3.7.1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.1-beta1...v3.7.1
 [3.7.1-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0...v3.7.1-beta1
 [3.7.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0-beta2...v3.7.0
