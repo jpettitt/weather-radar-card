@@ -12,18 +12,24 @@ import json from '@rollup/plugin-json';
 import { string } from 'rollup-plugin-string';
 
 const dev = process.env.ROLLUP_WATCH;
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
-// Substitute __BUILD_TIMESTAMP__ in the bundled output with the actual build
-// time. Surfaced in the card's console signon so users can confirm a hard
-// refresh actually loaded the new bundle vs a cached older one. Runs at the
-// renderChunk stage so the substitution happens after TS / babel and before
-// terser, regardless of mangling.
+// Substitute __BUILD_TIMESTAMP__ / __CARD_VERSION__ in the bundled output —
+// the build time and package.json's version, respectively. Both surfaced in
+// the card's console signon: the timestamp so users can confirm a hard
+// refresh actually loaded the new bundle vs a cached older one, the version
+// so it can't drift from package.json (a hardcoded literal here stayed
+// stuck at 3.7.0 through four later releases). Runs at the renderChunk
+// stage so substitution happens after TS / babel and before terser,
+// regardless of mangling.
 const buildStampPlugin = () => {
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
   return {
     name: 'build-stamp',
     renderChunk(code) {
-      return code.replace(/__BUILD_TIMESTAMP__/g, stamp);
+      return code
+        .replace(/__BUILD_TIMESTAMP__/g, stamp)
+        .replace(/__CARD_VERSION__/g, pkg.version);
     },
   };
 };
