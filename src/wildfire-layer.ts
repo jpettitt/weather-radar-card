@@ -7,6 +7,9 @@ import { localize } from './localize/localize';
 import { centroidLngLat, geometryLngLatBounds, haversineKm } from './geo-utils';
 import { sharedCanvasRenderer } from './shared-canvas-renderer';
 import { escapeHtml, slugify } from './string-utils';
+import { mapsEqual } from './map-utils';
+
+const decisionsEqual = mapsEqual<string, 'polygon' | 'icon'>;
 
 // NIFC WFIGS Current Interagency Fire Perimeters — see docs/wildfire-feature-design.md.
 // outFields trimmed to just what the popup renders. geometryPrecision=4 keeps
@@ -446,15 +449,6 @@ function featureKey(f: GeoJSON.Feature): string {
   if (f.id != null) return String(f.id);
   const p = f.properties as WildfireProps | null;
   return `${p?.poly_IncidentName ?? ''}|${p?.attr_FireDiscoveryDateTime ?? ''}`;
-}
-
-function decisionsEqual(
-  a: Map<string, 'polygon' | 'icon'>,
-  b: Map<string, 'polygon' | 'icon'>,
-): boolean {
-  if (a.size !== b.size) return false;
-  for (const [k, v] of a) if (b.get(k) !== v) return false;
-  return true;
 }
 
 function buildPopupHtml(

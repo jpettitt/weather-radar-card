@@ -103,6 +103,7 @@ import { LightningLayer } from './lightning-layer';
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { getRegionWarnings } from './region-warning';
 import { resolveCardLayout, isValidCssSize } from './card-layout';
+import { isOnlyKeysChanged } from './config-diff';
 import {
   PROGRESS_BAR_TRACK_HEIGHT,
   progressBarFrameIndex,
@@ -133,6 +134,13 @@ console.info(
 // warning (issue #191). Module-level so it survives card teardown/rebuild
 // and is shared across every card instance — see _migrateConfig.
 let frameCountOverdeterminedWarned = false;
+
+// Allow-lists for the setConfig() fast-path checks below — each names the
+// only keys expected to change for that narrow update, so an unrelated
+// config edit correctly falls through to a full rebuild instead.
+const VIEW_BACKPROP_KEYS = new Set(['center_latitude', 'center_longitude', 'zoom_level']);
+const PLAYBACK_SPEED_KEYS = new Set(['playback_speed']);
+const IDENTITY_KEYS = new Set(['_layer_state_id']);
 
 @customElement('weather-radar-card')
 export class WeatherRadarCard extends LitElement implements LovelaceCard {
@@ -277,7 +285,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // back-propagated map view (center_latitude / center_longitude /
     // zoom_level): the user is mid-pan/zoom and a teardown would interrupt
     // them. Ignore those keys for the diff.
-    if (this._map && oldConfig && this._isOnlyViewBackpropChange(oldConfig, this._config)) {
+    if (this._map && oldConfig && isOnlyKeysChanged(oldConfig, this._config, VIEW_BACKPROP_KEYS)) {
       // Direct YAML edits of lat/lon/zoom still need to move the map. Skip
       // when the live view already matches (the back-prop case), otherwise
       // setView would re-fire moveend and bounce another config update.
@@ -291,7 +299,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // into the player and update the toolbar's button label. Users
     // with an explicit override keep it; users without one pick up the
     // admin's new default immediately.
-    if (this._map && oldConfig && this._isOnlyPlaybackSpeedChange(oldConfig, this._config)) {
+    if (this._map && oldConfig && isOnlyKeysChanged(oldConfig, this._config, PLAYBACK_SPEED_KEYS)) {
       const speed = loadPlaybackSpeed(this._viewerState, this._config.playback_speed);
       this._player?.setSpeedMultiplier(speed);
       this._toolbar?.setSpeed(speed);
@@ -303,7 +311,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // nonce (activating the store) and hydrate so a persisted override
     // loads now that the storage key is stable — without tearing the
     // map down again. Nothing else visible changes.
-    if (this._map && oldConfig && this._isOnlyIdentityChange(oldConfig, this._config)) {
+    if (this._map && oldConfig && isOnlyKeysChanged(oldConfig, this._config, IDENTITY_KEYS)) {
       this._viewerState?.ensureIdentity();
       void this._hydrateViewerState();
       return;
@@ -362,32 +370,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     });
   }
 
-  private _isOnlyIdentityChange(a: WeatherRadarCardConfig, b: WeatherRadarCardConfig): boolean {
-    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
-    let changed = false;
-    for (const k of keys) {
-      const av = JSON.stringify((a as Record<string, unknown>)[k]);
-      const bv = JSON.stringify((b as Record<string, unknown>)[k]);
-      if (av === bv) continue;
-      if (k !== '_layer_state_id') return false;
-      changed = true;
-    }
-    return changed;
-  }
-
-  private _isOnlyPlaybackSpeedChange(a: WeatherRadarCardConfig, b: WeatherRadarCardConfig): boolean {
-    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
-    let changed = false;
-    for (const k of keys) {
-      const av = JSON.stringify((a as Record<string, unknown>)[k]);
-      const bv = JSON.stringify((b as Record<string, unknown>)[k]);
-      if (av === bv) continue;
-      if (k !== 'playback_speed') return false;
-      changed = true;
-    }
-    return changed;
-  }
-
   private _syncMapViewIfNeeded(): void {
     if (!this._map || !this._config) return;
     const isMobile = isMobileDevice();
@@ -405,20 +387,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       && r4(current.lng) === r4(target.lon)
       && this._map.getZoom() === targetZoom) return;
     this._map.setView([target.lat, target.lon], targetZoom);
-  }
-
-  private _isOnlyViewBackpropChange(a: WeatherRadarCardConfig, b: WeatherRadarCardConfig): boolean {
-    const VIEW_KEYS = new Set(['center_latitude', 'center_longitude', 'zoom_level']);
-    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
-    let changed = false;
-    for (const k of keys) {
-      const av = JSON.stringify((a as Record<string, unknown>)[k]);
-      const bv = JSON.stringify((b as Record<string, unknown>)[k]);
-      if (av === bv) continue;
-      if (!VIEW_KEYS.has(k)) return false;
-      changed = true;
-    }
-    return changed;
   }
 
   private _migrateConfig(config: WeatherRadarCardConfig): WeatherRadarCardConfig {

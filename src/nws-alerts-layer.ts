@@ -11,6 +11,9 @@ import { centroidLngLat, haversineKm } from './geo-utils';
 import { sharedCanvasRenderer } from './shared-canvas-renderer';
 import { readZone, writeZone, sweepZones, defaultZoneKV } from './zone-store';
 import { escapeHtml, truncate } from './string-utils';
+import { mapsEqual } from './map-utils';
+
+const decisionsEqual = mapsEqual<string, string>;
 
 // NWS public API — see docs/nws-alerts-feature-design.md.
 const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual';
@@ -607,12 +610,6 @@ function paintOrderAscending(a: GeoJSON.Feature, b: GeoJSON.Feature): number {
   const ca = CERTAINTY_RANK[(ap?.certainty ?? 'Unknown') as Certainty] ?? 0;
   const cb = CERTAINTY_RANK[(bp?.certainty ?? 'Unknown') as Certainty] ?? 0;
   return ca - cb;
-}
-
-function decisionsEqual(a: Map<string, string>, b: Map<string, string>): boolean {
-  if (a.size !== b.size) return false;
-  for (const [k, v] of a) if (b.get(k) !== v) return false;
-  return true;
 }
 
 function buildPopupHtml(props: AlertProps | null): string {
