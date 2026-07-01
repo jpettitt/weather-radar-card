@@ -305,7 +305,6 @@ export class ViewerState {
       } catch (err) {
         // Listener errors are isolated — one bad consumer shouldn't
         // poison the others.
-        // eslint-disable-next-line no-console
         console.error('[weather-radar-card] viewer-state listener threw', err);
       }
     }
@@ -385,7 +384,6 @@ export class ViewerState {
   private _logErrorOnce(op: string, err: unknown): void {
     if (this._errorLogged) return;
     this._errorLogged = true;
-    // eslint-disable-next-line no-console
     console.warn(`[weather-radar-card] viewer-state ${op} failed; in-memory only:`, err);
   }
 }

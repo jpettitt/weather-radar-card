@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as L from 'leaflet';
 import { HomeAssistant } from 'custom-card-helpers';
 import { Marker } from './types';
