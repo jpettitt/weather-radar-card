@@ -8,10 +8,10 @@ Implementation: [src/lightning-layer.ts](../src/lightning-layer.ts) + [src/light
 
 **Deviations from this design:**
 
-- **Visual treatment swapped through three iterations during smoke-testing** before settling on the current bolt-then-+ shape. The original spec called for a constant `mdi:lightning-bolt-outline` icon ageing through colour. Storm testing revealed two problems: (1) yellow strikes vanished against yellow precipitation cells in the radar layer, and (2) at low zoom many overlapping strikes piled their black outlines into a "black blob" that obscured the colours. Final design: bolt + pulse for the first 30 s (the "happening now!" indicator), then a chunky `mdi:plus-thick` cross. The + is split into two markers on different Leaflet panes — outline on z-499, fill on z-500 — so stacked outlines pile harmlessly underneath while the topmost colour fill stays visible.
+- **Visual treatment swapped through three iterations during smoke-testing** before settling on the current bolt-then-+ shape. The original spec called for a constant `mdi:lightning-bolt-outline` icon ageing through colour. Storm testing revealed two problems: (1) yellow strikes vanished against yellow precipitation cells in the radar layer, and (2) at low zoom many overlapping strikes piled their black outlines into a "black blob" that obscured the colours. Final design: bolt + pulse for the first 30 s (the "happening now!" indicator), then a chunky `mdi:plus-thick` cross.
+- **Rendering rewritten from DOM markers to a single canvas** ([src/lightning-layer.ts](../src/lightning-layer.ts)). The two-DOM-marker-per-strike approach described below (outline pane z-499 / fill pane z-500) worked visually but didn't scale: during an active storm with a long max-age window that's hundreds-to-thousands of Leaflet markers, which froze pan/zoom and stalled editor-open for seconds (two simultaneous full builds — the re-attached card plus the preview). It was replaced with one canvas element on a single pane, repainted per change: a two-pass paint (all outlines, then all fills, newest last) reproduces the same "stacked outlines merge harmlessly underneath" visual without pane juggling, click hit-testing is DIY (most-recent-strike-within-tolerance wins), and the pulse is a short rAF-driven scale animation drawn into the canvas instead of a CSS keyframe on a divIcon. See the file-header comment in lightning-layer.ts for the full rationale — this is the general per-datapoint-DOM-ceiling fix tracked in docs/todo.md, applied here first.
 - **Card-side max-age cap** added (`lightning_max_age_minutes`, default 30). The integration's default keeps strikes for 120 min, which on busy days fills the map with stale data; 30 min is a more meaningful "what's happening now" window. The cap is purely a display filter — does NOT change the integration's setting; the effective cap is `min(card_cap, integration_max)`. Editor exposes the field with a helper line making the boundary clear.
-- **Dedicated Leaflet pane** at z-index 500 (with the OUTLINE pane at 499) — sits between Leaflet's overlayPane (400) and markerPane (600). Lightning is visible over radar / wildfire / NWS-alert polygons but the home / person markers stay on top of any strike at the same point.
-- **Pulse animation lives on the inner SVG, not the divIcon container.** Smoke testing exposed that putting the pulse class on the outer container (which Leaflet owns for `transform: translate3d(...)` positioning) made every flashing strike visually snap to the lightning pane's origin (≈ map centre / home marker) for the duration of the keyframe, because the keyframe's `transform: scale(2)` clobbered Leaflet's translate. Moving the class to the inner SVG keeps Leaflet's positioning intact.
+- **Single Leaflet pane** at z-index 500, between Leaflet's overlayPane (400) and markerPane (600) — see "Z-ordering" below. (The two-pane outline/fill split from the original DOM-marker design no longer applies now that painting is two-pass-on-one-canvas rather than two-panes-of-markers.)
 
 The rest of the design — Blitzortung detection via `hass.config.components`, six-stop white→dark red gradient, no card-side `lightning_radius_km` (inherits the integration's filter), 30-second age refresh, popup chrome with distance / bearing / relative time + Blitzortung deep link, no region banner — landed as written.
 
@@ -71,11 +71,13 @@ Same pattern as `square_map`'s disabled-when-height-pinned UX. Discoverable, hon
 
 ## Visual model
 
+> Note: this section documents the shape/colour model as originally designed. The colours, sizes, and age-mapping described below are unchanged in the shipped card; only the rendering mechanism — divIcon markers vs. canvas paint calls — differs from what's written here. See "Deviations from this design" above.
+
 A small lightning-bolt outline at each strike location, with the **interior coloured by age** (white when fresh, fading through yellow / orange to red over the integration's max-age window). Mirrors the colour language used by Blitzortung's own [web map](https://www.blitzortung.org/) so users coming from there feel at home.
 
 ### Icon
 
-`mdi:lightning-bolt-outline` rendered as inline SVG inside a Leaflet `divIcon`, identical to how the wildfire layer renders fire icons:
+`mdi:lightning-bolt-outline`, originally spec'd as inline SVG inside a Leaflet `divIcon` (identical to how the wildfire layer renders fire icons); shipped as the same path data painted directly onto the lightning canvas instead — see the Deviations note above.
 
 ```html
 <svg viewBox="0 0 24 24" width="14" height="14" style="display:block">
@@ -220,7 +222,7 @@ if (cfg.show_lightning === true && isBlitzortungLoaded(this.hass)) {
 
 Above radar tiles, above wildfire perimeters, **above** NWS alert polygons (so a lightning strike inside a thunderstorm warning stays visible). Below markers, below popups.
 
-Concrete: lightning markers go on a Leaflet `pane` with `z-index: 650` (between Leaflet's default `overlayPane` at 400 and `markerPane` at 600 — actually no, we want it above markers? Decision deferred to implementation; default markerPane is probably fine).
+Resolved as shipped: the lightning canvas sits on its own pane at `z-index: 500`, between Leaflet's default `overlayPane` (400) and `markerPane` (600) — above radar/wildfire/alert overlays as intended, below home/person markers and popups.
 
 ### Detection helper
 
