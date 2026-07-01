@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.2-beta2] - 2026-07-01
+
+> **Beta pre-release.** Fixes the console signon banner showing a stale version number. Drop-in upgrade from 3.7.2-beta1 — no config changes.
+
+### Fixed
+
+- **Console signon banner was stuck reporting version 3.7.0** for four releases (3.7.0-beta2, 3.7.1-beta1, 3.7.1, 3.7.2-beta1), since the version was a hardcoded literal never wired to `package.json`. It's now substituted at build time from `package.json`'s version, the same way the existing build-timestamp is — so it can't drift again.
+
 ## [3.7.2-beta1] - 2026-06-30
 
 > **Beta pre-release.** A targeted layout fix for cards in a fixed-height sections-grid cell. Drop-in upgrade from 3.7.1 — no config changes.
@@ -835,7 +843,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta2...HEAD
+[3.7.2-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...v3.7.2-beta2
 [3.7.2-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.1...v3.7.2-beta1
 [3.7.1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.1-beta1...v3.7.1
 [3.7.1-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0...v3.7.1-beta1
