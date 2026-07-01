@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as L from 'leaflet';
 import { windGridFetcher, sampleWindGridBilinear, type WindGrid } from './wind-grid-fetcher';
 import { DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';

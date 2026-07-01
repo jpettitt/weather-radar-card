@@ -1479,7 +1479,6 @@ export class RadarPlayer {
         el.style.transform = motion ? `translate(${-motion.dx}px, ${-motion.dy}px)` : '';
         // Forced reflow before re-assigning — without this the browser
         // coalesces the two opacity writes and skips the transition.
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         void el.offsetHeight;
         el.style.transition = transition + motionTransition;
         el.style.opacity = '1';
@@ -1955,7 +1954,6 @@ export class RadarPlayer {
         // keeps working), but logging the cause means a real defect —
         // e.g. a TypeError from a future parse/snap refactor — surfaces
         // instead of masquerading silently as "listing unavailable".
-        // eslint-disable-next-line no-console
         console.warn('[weather-radar-card] NOAA frame listing fetch/parse failed; falling back to legacy eventdriven grid:', e);
         // _noaaLegacyMode is set unconditionally below — both this caught
         // path and the empty-listing fall-through land there.

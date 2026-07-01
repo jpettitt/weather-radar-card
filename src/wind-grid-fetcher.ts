@@ -339,7 +339,6 @@ export async function fetchWindGrid(opts: FetchWindGridOptions): Promise<WindGri
   const source = resolveSourceForBbox(opts);
   if (source !== configured && !_fallbackLogged) {
     _fallbackLogged = true;
-    // eslint-disable-next-line no-console
     console.info(
       `[weather-radar-card] Wind viewport outside NDFD coverage — auto-falling back to ${source} for global fill. The configured wind_source '${configured}' resumes when the view returns to CONUS / AK / HI / PR.`,
     );
