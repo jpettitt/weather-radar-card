@@ -2311,9 +2311,15 @@ export class RadarPlayer {
             // resets every other layer. That's the ghost trail of stacked
             // frames visible while later frames are still loading.
             if (this._prev1Slot >= 0) this._prev1Slot++;
-          } else {
+          } else if (this.run) {
             // Two frames ready: start the loop at the newest slot.
             this._startLoop(this._loadedSlots.length - 1);
+          } else {
+            // start_paused: two frames ready but run is false — park on
+            // the newest slot without starting the animation loop. The
+            // newest frame is already visible from the newestShown block
+            // above; periodic _updateRadar will refresh it in place.
+            this._currentSlot = this._loadedSlots.length - 1;
           }
         }
       } else {

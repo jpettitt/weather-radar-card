@@ -17,6 +17,9 @@ export interface RadarToolbarOptions {
   onPlay?: () => void;
   onSkipBack?: () => void;
   onSkipNext?: () => void;
+  /** Initial playing state. When false the toolbar starts with a play
+   *  icon instead of a pause icon. Default true (playing). */
+  initialPlaying?: boolean;
   /** Initial playback speed multiplier. The card owns persistence (via
    * ViewerState); the toolbar just renders and cycles the value. */
   initialSpeed?: number;
@@ -39,6 +42,7 @@ export class RadarToolbar extends L.Control {
   constructor(opts: RadarToolbarOptions) {
     super({ position: 'bottomright' });
     this._opts = opts;
+    this._playing = opts.initialPlaying !== false;
   }
 
   onAdd(_map: L.Map): HTMLElement {
@@ -52,7 +56,7 @@ export class RadarToolbar extends L.Control {
     if (this._opts.showPlayback) {
       this._addBtn(bar, `${ICON_BASE}skip-back.png`, 'Previous frame', () => this._opts.onSkipBack?.());
 
-      const playImg = this._addBtn(bar, `${ICON_BASE}pause.png`, 'Play / Pause', () => {
+      const playImg = this._addBtn(bar, `${ICON_BASE}${this._playing ? 'pause' : 'play'}.png`, 'Play / Pause', () => {
         this._playing = !this._playing;
         playImg.src = `${ICON_BASE}${this._playing ? 'pause' : 'play'}.png`;
         this._opts.onPlay?.();
