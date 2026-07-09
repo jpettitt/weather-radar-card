@@ -64,7 +64,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "ha:init": "mkdir -p .dev/ha-config && cp -n .dev/configuration.yaml.example .dev/ha-config/configuration.yaml || true",
+    "ha:init": "mkdir -p .dev/ha-config/.storage && cp -n .dev/configuration.yaml.example .dev/ha-config/configuration.yaml || true && cp -n .dev/lovelace_resources.json .dev/ha-config/.storage/lovelace_resources || true",
     "ha:up": "npm run ha:init && docker compose up -d && echo 'HA starting at http://localhost:8123 (first boot may take a minute)'",
     "ha:down": "docker compose down",
     "ha:logs": "docker compose logs -f ha",
