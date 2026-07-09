@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.2] - 2026-07-01
+
+> **Stable release.** Graduates the 3.7.2 line (sections-grid layout fill, console version-banner fix, hazard-popup view restore) to stable. Drop-in upgrade from 3.7.1 — no config changes. The entries below are what changed since `3.7.2-beta1`.
+
 ### Changed
 
 - **Map view now restores after closing a hazard-layer popup (lightning/wildfire/NWS alerts).** Popups near the map edge still auto-pan the view to stay fully visible — Leaflet has no way to reposition a popup within the viewport instead — but the view now returns to where it was once you close the popup, instead of leaving the map shifted. Switching directly between popups only restores once, at the end.
+
+### Fixed
+
+- **Console signon banner was stuck reporting version 3.7.0** for four releases (3.7.0-beta2, 3.7.1-beta1, 3.7.1, 3.7.2-beta1), since the version was a hardcoded literal never wired to `package.json`. It's now substituted at build time from `package.json`'s version, the same way the existing build-timestamp is — so it can't drift again.
 
 ## [3.7.2-beta2] - 2026-07-01
 
@@ -847,8 +855,9 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta2...HEAD
-[3.7.2-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...v3.7.2-beta2
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2...HEAD
+[3.7.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...v3.7.2
+[3.7.2-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...23d64b4
 [3.7.2-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.1...v3.7.2-beta1
 [3.7.1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.1-beta1...v3.7.1
 [3.7.1-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.0...v3.7.1-beta1
