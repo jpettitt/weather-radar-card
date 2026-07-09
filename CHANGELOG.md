@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Map view now restores after closing a hazard-layer popup (lightning/wildfire/NWS alerts).** Popups near the map edge still auto-pan the view to stay fully visible — Leaflet has no way to reposition a popup within the viewport instead — but the view now returns to where it was once you close the popup, instead of leaving the map shifted. Switching directly between popups only restores once, at the end.
+
 ## [3.7.2-beta2] - 2026-07-01
 
 > **Beta pre-release.** Fixes the console signon banner showing a stale version number. Drop-in upgrade from 3.7.2-beta1 — no config changes.

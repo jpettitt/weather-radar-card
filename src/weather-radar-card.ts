@@ -103,6 +103,7 @@ import { LightningLayer } from './lightning-layer';
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { getRegionWarnings } from './region-warning';
 import { resolveCardLayout, isValidCssSize } from './card-layout';
+import { PopupPanRestore } from './popup-pan-restore';
 import { isOnlyKeysChanged } from './config-diff';
 import {
   PROGRESS_BAR_TRACK_HEIGHT,
@@ -200,6 +201,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _wildfireLayer: WildfireLayer | null = null;
   private _alertsLayer: NwsAlertsLayer | null = null;
   private _lightningLayer: LightningLayer | null = null;
+  private _popupPanRestore = new PopupPanRestore<L.LatLng>();
 
   // True while the user is actively editing this card via HA's edit dialog.
   // Detected via window-level events from the editor element's lifecycle —
@@ -708,6 +710,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._viewerState?.ensureIdentity();
     this._setupToolbar();
     this._setupNavListeners();
+    this._setupPopupPanRestore();
     this._setupDoubleTapAction();
     void this._hydrateViewerState();
     this._setupVisibilityObserver();
@@ -1284,6 +1287,29 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         this._pushCenterToEditor();
       }
       this._userMoveInProgress = false;
+    });
+  }
+
+  // Hazard-layer popups (lightning/wildfire/NWS-alerts) still use Leaflet's
+  // autoPan to keep an off-edge popup fully visible — the popup itself has
+  // no "reposition instead of panning" mode, and the alternative (shifting
+  // the popup's own on-screen position) decouples its pointer tip from the
+  // feature it's anchored to. Instead: let autoPan move the view as before,
+  // then put the view back once the user is done with the popup, so
+  // browsing hazard popups near the map edge doesn't leave it shifted.
+  // Decision logic (when to restore vs. defer to a popup switch) lives in
+  // PopupPanRestore — see popup-pan-restore.ts for the full rationale.
+  private _setupPopupPanRestore(): void {
+    const map = this._map;
+    if (!map) return;
+    map.on('popupopen', () => this._popupPanRestore.onOpen(() => map.getCenter()));
+    map.on('popupclose', () => {
+      const token = this._popupPanRestore.onClose();
+      setTimeout(() => {
+        const saved = this._popupPanRestore.onCloseSettled(token);
+        if (!saved || this._map !== map) return;   // superseded, or torn down / reinitialised
+        map.panTo(saved);
+      }, 0);
     });
   }
 
