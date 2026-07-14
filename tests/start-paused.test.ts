@@ -64,12 +64,13 @@ function frames(...times: number[]): RadarFrame[] {
 }
 
 function fakeLayer(): any {
+  const container = { style: {} as Record<string, string>, offsetHeight: 0 };
   return {
     addTo: vi.fn(),
     remove: vi.fn(),
     once: vi.fn(),
     on: vi.fn(),
-    getContainer: () => ({ style: {} as Record<string, string>, offsetHeight: 0 }),
+    getContainer: () => container,
     _tileFailed: 0,
   };
 }
@@ -89,6 +90,7 @@ describe('RadarPlayer with start_paused (run = false before init)', () => {
     const p = makePlayer() as any;
     p.run = false;
     p._startLoop = vi.fn();
+    p._showSlot = vi.fn();
 
     p._radarReady = false;
     p._loadedSlots = [1];
@@ -106,12 +108,39 @@ describe('RadarPlayer with start_paused (run = false before init)', () => {
       if (p.run) {
         p._startLoop(p._loadedSlots.length - 1);
       } else {
-        p._currentSlot = p._loadedSlots.length - 1;
+        p._showSlot(p._loadedSlots.length - 1, { snap: true });
       }
     }
 
     expect(p._startLoop).not.toHaveBeenCalled();
-    expect(p._currentSlot).toBe(p._loadedSlots.length - 1);
+    expect(p._showSlot).toHaveBeenCalledWith(p._loadedSlots.length - 1, { snap: true });
+  });
+
+  it('_settleVisibility shows the correct frame after paused start', () => {
+    const p = makePlayer() as any;
+    p.run = false;
+
+    const layers = [fakeLayer(), fakeLayer()];
+    p._radarImage = layers;
+    p._loadedSlots = [0, 1];
+    p._radarPaths = frames(1000, 1600);
+    p._radarTime = [{ date: 'a', time: '1' }, { date: 'a', time: '2' }];
+    p._frameStatuses = ['loaded', 'loaded'];
+    p._frameSnapshot = [null, null];
+    p._frameSnapshotNz = [0, 0];
+    p._frameMotion = [null, null];
+
+    // Route through _showSlot (as the fix does) to set _prev1Slot
+    p._showSlot(1, { snap: true });
+    expect(p._prev1Slot).toBe(1);
+
+    // Now _settleVisibility (called by _stopLoop on pan/tab-switch)
+    // should keep the newest frame visible
+    p._settleVisibility();
+    const newestEl = layers[1].getContainer();
+    const olderEl = layers[0].getContainer();
+    expect(newestEl.style.opacity).toBe('1');
+    expect(olderEl.style.opacity).toBe('0');
   });
 
   it('togglePlay resumes animation from paused start', () => {

@@ -452,6 +452,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           .configValue=${'playback_speed'}
           @value-changed=${this._handleSelectorChanged}
         ></ha-selector>
+        ${getEffectiveTimeRange(config).frameCount > 1 ? html`
         <label>
           <ha-switch
             .checked=${config.start_paused === true}
@@ -461,6 +462,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           <span>${localize('editor.animation.start_paused')}</span>
         </label>
         <div class="section-description">${localize('editor.animation.start_paused_helper')}</div>
+        ` : ''}
         <label>
           <ha-switch
             .checked=${config.viewer_layer_control === true}

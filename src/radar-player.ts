@@ -2316,10 +2316,12 @@ export class RadarPlayer {
             this._startLoop(this._loadedSlots.length - 1);
           } else {
             // start_paused: two frames ready but run is false — park on
-            // the newest slot without starting the animation loop. The
-            // newest frame is already visible from the newestShown block
-            // above; periodic _updateRadar will refresh it in place.
-            this._currentSlot = this._loadedSlots.length - 1;
+            // the newest slot without starting the animation loop.
+            // Route through _showSlot so _prev1Slot is set correctly;
+            // without this, _settleVisibility would flip to a stale
+            // frame if the user pans or switches tabs before the first
+            // periodic refresh.
+            this._showSlot(this._loadedSlots.length - 1, { snap: true });
           }
         }
       } else {
