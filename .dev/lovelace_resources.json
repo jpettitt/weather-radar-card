@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace_resources",
+  "data": {
+    "items": [
+      {
+        "id": "weather_radar_card",
+        "type": "module",
+        "url": "/local/community/weather-radar-card/weather-radar-card.js"
+      }
+    ]
+  }
+}
