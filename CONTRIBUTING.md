@@ -51,9 +51,11 @@ Requires Docker Desktop (or Podman with the Docker compatibility shim).
 npm run ha:up      # first run also creates .dev/ha-config from the example
 # → HA boots at http://localhost:8123 (~1 min on first start)
 # → onboard a throwaway user, then open the default dashboard
-# → the card auto-loads via frontend.extra_module_url; just add a card of
-#   type: custom:weather-radar-card to test it
+# → the card auto-loads as a pre-seeded Lovelace resource; just add a card
+#   of type: custom:weather-radar-card to test it
 ```
+
+> If you have an existing `.dev/ha-config/` from before this resource-based loading was added, run `npm run ha:reset` once to pick it up — `ha:init` only seeds the resource file into a fresh config.
 
 After editing source and running `npm run build`, hard-refresh the browser (Cmd-Shift-R / Ctrl-Shift-F5) — HA serves the rebuilt bundle without restart.
 
