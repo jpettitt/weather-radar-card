@@ -12,7 +12,7 @@ import markerClusterCss from 'leaflet.markercluster/dist/MarkerCluster.css';
 import './editor';
 import { WeatherRadarCardConfig, Marker } from './types';
 import { CARD_VERSION, BUILD_TIMESTAMP, Z_BASEMAP, Z_LABELS } from './const';
-import { getEffectiveTimeRange } from './source-caps';
+import { getEffectiveTimeRange, shouldShowPlayback } from './source-caps';
 import { localize } from './localize/localize';
 import { rainviewerLimiter, noaaLimiter, dwdLimiter } from './rate-limiters';
 import { FetchTileLayer } from './fetch-tile-layer';
@@ -1149,7 +1149,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (!this._map) return;
     const cfg = this._config;
     const showRecenter = cfg.show_recenter === true && cfg.static_map !== true;
-    const showPlayback = cfg.show_playback === true;
+    const showPlayback = shouldShowPlayback(cfg);
     if (!showRecenter && !showPlayback) return;
     // Restore the user's previous playback speed (if any) before the
     // toolbar mounts so the button label and the player's effective

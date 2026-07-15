@@ -163,3 +163,14 @@ export function getEffectiveTimeRange(cfg: WeatherRadarCardConfig): EffectiveTim
 
   return { pastMin, forecastMin, strideMin, frameCount };
 }
+
+/**
+ * True when the playback toolbar (play/pause/skip) would have anything to
+ * control. A single static frame (frameCount === 1) never starts the
+ * animation loop, so the buttons would be dead controls — shared by the
+ * editor (hides the show_playback toggle) and the card (suppresses the
+ * toolbar group even for hand-written YAML the editor gate doesn't reach).
+ */
+export function shouldShowPlayback(cfg: WeatherRadarCardConfig): boolean {
+  return cfg.show_playback === true && getEffectiveTimeRange(cfg).frameCount > 1;
+}
