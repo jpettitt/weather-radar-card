@@ -2312,7 +2312,11 @@ export class RadarPlayer {
             // frames visible while later frames are still loading.
             if (this._prev1Slot >= 0) this._prev1Slot++;
           } else {
-            // Two frames ready: start the loop at the newest slot.
+            // Two frames ready: show the newest and start the loop.
+            // _startLoop sets _currentSlot, calls _showSlot (which sets
+            // _prev1Slot), then _scheduleNext — which returns immediately
+            // when !this.run, so this works for both playing and paused
+            // (start_paused) states without a separate branch.
             this._startLoop(this._loadedSlots.length - 1);
           }
         }

@@ -741,6 +741,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       noaaLimiter,
       dwdLimiter,
     });
+    if (cfg.start_paused === true) this._player.run = false;
     this._player.toolbar = this._toolbar;
     // frame count is derived from past_minutes / forecast_minutes / stride
     // via getEffectiveTimeRange — passed in for back-compat with the
@@ -1164,6 +1165,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._toolbar = new RadarToolbar({
       showRecenter,
       showPlayback,
+      initialPlaying: cfg.start_paused !== true,
       onRecenter: () => this._recenter(),
       onPlay: () => this._player?.togglePlay(),
       onSkipBack: () => this._player?.skipBack(),

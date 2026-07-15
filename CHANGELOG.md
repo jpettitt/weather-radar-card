@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`start_paused` option** — start the card paused on the latest radar frame instead of auto-playing the animation loop. The card still refreshes periodically so the displayed frame stays current; tap play to see the full animation. Configurable via YAML or the visual editor's Animation section.
+
 ## [3.7.2] - 2026-07-01
 
 > **Stable release.** Graduates the 3.7.2 line (sections-grid layout fill, console version-banner fix, hazard-popup view restore) to stable. Drop-in upgrade from 3.7.1 — no config changes. The entries below are what changed since `3.7.2-beta1`.

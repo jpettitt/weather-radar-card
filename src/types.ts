@@ -88,6 +88,14 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    */
   playback_speed?: number;
   /**
+   * Start the card paused on the latest radar frame instead of
+   * auto-playing the animation loop. The displayed frame still
+   * refreshes automatically as new data arrives — the card is a
+   * "live snapshot" rather than static. The user can unpause via
+   * the toolbar play button or double_tap_action: toggle_play.
+   */
+  start_paused?: boolean;
+  /**
    * Slide each radar layer in the estimated direction of rain motion
    * during the crossfade transition, so the rain appears to drift
    * smoothly between frames instead of appearing in its new position
