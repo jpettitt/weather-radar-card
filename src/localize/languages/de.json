@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normal)",
       "playback_speed_double": "2× (schneller)",
       "playback_speed_quad": "4× (am schnellsten)",
+      "start_paused": "Pausiert starten (Live-Momentaufnahme)",
+      "start_paused_helper": "Zeigt zunächst nur das neueste Radarbild ohne Animation. Das Bild wird automatisch aktualisiert, sobald neue Daten eintreffen. Zum Abspielen der vollständigen Animation auf Wiedergabe tippen.",
       "viewer_layer_control": "Speicherung pro Benutzer (Admin-Opt-in)",
       "viewer_layer_control_helper": "Wenn aktiviert, wird die Wahl der Geschwindigkeitstaste pro Benutzer gespeichert und folgt ihm über den Frontend-Speicher von Home Assistant auf alle Browser und Geräte. Wenn deaktiviert, funktioniert die Taste weiterhin für die aktuelle Sitzung, die Wahl wird aber nicht gespeichert.",
       "motion_compensation": "Bewegungskompensation (Regen zwischen Frames driften lassen)",

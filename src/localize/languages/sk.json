@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normálne)",
       "playback_speed_double": "2× (rýchlejšie)",
       "playback_speed_quad": "4× (najrýchlejšie)",
+      "start_paused": "Spustiť pozastavené (živá snímka)",
+      "start_paused_helper": "Zobrazí iba najnovšiu snímku radaru bez animácie. Snímka sa automaticky aktualizuje pri príchode nových údajov. Ťuknutím na prehrávanie zobrazíte celú animáciu.",
       "viewer_layer_control": "Ukladanie pre používateľa (zapína administrátor)",
       "viewer_layer_control_helper": "Ak je zapnuté, voľba tlačidla rýchlosti sa ukladá pre každého používateľa a nasleduje ho naprieč prehliadačmi a zariadeniami cez frontendové úložisko Home Assistant. Ak je vypnuté, tlačidlo stále funguje v aktuálnej relácii, ale voľba sa neuloží.",
       "motion_compensation": "Kompenzácia pohybu (posúvanie dažďa medzi snímkami)",

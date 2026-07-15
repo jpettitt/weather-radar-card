@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.3-beta1] - 2026-07-15
+
+> **Beta pre-release.** New opt-in `start_paused` option, plus a small editor/toolbar fix for single-frame configs. Drop-in upgrade from 3.7.2 — no config changes required.
+
 ### Added
 
-- **`start_paused` option** — start the card paused on the latest radar frame instead of auto-playing the animation loop. The card still refreshes periodically so the displayed frame stays current; tap play to see the full animation. Configurable via YAML or the visual editor's Animation section.
+- **`start_paused` option** — start the card paused on the latest radar frame instead of auto-playing the animation loop. The card still refreshes periodically so the displayed frame stays current; tap play to see the full animation. Configurable via YAML or the visual editor's Animation section. Contributed by [@knobunc](https://github.com/knobunc).
 
 ### Fixed
 
@@ -863,7 +867,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta1...HEAD
+[3.7.3-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2...v3.7.3-beta1
 [3.7.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...v3.7.2
 [3.7.2-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...23d64b4
 [3.7.2-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.1...v3.7.2-beta1
