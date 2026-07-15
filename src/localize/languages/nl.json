@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normaal)",
       "playback_speed_double": "2× (sneller)",
       "playback_speed_quad": "4× (snelst)",
+      "start_paused": "Gepauzeerd starten (live momentopname)",
+      "start_paused_helper": "Toon alleen het nieuwste radarbeeld zonder animatie. Het beeld wordt automatisch bijgewerkt zodra nieuwe gegevens binnenkomen. Tik op afspelen om de volledige animatie te zien.",
       "viewer_layer_control": "Opslag per gebruiker (admin-opt-in)",
       "viewer_layer_control_helper": "Indien ingeschakeld wordt de keuze van de snelheidsknop per gebruiker opgeslagen en volgt deze hen op alle browsers en apparaten via de frontend-opslag van Home Assistant. Indien uitgeschakeld werkt de knop nog steeds voor de huidige sessie, maar wordt de keuze niet bewaard.",
       "motion_compensation": "Bewegingscompensatie (regen laten driften tussen frames)",

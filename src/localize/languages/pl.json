@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normalnie)",
       "playback_speed_double": "2× (szybciej)",
       "playback_speed_quad": "4× (najszybciej)",
+      "start_paused": "Start wstrzymany (zrzut na żywo)",
+      "start_paused_helper": "Pokazuje tylko najnowszą klatkę radaru bez animacji. Klatka aktualizuje się automatycznie po napłynięciu nowych danych. Dotknij odtwarzania, aby zobaczyć pełną animację.",
       "viewer_layer_control": "Zapamiętywanie dla użytkownika (włączane przez administratora)",
       "viewer_layer_control_helper": "Po włączeniu wybór przycisku prędkości jest zapisywany dla każdego użytkownika i podąża za nim między przeglądarkami i urządzeniami poprzez magazyn frontendu Home Assistant. Po wyłączeniu przycisk nadal działa w bieżącej sesji, ale wybór nie jest zapisywany.",
       "motion_compensation": "Kompensacja ruchu (przesuwanie deszczu między klatkami)",

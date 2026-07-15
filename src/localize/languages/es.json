@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normal)",
       "playback_speed_double": "2× (rápido)",
       "playback_speed_quad": "4× (más rápido)",
+      "start_paused": "Iniciar en pausa (instantánea en vivo)",
+      "start_paused_helper": "Muestra solo el último fotograma del radar sin animación. El fotograma se actualiza automáticamente al llegar nuevos datos. Toca reproducir para ver la animación completa.",
       "viewer_layer_control": "Persistencia por usuario (activación por admin)",
       "viewer_layer_control_helper": "Si está activado, la elección del botón de velocidad se guarda por usuario y le sigue en todos los navegadores y dispositivos mediante el almacenamiento del frontend de Home Assistant. Si está desactivado, el botón sigue funcionando durante la sesión actual pero la elección no se guarda.",
       "motion_compensation": "Compensación de movimiento (desplazar la lluvia entre fotogramas)",

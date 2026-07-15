@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normal)",
       "playback_speed_double": "2× (rápido)",
       "playback_speed_quad": "4× (mais rápido)",
+      "start_paused": "Iniciar pausado (instantâneo ao vivo)",
+      "start_paused_helper": "Mostra apenas o quadro mais recente do radar sem animação. O quadro é atualizado automaticamente conforme novos dados chegam. Toque em reproduzir para ver a animação completa.",
       "viewer_layer_control": "Persistência por usuário (ativação pelo admin)",
       "viewer_layer_control_helper": "Quando ativado, a escolha do botão de velocidade é salva por usuário e o acompanha em navegadores e dispositivos via armazenamento do frontend do Home Assistant. Quando desativado, o botão ainda funciona na sessão atual, mas a escolha não é salva.",
       "motion_compensation": "Compensação de movimento (deriva da chuva entre quadros)",

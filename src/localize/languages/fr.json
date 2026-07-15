@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normale)",
       "playback_speed_double": "2× (plus rapide)",
       "playback_speed_quad": "4× (le plus rapide)",
+      "start_paused": "Démarrer en pause (instantané en direct)",
+      "start_paused_helper": "Affiche uniquement la dernière image radar sans animation. L'image se met à jour automatiquement à l'arrivée de nouvelles données. Appuyez sur lecture pour voir l'animation complète.",
       "viewer_layer_control": "Persistance par utilisateur (activation par l'admin)",
       "viewer_layer_control_helper": "Si activé, le choix du bouton de vitesse est mémorisé par utilisateur et le suit sur tous les navigateurs et appareils via le stockage du frontend Home Assistant. Si désactivé, le bouton fonctionne toujours pour la session en cours mais le choix n'est pas enregistré.",
       "motion_compensation": "Compensation de mouvement (dérive de la pluie entre les images)",

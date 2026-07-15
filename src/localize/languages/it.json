@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normale)",
       "playback_speed_double": "2× (veloce)",
       "playback_speed_quad": "4× (più veloce)",
+      "start_paused": "Avvia in pausa (istantanea dal vivo)",
+      "start_paused_helper": "Mostra solo l'ultimo fotogramma radar senza animazione. Il fotogramma si aggiorna automaticamente all'arrivo di nuovi dati. Tocca riproduci per vedere l'animazione completa.",
       "viewer_layer_control": "Persistenza per utente (opt-in amministratore)",
       "viewer_layer_control_helper": "Se attivo, la scelta del pulsante velocità viene salvata per utente e lo segue su browser e dispositivi tramite l’archiviazione del frontend di Home Assistant. Se disattivato il pulsante funziona comunque per la sessione corrente ma la scelta non viene salvata.",
       "motion_compensation": "Compensazione del movimento (deriva della pioggia tra i fotogrammi)",

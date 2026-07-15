@@ -181,6 +181,8 @@
       "playback_speed_normal": "1× (normal)",
       "playback_speed_double": "2× (snabbare)",
       "playback_speed_quad": "4× (snabbast)",
+      "start_paused": "Starta pausad (direktbild)",
+      "start_paused_helper": "Visa endast den senaste radarbilden utan animering. Bilden uppdateras automatiskt när ny data kommer in. Tryck på uppspelning för att se hela animeringsloopen.",
       "viewer_layer_control": "Sparas per användare (admin måste aktivera)",
       "viewer_layer_control_helper": "När aktiverat sparas hastighetsknappens val per användare och följer dem mellan webbläsare och enheter via Home Assistants frontend-lagring. När avstängt fungerar knappen fortfarande under pågående session men valet sparas inte.",
       "motion_compensation": "Rörelsekompensering (låt regnet driva mellan bildrutor)",
