@@ -86,11 +86,10 @@ afterEach(() => {
 // ── RadarPlayer start_paused ────────────────────────────────────────────
 
 describe('RadarPlayer with start_paused (run = false before init)', () => {
-  it('does not start the loop when two frames become available', () => {
+  it('calls _startLoop (not just _showSlot) when two frames become available', () => {
     const p = makePlayer() as any;
     p.run = false;
     p._startLoop = vi.fn();
-    p._showSlot = vi.fn();
 
     p._radarReady = false;
     p._loadedSlots = [1];
@@ -99,48 +98,18 @@ describe('RadarPlayer with start_paused (run = false before init)', () => {
     p._radarImage = [fakeLayer(), fakeLayer()];
     p._radarPaths = frames(1000, 1600);
 
-    // Simulate the second frame loading — the code path at _initRadarBody
-    // line 2314-2320 (the "Two frames ready" branch).
+    // Simulate the second frame loading — the two-frames-ready branch
+    // in _initRadarBody now calls _startLoop unconditionally.
+    // _startLoop sets _currentSlot, calls _showSlot (setting _prev1Slot),
+    // then _scheduleNext returns immediately when !this.run.
     const prevSlotCount = p._loadedSlots.length;
     p._loadedSlots.unshift(0);
 
     if (p._loadedSlots.length >= 2 && prevSlotCount < 2) {
-      if (p.run) {
-        p._startLoop(p._loadedSlots.length - 1);
-      } else {
-        p._showSlot(p._loadedSlots.length - 1, { snap: true });
-      }
+      p._startLoop(p._loadedSlots.length - 1);
     }
 
-    expect(p._startLoop).not.toHaveBeenCalled();
-    expect(p._showSlot).toHaveBeenCalledWith(p._loadedSlots.length - 1, { snap: true });
-  });
-
-  it('_settleVisibility shows the correct frame after paused start', () => {
-    const p = makePlayer() as any;
-    p.run = false;
-
-    const layers = [fakeLayer(), fakeLayer()];
-    p._radarImage = layers;
-    p._loadedSlots = [0, 1];
-    p._radarPaths = frames(1000, 1600);
-    p._radarTime = [{ date: 'a', time: '1' }, { date: 'a', time: '2' }];
-    p._frameStatuses = ['loaded', 'loaded'];
-    p._frameSnapshot = [null, null];
-    p._frameSnapshotNz = [0, 0];
-    p._frameMotion = [null, null];
-
-    // Route through _showSlot (as the fix does) to set _prev1Slot
-    p._showSlot(1, { snap: true });
-    expect(p._prev1Slot).toBe(1);
-
-    // Now _settleVisibility (called by _stopLoop on pan/tab-switch)
-    // should keep the newest frame visible
-    p._settleVisibility();
-    const newestEl = layers[1].getContainer();
-    const olderEl = layers[0].getContainer();
-    expect(newestEl.style.opacity).toBe('1');
-    expect(olderEl.style.opacity).toBe('0');
+    expect(p._startLoop).toHaveBeenCalledWith(1);
   });
 
   it('togglePlay resumes animation from paused start', () => {

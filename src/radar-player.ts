@@ -2311,17 +2311,13 @@ export class RadarPlayer {
             // resets every other layer. That's the ghost trail of stacked
             // frames visible while later frames are still loading.
             if (this._prev1Slot >= 0) this._prev1Slot++;
-          } else if (this.run) {
-            // Two frames ready: start the loop at the newest slot.
-            this._startLoop(this._loadedSlots.length - 1);
           } else {
-            // start_paused: two frames ready but run is false — park on
-            // the newest slot without starting the animation loop.
-            // Route through _showSlot so _prev1Slot is set correctly;
-            // without this, _settleVisibility would flip to a stale
-            // frame if the user pans or switches tabs before the first
-            // periodic refresh.
-            this._showSlot(this._loadedSlots.length - 1, { snap: true });
+            // Two frames ready: show the newest and start the loop.
+            // _startLoop sets _currentSlot, calls _showSlot (which sets
+            // _prev1Slot), then _scheduleNext — which returns immediately
+            // when !this.run, so this works for both playing and paused
+            // (start_paused) states without a separate branch.
+            this._startLoop(this._loadedSlots.length - 1);
           }
         }
       } else {
