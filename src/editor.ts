@@ -271,10 +271,12 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             <ha-switch .checked=${config.show_zoom === true} .configValue=${'show_zoom'} @change=${this._valueChangedSwitch}></ha-switch>
             <span>${localize('editor.display.show_zoom')}</span>
           </label>
+          ${getEffectiveTimeRange(config).frameCount > 1 ? html`
           <label>
             <ha-switch .checked=${config.show_playback === true} .configValue=${'show_playback'} @change=${this._valueChangedSwitch}></ha-switch>
             <span>${localize('editor.display.show_playback')}</span>
           </label>
+          ` : ''}
           <label>
             <ha-switch .checked=${config.show_recenter === true} .configValue=${'show_recenter'} @change=${this._valueChangedSwitch}></ha-switch>
             <span>${localize('editor.display.show_recenter')}</span>

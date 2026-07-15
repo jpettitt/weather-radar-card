@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SOURCE_CAPS, getSourceCaps, getEffectiveTimeRange } from '../src/source-caps';
+import { SOURCE_CAPS, getSourceCaps, getEffectiveTimeRange, shouldShowPlayback } from '../src/source-caps';
 import { WeatherRadarCardConfig } from '../src/types';
 
 const base: WeatherRadarCardConfig = {
@@ -128,5 +128,20 @@ describe('getEffectiveTimeRange', () => {
     expect(r.pastMin).toBe(0);
     expect(r.forecastMin).toBe(120);
     expect(r.frameCount).toBe(25); // 120/5 + 1
+  });
+});
+
+describe('shouldShowPlayback', () => {
+  it('is false when show_playback is off, regardless of frame count', () => {
+    expect(shouldShowPlayback({ ...base, show_playback: false, past_minutes: 60 })).toBe(false);
+  });
+
+  it('is false for a single static frame even if show_playback is on', () => {
+    // past_minutes: 0, no forecast -> frameCount === 1, nothing to animate.
+    expect(shouldShowPlayback({ ...base, show_playback: true, past_minutes: 0, forecast_minutes: 0 })).toBe(false);
+  });
+
+  it('is true when show_playback is on and there is more than one frame', () => {
+    expect(shouldShowPlayback({ ...base, show_playback: true, past_minutes: 60 })).toBe(true);
   });
 });
