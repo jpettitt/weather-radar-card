@@ -417,6 +417,8 @@ export class RadarPlayer {
   // Rate-limit state
   private _rateLimitTimer: ReturnType<typeof setTimeout> | null = null;
   private _isRateLimited = false;
+  // Server-error (5xx) state — see the "Server error banner" section below.
+  private _isServerError = false;
 
   // Toolbar reference (set externally after toolbar is created)
   toolbar: RadarToolbar | null = null;
@@ -1657,6 +1659,11 @@ export class RadarPlayer {
   }
 
   // ── Rate limit banner ────────────────────────────────────────────────────
+  // The 10s-later full reinit is a fallback for the case where nothing
+  // ever recovers on its own; _onTileRecovered (below) normally clears
+  // the banner and cancels this timer well before it fires, the instant
+  // any tile succeeds again, so the reinit doesn't fire redundantly on
+  // top of an already-healthy loop.
 
   private _showRateLimitBanner(show: boolean): void {
     const banner = this._shadowRoot.getElementById('rate-limit-banner');
@@ -1667,6 +1674,12 @@ export class RadarPlayer {
     if (this._isRateLimited) return;
     this._isRateLimited = true;
     this._showRateLimitBanner(true);
+    // A confirmed server error (below) already explains what's going on
+    // and is already patiently backing off per-tile — don't ALSO arm the
+    // aggressive full-reinit fallback on top of it, which would tear
+    // down a loop mid-outage and add load to a server that's struggling.
+    // The banner above still shows (this condition is real either way).
+    if (this._isServerError) return;
     if (this._rateLimitTimer) clearTimeout(this._rateLimitTimer);
     this._rateLimitTimer = setTimeout(() => this._retryAfterRateLimit(), 10_000);
   }
@@ -1674,8 +1687,52 @@ export class RadarPlayer {
   private _retryAfterRateLimit(): void {
     this._isRateLimited = false;
     this._rateLimitTimer = null;
+    this._showRateLimitBanner(false);
     this._clearLayers();
     this._initRadar();
+  }
+
+  // ── Server error banner ──────────────────────────────────────────────────
+  // Distinct from the rate-limit banner above: a 5xx means the source's
+  // server is up but struggling, not that we've hit our own pacing limit.
+  // Tile-level retries (fetch-tile-layer.ts) handle recovery on their own
+  // with a capped backoff; this just reflects that state in the UI.
+
+  private _showServerErrorBanner(show: boolean): void {
+    const banner = this._shadowRoot.getElementById('server-error-banner');
+    if (banner) banner.style.display = show ? 'block' : 'none';
+  }
+
+  private _onServerError(): void {
+    if (!this._isServerError) {
+      this._isServerError = true;
+      this._showServerErrorBanner(true);
+    }
+    // A confirmed 5xx is better information than "presumed rate limit
+    // from a statusless failure" — cancel any pending forced reinit
+    // (armed by an earlier _onRateLimited) so we don't tear down a loop
+    // that's already correctly backing off per-tile. Runs on every call,
+    // not just the first: _onRateLimited can re-arm the timer from a
+    // different tile after this fires once.
+    if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
+  }
+
+  // ── Tile recovery ────────────────────────────────────────────────────────
+  // Fired on every successful tile load (see fetch-tile-layer.ts's
+  // onTileRecovered). Clears whichever error banner(s) are currently up
+  // and, for rate-limiting, cancels the pending fallback reinit — a tile
+  // succeeding is direct evidence we're no longer limited, so there's
+  // nothing left for that timer to fix.
+  private _onTileRecovered(): void {
+    if (this._isServerError) {
+      this._isServerError = false;
+      this._showServerErrorBanner(false);
+    }
+    if (this._isRateLimited) {
+      this._isRateLimited = false;
+      this._showRateLimitBanner(false);
+      if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
+    }
   }
 
   // ── Layer helpers ────────────────────────────────────────────────────────
@@ -1785,6 +1842,8 @@ export class RadarPlayer {
       maxNativeZoom: 8 + Math.max(0, -zoomOffset),
       rateLimiter: this._dwdLimiter,
       on429: () => this._onRateLimited(),
+      on5xx: () => this._onServerError(),
+      onTileRecovered: () => this._onTileRecovered(),
       animationOwnsOpacity: true,
       pane: 'dwd-coverage-mask',
       pixelFilter: makeDwdMaskOnlyFilter(layerName, dim, outline),
@@ -2090,6 +2149,8 @@ export class RadarPlayer {
         maxNativeZoom: 7 + Math.max(0, -zoomOffset),
         rateLimiter: this._noaaLimiter,
         on429: () => this._onRateLimited(),
+        on5xx: () => this._onServerError(),
+        onTileRecovered: () => this._onTileRecovered(),
         animationOwnsOpacity: true,
         pane: RADAR_PANE_NAME,
       } as any));
@@ -2112,6 +2173,8 @@ export class RadarPlayer {
         maxNativeZoom: 8 + Math.max(0, -zoomOffset),
         rateLimiter: this._dwdLimiter,
         on429: () => this._onRateLimited(),
+        on5xx: () => this._onServerError(),
+        onTileRecovered: () => this._onTileRecovered(),
         animationOwnsOpacity: true,
         pixelFilter: makeDwdMaskFilter(layerName),
         pane: RADAR_PANE_NAME,
@@ -2131,6 +2194,8 @@ export class RadarPlayer {
       maxNativeZoom: 7 + Math.max(0, -zoomOffset),
       rateLimiter: this._rainviewerLimiter,
       on429: () => this._onRateLimited(),
+      on5xx: () => this._onServerError(),
+      onTileRecovered: () => this._onTileRecovered(),
       animationOwnsOpacity: true,
       pane: RADAR_PANE_NAME,
     } as any));

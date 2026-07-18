@@ -54,6 +54,8 @@ The colour-bar uses DWD's `Niederschlagsradar` palette sampled from DWD's offici
 
 > **Forecast leading edge:** when `forecast_minutes > 0`, the newest frames in the timeline are timestamped in the future. DWD's WMS only returns tiles for frames its nowcast has actually computed; if a future timestamp is past the nowcast horizon (or hasn't been published yet), those tiles come back transparent and you'll see a brief blank section at the leading edge of the loop. This resolves itself as DWD publishes new forecast frames.
 
+`maps.dwd.de` occasionally answers tile requests with a 502/503/504 during periods of high load — this is on DWD's server, not the card. The card detects this (distinct from its own rate-limit pacing) and retries automatically with a backoff of up to ~30 seconds per tile; a "Radar server error — retrying" banner shows while this is happening and clears once tiles load normally again.
+
 ## Why source-agnostic time fields
 
 Earlier versions used a single `frame_count` config: 6 frames meant "the last hour" on RainViewer (6 × 10 min) but "30 minutes" on NOAA / DWD (6 × 5 min). Switching `data_source` silently changed how much history showed.

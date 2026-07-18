@@ -14,6 +14,7 @@ vi.mock('leaflet', () => {
 });
 
 import { wireAbortLifecycle, createFetchTile, type TileWithAbort } from '../src/fetch-tile-layer';
+import { RateLimiter } from '../src/rate-limiter';
 
 // Regression guards for the AbortController pattern the fetcher code
 // relies on. The actual layer integration (FetchTileLayer, WildfireLayer,
@@ -439,5 +440,135 @@ describe('createFetchTile (fetch-tile-layer)', () => {
     await new Promise((r) => setTimeout(r, 5));
     expect(layer._tileLoaded).toBe(1);
     expect(layer._tileFailed).toBe(0);
+  });
+
+  // ── 5xx server errors vs 429 rate-limiting (issue #223) ─────────────
+  //
+  // A generic `!r.ok` throw didn't tag `.status`, so 502/503/504
+  // responses fell into the same "statusless -> treat as rate-limited"
+  // branch as CORS-opaque 429s: wrong banner, wrong retry pacing for
+  // what's actually a struggling-but-responding server. These lock in
+  // the fix: 5xx gets its own callback and its own capped-backoff retry,
+  // and genuine 429 / CORS-opaque statusless errors are unaffected.
+
+  describe('5xx server errors are distinct from 429 rate-limiting', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('a 502 calls on5xx (not on429) and retries with backoff', async () => {
+      const layer = makeFetchLayerStub();
+      const on429 = vi.fn();
+      const on5xx = vi.fn();
+      layer.options = { maxRetries: 1, retryDelay: 0, maxServerErrorRetries: 3, on429, on5xx };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+
+      fetchCalls[0].resolve(new Blob(['bad gateway']), { status: 502 });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(on5xx).toHaveBeenCalledOnce();
+      expect(on429).not.toHaveBeenCalled();
+      expect(fetchCalls.length).toBe(1); // retry scheduled (1s backoff), not yet fired
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(fetchCalls.length).toBe(2);
+
+      fetchCalls[1].resolve(
+        new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' }),
+        { status: 200, headers: { 'content-type': 'image/png' } },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(layer._tileLoaded).toBe(1);
+      expect(layer._tileFailed).toBe(0);
+    });
+
+    it('onTileRecovered fires once the tile succeeds after a 5xx', async () => {
+      const layer = makeFetchLayerStub();
+      const onTileRecovered = vi.fn();
+      layer.options = { maxRetries: 1, retryDelay: 0, maxServerErrorRetries: 3, onTileRecovered };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+
+      fetchCalls[0].resolve(new Blob(['service unavailable']), { status: 503 });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(fetchCalls.length).toBe(2);
+
+      fetchCalls[1].resolve(
+        new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' }),
+        { status: 200, headers: { 'content-type': 'image/png' } },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onTileRecovered).toHaveBeenCalledOnce();
+    });
+
+    it('onTileRecovered fires on every successful tile load, not just after an error', async () => {
+      const layer = makeFetchLayerStub();
+      const onTileRecovered = vi.fn();
+      layer.options = { maxRetries: 1, retryDelay: 0, onTileRecovered };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+
+      fetchCalls[0].resolve(
+        new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' }),
+        { status: 200, headers: { 'content-type': 'image/png' } },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onTileRecovered).toHaveBeenCalledOnce();
+    });
+
+    it('exhausts retries and fails after maxServerErrorRetries consecutive 5xx responses', async () => {
+      const layer = makeFetchLayerStub();
+      const on5xx = vi.fn();
+      layer.options = { maxRetries: 1, retryDelay: 0, maxServerErrorRetries: 2, on5xx };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+
+      fetchCalls[0].resolve(new Blob(['gateway timeout']), { status: 504 });
+      await vi.advanceTimersByTimeAsync(1000); // first retry fires
+      expect(fetchCalls.length).toBe(2);
+
+      fetchCalls[1].resolve(new Blob(['gateway timeout']), { status: 504 });
+      await vi.advanceTimersByTimeAsync(0); // maxServerErrorRetries: 2 -> gives up, no more scheduling
+
+      expect(on5xx).toHaveBeenCalledTimes(2);
+      expect(layer._tileFailed).toBe(1);
+      expect(layer._tileLoaded).toBe(0);
+      expect(done).toHaveBeenCalled();
+    });
+
+    it('a genuine 429 still calls on429, not on5xx', async () => {
+      const layer = makeFetchLayerStub();
+      const on429 = vi.fn();
+      const on5xx = vi.fn();
+      layer.options = { maxRetries: 1, retryDelay: 0, on429, on5xx };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+
+      fetchCalls[0].resolve(new Blob(['too many requests']), { status: 429 });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(on429).toHaveBeenCalledOnce();
+      expect(on5xx).not.toHaveBeenCalled();
+    });
+
+    it('a CORS-opaque statusless error with a rate limiter still calls on429, not on5xx', async () => {
+      const layer = makeFetchLayerStub();
+      const on429 = vi.fn();
+      const on5xx = vi.fn();
+      layer.options = {
+        maxRetries: 1, retryDelay: 0,
+        rateLimiter: new RateLimiter(500),
+        on429, on5xx,
+      };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+
+      // No status set — mirrors a CORS-opaque response the browser blocked.
+      fetchCalls[0].reject(new Error('Failed to fetch'));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(on429).toHaveBeenCalledOnce();
+      expect(on5xx).not.toHaveBeenCalled();
+    });
   });
 });

@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Rate limited — waiting for quota to reset",
+    "server_error": "Radar server error — retrying",
     "loading_radar_tiles": "Loading radar tiles",
     "now": "(latest)",
     "now_tooltip": "Latest",

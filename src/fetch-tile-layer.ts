@@ -9,7 +9,24 @@ export interface FetchTileOptions extends L.TileLayerOptions {
   rateLimiter?: RateLimiter;
   maxRetries?: number;
   retryDelay?: number;
+  /** Cap on retries for a 5xx (server error) response — see on5xx. */
+  maxServerErrorRetries?: number;
   on429?: () => void;
+  /**
+   * Called when a tile fetch resolves with a 5xx status (502/503/504…).
+   * Distinct from on429: the server IS responding, just can't serve
+   * right now, so this gets its own longer, capped-exponential-backoff
+   * retry instead of either the rate-limit pacing or the short generic
+   * maxRetries window.
+   */
+  on5xx?: () => void;
+  /**
+   * Called on any successful tile load — the signal that a prior on429 /
+   * on5xx condition has cleared. Fires unconditionally (harmless if
+   * neither was ever triggered); the caller decides what "recovered"
+   * means for its own banner/timer state.
+   */
+  onTileRecovered?: () => void;
   /** When true, Leaflet's _updateOpacity is suppressed so CSS animations own opacity. */
   animationOwnsOpacity?: boolean;
   /**
@@ -90,8 +107,11 @@ export function createFetchTile(
   const opts = layer.options as FetchTileOptions;
   const maxRetries = opts.maxRetries ?? 3;
   const retryDelay = opts.retryDelay ?? 500;
+  const maxServerErrorRetries = opts.maxServerErrorRetries ?? 6;
   const limiter = opts.rateLimiter;
-        const on429 = opts.on429;
+  const on429 = opts.on429;
+  const on5xx = opts.on5xx;
+  const onTileRecovered = opts.onTileRecovered;
   let attempt = 0;
 
   layer._tilePending++;
@@ -124,7 +144,7 @@ export function createFetchTile(
       .then((r) => {
         if (r.status === 404) { const e: any = new Error('404'); e.status = 404; throw e; }
         if (r.status === 429) { const e: any = new Error('429'); e.status = 429; throw e; }
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) { const e: any = new Error(`HTTP ${r.status}`); e.status = r.status; throw e; }
         // Soft-error tiles: NOAA's WMS sometimes answers 200 OK with a
         // small text/xml error document instead of a PNG (observed
         // ~240 bytes; likely a rate-limit the server doesn't surface
@@ -157,6 +177,7 @@ export function createFetchTile(
         tile.onerror = () => URL.revokeObjectURL(objUrl);
         tile.src = objUrl;
         limiter?.recordSuccess(url);
+        onTileRecovered?.();
         layer._tilePending--;
         layer._tileLoaded++;
         tile.__wrcAbort = null;
@@ -181,6 +202,18 @@ export function createFetchTile(
           on429?.();
           const wait = limiter ? Math.max(limiter.msUntilSlot(), 1000) : 5000;
           setTimeout(tryFetch, wait);
+        } else if (err.status && err.status >= 500 && err.status < 600) {
+          // Genuine server error (502/503/504…) — the server IS responding,
+          // just can't serve right now. Distinct from on429 (self-imposed
+          // rate-limiting) and the generic path below (a handful of quick
+          // retries): capped exponential backoff, more patient since an
+          // outage like this is often transient but can outlast maxRetries.
+          on5xx?.();
+          if (++attempt < maxServerErrorRetries) {
+            setTimeout(tryFetch, Math.min(1000 * 2 ** (attempt - 1), 30_000));
+          } else {
+            fail();
+          }
         } else if (++attempt < maxRetries) {
           setTimeout(tryFetch, retryDelay * attempt);
         } else {
