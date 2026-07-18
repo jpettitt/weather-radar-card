@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.3-beta2] - 2026-07-17
+
+> **Beta pre-release.** DWD server-error handling fix. Continues the 3.7.3 beta line — drop-in upgrade from 3.7.3-beta1, no config changes required.
+
 ### Fixed
 
 - **A source's own server errors (502/503/504) no longer show as "Rate limited."** A tile fetch that failed with a generic non-OK status wasn't tagged with its HTTP status code, so it fell into the same handling as a rate-limit response — wrong banner, wrong retry pacing for a server that's up but struggling rather than one we're self-throttling against. 5xx responses now get their own "Radar server error — retrying" banner and a longer, capped exponential backoff (up to ~30s between attempts) better suited to a transient outage. ([#223](https://github.com/jpettitt/weather-radar-card/issues/223))
@@ -872,7 +876,8 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta1...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta2...HEAD
+[3.7.3-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta1...v3.7.3-beta2
 [3.7.3-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2...v3.7.3-beta1
 [3.7.2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...v3.7.2
 [3.7.2-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.2-beta1...23d64b4
