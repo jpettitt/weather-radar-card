@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A source's own server errors (502/503/504) no longer show as "Rate limited."** A tile fetch that failed with a generic non-OK status wasn't tagged with its HTTP status code, so it fell into the same handling as a rate-limit response — wrong banner, wrong retry pacing for a server that's up but struggling rather than one we're self-throttling against. 5xx responses now get their own "Radar server error — retrying" banner and a longer, capped exponential backoff (up to ~30s between attempts) better suited to a transient outage. ([#223](https://github.com/jpettitt/weather-radar-card/issues/223))
+- **Both the rate-limit and (new) server-error banners now clear themselves as soon as a tile loads successfully again**, instead of the rate-limit banner sitting there indefinitely (it previously had no hide path at all) or waiting on a fixed 10-second timer. Recovering also cancels the rate-limit path's fallback full-reinit, so a freshly-recovered loop isn't torn down and rebuilt for no reason. If both conditions are detected at once, each still shows its own banner, but only one (whichever is more informative) drives the disruptive fallback reinit — a confirmed server error suppresses it, since the per-tile backoff is already handling recovery and a forced reinit would only add load to a struggling server.
+
 ## [3.7.3-beta1] - 2026-07-15
 
 > **Beta pre-release.** New opt-in `start_paused` option, plus a small editor/toolbar fix for single-frame configs. Drop-in upgrade from 3.7.2 — no config changes required.

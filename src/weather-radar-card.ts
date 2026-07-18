@@ -630,6 +630,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
           <div id="rate-limit-banner" class="status-banner" style="display:none">
             ${localize('ui.rate_limited')}
           </div>
+          <div id="server-error-banner" class="status-banner" style="display:none">
+            ${localize('ui.server_error')}
+          </div>
         </div>
         <div id="mapid"></div>
         <div id="div-progress-bar" style="height:${PROGRESS_BAR_TRACK_HEIGHT}px;display:${this._config.show_progress_bar === false ? 'none' : 'block'}">
