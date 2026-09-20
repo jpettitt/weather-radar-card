@@ -92,9 +92,11 @@ describe('_getTimeString time_format handling', () => {
   });
 
   it('the date part is unaffected by time_format (still weekday/day/month)', () => {
-    const hass = { locale: { language: 'en', number_format: 'language', time_format: '24' } };
-    const p = makePlayer(hass) as any;
-    const result = p._getTimeString(AFTERNOON_MS);
-    expect(result.date).toMatch(/2026|Aug/i);
+    const hass24 = { locale: { language: 'en', number_format: 'language', time_format: '24' } };
+    const hass12 = { locale: { language: 'en', number_format: 'language', time_format: '12' } };
+    const result24 = (makePlayer(hass24) as any)._getTimeString(AFTERNOON_MS);
+    const result12 = (makePlayer(hass12) as any)._getTimeString(AFTERNOON_MS);
+    expect(result24.date).toBe(result12.date);
+    expect(result24.date.length).toBeGreaterThan(0);
   });
 });
