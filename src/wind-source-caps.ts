@@ -7,8 +7,8 @@
 // 'dwd_aicon': DWD's AI-augmented variant of ICON-D2. Default for
 //   non-US users — globally populated, visibly better short-range
 //   accuracy than the raw numerical model. Same 0.25° global lat/lon
-//   grid, same U/V components, same hourly cadence as ICON-D2, served
-//   from the same WCS endpoint. DescribeCoverage confirms identical
+//   grid and U/V components as ICON-D2, served from the same WCS
+//   endpoint, but 3-hourly time steps (ICON-D2 is hourly). DescribeCoverage confirms identical
 //   CRS, axes, bands, and format support to ICON-D2.
 //
 // 'dwd_icon': Raw DWD ICON-D2 numerical model — same shape as AICON
@@ -27,7 +27,7 @@ export type WindSource = 'dwd_icon' | 'dwd_aicon' | 'ndfd_wind';
 // Global default for non-US locations, and the silent fallback when a
 // config has no explicit `wind_source`. AICON is preferred over plain
 // ICON-D2 because it ships AI-augmented post-processing on the same
-// 0.25° global grid (same WCS endpoint, same hourly cadence) — visibly
+// 0.25° global grid (same WCS endpoint, 3-hourly steps) — visibly
 // better short-range accuracy at zero behaviour cost. Existing configs
 // without `wind_source` set silently upgrade to AICON on next reload;
 // users who explicitly want the raw numerical model can still set
@@ -56,6 +56,12 @@ export interface WindSourceCaps {
    * direction (degrees, meteorological "from"); the fetcher converts to
    * U/V before storing in the WindGrid. */
   bands: 'uv' | 'speed_dir';
+  /** Spacing of the coverage's time slices, in hours. A WCS `time` subset
+   * that doesn't land on a slice makes GeoServer silently return the
+   * OLDEST slice rather than an error, so requested times must be floored
+   * to this step (wind-grid-fetcher's effectiveTimeIso does). Omit for
+   * sources whose un-timed request already means "current" (NDFD). */
+  timeStepHours?: number;
   /** Short cadence note for the editor's helper line. English; the i18n
    * key 'editor.wind.cadence_<id>' wins when present. */
   cadenceNote: string;
@@ -77,6 +83,7 @@ export const WIND_SOURCE_CAPS: Record<WindSource, WindSourceCaps> = {
     crs: 'EPSG:4326',
     nativeStep: 0.25,
     bands: 'uv',
+    timeStepHours: 1,
     cadenceNote: 'DWD ICON-D2 numerical model. 0.25° global grid (~28 km). Hourly anchor, +48 h forecast, new model run every 3 h.',
   },
   dwd_aicon: {
@@ -87,7 +94,8 @@ export const WIND_SOURCE_CAPS: Record<WindSource, WindSourceCaps> = {
     crs: 'EPSG:4326',
     nativeStep: 0.25,
     bands: 'uv',
-    cadenceNote: 'DWD AICON — ICON-D2 with AI-augmented post-processing. Same 0.25° global grid (~28 km) and hourly cadence as ICON-D2; reportedly improves short-range accuracy.',
+    timeStepHours: 3,
+    cadenceNote: 'DWD AICON — ICON-D2 with AI-augmented post-processing. Same 0.25° global grid (~28 km) as ICON-D2, but 3-hourly time steps; reportedly improves short-range accuracy.',
   },
   ndfd_wind: {
     id: 'ndfd_wind',
