@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`disable_wheel_zoom` option (YAML-only)** — stops the mouse wheel zooming the map so it scrolls the dashboard instead, while the +/- buttons (`show_zoom`), pinch-zoom and drag keep working. Unlike `static_map`, which removes all zoom controls too. ([#263](https://github.com/jpettitt/weather-radar-card/issues/263))
+
 ## [3.9.1-beta1] - 2026-09-23
 
 > **Beta pre-release.** Fixes wind arrows/barbs/flow showing a day-old wind field (sometimes looking reversed) outside the US. Drop-in upgrade from 3.9.0 — no config changes required.

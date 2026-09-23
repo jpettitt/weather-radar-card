@@ -17,6 +17,7 @@ import { localize } from './localize/localize';
 import { rainviewerLimiter, noaaLimiter, dwdLimiter } from './rate-limiters';
 import { FetchTileLayer } from './fetch-tile-layer';
 import { getBasemapTiles, getBasemapTone, isDarkBasemapStyle } from './basemap-styles';
+import { isWheelZoomEnabled } from './map-interaction';
 import { WindOverlay } from './wind-overlay';
 import { defaultWindSourceForLocation, DEFAULT_WIND_SOURCE } from './wind-source-caps';
 import { WindFlowOverlay } from './wind-flow-overlay';
@@ -687,7 +688,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._map = L.map(mapEl as HTMLElement, {
       zoomControl: cfg.show_zoom === true && !isStatic,
       // Disable Leaflet's built-in double-click zoom when a custom action is configured.
-      scrollWheelZoom: !isStatic, doubleClickZoom: !isStatic && !hasDoubleTapAction,
+      scrollWheelZoom: isWheelZoomEnabled(cfg), doubleClickZoom: !isStatic && !hasDoubleTapAction,
       boxZoom: !isStatic, dragging: !isStatic, keyboard: !isStatic, touchZoom: !isStatic,
       wheelPxPerZoomLevel: 120, attributionControl: false,
       minZoom: 3, maxZoom: 16,
@@ -1262,7 +1263,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._navContainer = (this._map as any).getContainer() as HTMLElement;
     this._markUserMove = (): void => { this._userMoveInProgress = true; };
     this._navContainer.addEventListener('pointerdown', this._markUserMove, { passive: true });
-    this._navContainer.addEventListener('wheel', this._markUserMove, { passive: true });
+    if (isWheelZoomEnabled(this._config)) {
+      this._navContainer.addEventListener('wheel', this._markUserMove, { passive: true });
+    }
 
     this._map.on('movestart zoomstart', () => {
       if (this._navReloadTimer) clearTimeout(this._navReloadTimer);

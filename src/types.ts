@@ -240,6 +240,8 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   // Simple shortcut string OR a standard HA action object e.g. {action: navigate, navigation_path: /lovelace/1}
   double_tap_action?: string | { action: string; [key: string]: unknown };
   disable_scroll?: boolean;
+  /** Stop the mouse wheel zooming the map so it scrolls the page instead. +/- buttons, pinch and drag still work (unlike static_map). */
+  disable_wheel_zoom?: boolean;
   show_warning?: boolean;
   show_error?: boolean;
   test_gui?: boolean;
