@@ -166,7 +166,7 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   dwd_forecast_hours?: number;
   /** Wind data source for the overlay grid. Defaults to 'dwd_aicon'
    * (DWD's AI-augmented variant of ICON-D2 — same 0.25° global grid,
-   * same hourly cadence, AI post-processing improves short-range
+   * 3-hourly steps, AI post-processing improves short-range
    * accuracy). Set to 'dwd_icon' for the raw ICON-D2 numerical model
    * or 'ndfd_wind' for NWS NDFD (2.5 km, US regions only). Fresh
    * installs in US locations get 'ndfd_wind' auto-set by getStubConfig;

@@ -98,7 +98,7 @@ The toggle in the editor's Hazard Overlays subpage is greyed out when the Blitzo
 
 When `dwd_wind` is set to `barbs` or `arrows`, or `dwd_wind_flow: true` is set, the card overlays 10 m wind from a forecast model. Two sources are available, picked via the `wind_source` config field (or the editor's Wind Data Source dropdown):
 
-- **`wind_source: 'dwd_aicon'`** (default for non-US) — DWD's AI-augmented variant of ICON-D2. Same 0.25° global grid (~28 km) and hourly cadence as ICON-D2, served from the same WCS endpoint; visibly better short-range accuracy at zero behaviour cost.
+- **`wind_source: 'dwd_aicon'`** (default for non-US) — DWD's AI-augmented variant of ICON-D2. Same 0.25° global grid (~28 km) as ICON-D2, served from the same WCS endpoint, but with 3-hourly time steps; visibly better short-range accuracy at zero behaviour cost.
 - **`wind_source: 'dwd_icon'`** — Raw DWD [ICON-D2 forecast model](https://www.dwd.de/EN/research/weatherforecasting/num_modelling/01_num_weather_prediction_modells/icon_description.html). 0.25° global grid (~28 km), new model run every 3 hours. Opt-in for users who prefer the unadjusted numerical output.
 - **`wind_source: 'ndfd_wind'`** (default for fresh installs in US locations) — NWS National Digital Forecast Database, the forecaster blend of HRRR + RAP + NAM + GFS. 2.5 km native over CONUS / AK / HI / PR; outside those regions cells are no-data and render as calm. Updates hourly, 3-hourly forecast steps out to 7+ days.
 

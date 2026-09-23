@@ -70,7 +70,9 @@ export interface FetchWindGridOptions {
   west: number;
   north: number;
   east: number;
-  /** Optional time anchor (ISO 8601). Omit for "current". */
+  /** Optional time anchor (ISO 8601). WindGridFetcher floors it to the
+   * source's slice step, and fills in "now" for DWD sources when omitted
+   * (see effectiveTimeIso). */
   timeIso?: string | null;
   /** Wind source registry id (see wind-source-caps.ts). Defaults to
    * 'dwd_icon' (ICON-D2 10 m global). The source determines endpoint,
@@ -388,6 +390,28 @@ export function resolveSourceForBbox(opts: FetchWindGridOptions): WindSource {
   return DEFAULT_WIND_SOURCE;
 }
 
+/** The time subset to actually request, floored to the source's slice step.
+ *
+ * GeoServer silently returns the OLDEST slice — no error — for a `time`
+ * subset that's missing or off-step, and DWD's coverages span days of
+ * history (verified live 2026-09-23, issue #262: a day-old wind field
+ * that flips direction as the real wind turns). So DWD sources always
+ * get a time: the caller's if given, else now, floored to `timeStepHours`
+ * (ICON hourly, AICON 3-hourly). NDFD has no `timeStepHours`: its window
+ * starts at the latest published step, so un-timed already means current
+ * and its caller-supplied time passes through unchanged.
+ *
+ * Resolves the source from the bbox so an NDFD config that fell back to
+ * AICON outside the US is timed too. */
+export function effectiveTimeIso(opts: FetchWindGridOptions, nowMs: number): string | null {
+  const stepH = getWindSourceCaps(resolveSourceForBbox(opts)).timeStepHours;
+  if (stepH === undefined) return opts.timeIso || null;
+  const base = opts.timeIso ? Date.parse(opts.timeIso) : nowMs;
+  if (!Number.isFinite(base)) return opts.timeIso || null;
+  const stepMs = stepH * 3_600_000;
+  return new Date(Math.trunc(base / stepMs) * stepMs).toISOString().split('.')[0] + 'Z';
+}
+
 /** Build the WCS GetCoverage URL for `opts` against `caps`. Exported for
  * unit-testing the per-source URL shape (axes, scaleSize, time format). */
 export function buildWindGridUrl(opts: FetchWindGridOptions, caps = getWindSourceCaps(opts.source)): string {
@@ -581,9 +605,13 @@ export class WindGridFetcher {
     this._fetchImpl = opts.fetchImpl ?? fetchWindGrid;
   }
 
-  fetch(opts: FetchWindGridOptions): Promise<WindGrid> {
-    const key = this._cacheKey(opts);
+  fetch(callerOpts: FetchWindGridOptions): Promise<WindGrid> {
     const now = this._now();
+    // Resolve before keying so the hour bucket is part of the cache key —
+    // otherwise a fetch just before the hour could be served to the
+    // hourly refresh that fires right after it.
+    const opts = { ...callerOpts, timeIso: effectiveTimeIso(callerOpts, now) };
+    const key = this._cacheKey(opts);
     const existing = this._cache.get(key);
     if (existing && existing.expiresAt > now) return existing.promise;
 

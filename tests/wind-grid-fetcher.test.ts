@@ -8,6 +8,7 @@ import {
   WindGridFetcher,
   buildWindGridUrl,
   resolveSourceForBbox,
+  effectiveTimeIso,
   DEFAULT_WIND_COVERAGE,
   type WindGrid,
   type FetchWindGridOptions,
@@ -548,8 +549,8 @@ describe('WindGridFetcher coalescing', () => {
     const upstream = vi.fn(async () => { calls++; return makeStubGrid(0); });
     const fetcher = new WindGridFetcher({ fetchImpl: upstream });
     const bbox = { south: 50, west: 10, north: 51, east: 11 };
-    await fetcher.fetch({ ...bbox, timeIso: '2026-05-10T12:00:00Z' });
-    await fetcher.fetch({ ...bbox, timeIso: '2026-05-10T13:00:00Z' });
+    await fetcher.fetch({ ...bbox, source: 'dwd_icon', timeIso: '2026-05-10T12:00:00Z' });
+    await fetcher.fetch({ ...bbox, source: 'dwd_icon', timeIso: '2026-05-10T13:00:00Z' });
     expect(calls).toBe(2);
   });
 
@@ -887,5 +888,89 @@ describe('WindGridFetcher cache eviction', () => {
     t += 1_000;
     await fetcher.fetch({ south: 40, west: 40, north: 41, east: 41, source: 'dwd_icon' });
     expect((fetcher as any)._cache.size).toBe(1);
+  });
+});
+
+// ── default time subset (issue #262) ───────────────────────────────────────
+//
+// DWD's coverages span days of history and return the OLDEST slice when the
+// request has no time subset, so an un-timed request showed day-old wind.
+
+describe('effectiveTimeIso', () => {
+  const NOW = Date.parse('2026-09-23T15:42:10Z');
+  const eu = { south: 39, west: -1, north: 40, east: 0 };
+  const us = { south: 35, west: -100, north: 36, east: -99 };
+
+  it('floors "now" to the clock hour for ICON (hourly slices)', () => {
+    expect(effectiveTimeIso({ ...eu, source: 'dwd_icon' }, NOW)).toBe('2026-09-23T15:00:00Z');
+  });
+
+  it('floors "now" to the 3-hour step for AICON — off-step times silently return the oldest slice', () => {
+    expect(effectiveTimeIso({ ...eu, source: 'dwd_aicon' }, NOW)).toBe('2026-09-23T15:00:00Z');
+    expect(effectiveTimeIso({ ...eu, source: 'dwd_aicon' }, Date.parse('2026-09-23T14:59:59Z'))).toBe('2026-09-23T12:00:00Z');
+    expect(effectiveTimeIso({ ...eu, source: 'dwd_aicon' }, Date.parse('2026-09-23T00:10:00Z'))).toBe('2026-09-23T00:00:00Z');
+  });
+
+  it('floors an explicit timeIso to the source step too (the DWD-radar anchor path)', () => {
+    expect(effectiveTimeIso({ ...eu, source: 'dwd_icon', timeIso: '2026-05-10T12:00:00Z' }, NOW))
+      .toBe('2026-05-10T12:00:00Z');
+    expect(effectiveTimeIso({ ...eu, source: 'dwd_aicon', timeIso: '2026-05-10T13:00:00Z' }, NOW))
+      .toBe('2026-05-10T12:00:00Z');
+  });
+
+  it('treats a null timeIso the same as omitted', () => {
+    expect(effectiveTimeIso({ ...eu, source: 'dwd_icon', timeIso: null }, NOW)).toBe('2026-09-23T15:00:00Z');
+  });
+
+  it('passes an unparseable timeIso through rather than inventing a time', () => {
+    expect(effectiveTimeIso({ ...eu, source: 'dwd_icon', timeIso: 'garbage' }, NOW)).toBe('garbage');
+  });
+
+  it('leaves NDFD un-timed inside US coverage and passes an explicit time through unchanged', () => {
+    expect(effectiveTimeIso({ ...us, source: 'ndfd_wind' }, NOW)).toBeNull();
+    expect(effectiveTimeIso({ ...us, source: 'ndfd_wind', timeIso: '2026-09-23T16:00:00Z' }, NOW))
+      .toBe('2026-09-23T16:00:00Z');
+  });
+
+  it('times an NDFD config that fell back to AICON outside the US', () => {
+    expect(effectiveTimeIso({ ...eu, source: 'ndfd_wind' }, NOW)).toBe('2026-09-23T15:00:00Z');
+  });
+
+  it('defaults to AICON (3-hourly) when no source is configured', () => {
+    expect(effectiveTimeIso(eu, Date.parse('2026-09-23T14:42:00Z'))).toBe('2026-09-23T12:00:00Z');
+  });
+});
+
+describe('WindGridFetcher default time', () => {
+  const stub = (): WindGrid => ({ latMin: 0, lonMin: 0, step: 1, rows: 1, cols: 1, cells: [[{ u: 0, v: 0 }]] });
+  const eu = { south: 39, west: -1, north: 40, east: 0, source: 'dwd_icon' as const };
+
+  it('passes the current hour to the upstream fetch when the caller omits timeIso', async () => {
+    const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream, now: () => Date.parse('2026-09-23T15:42:10Z') });
+    await fetcher.fetch(eu);
+    expect(upstream.mock.calls[0][0].timeIso).toBe('2026-09-23T15:00:00Z');
+  });
+
+  it('AICON: the 3-hourly bucket stays the same across an hour boundary inside the step', async () => {
+    let t = Date.parse('2026-09-23T13:59:40Z');
+    const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream, ttlMs: 60_000, now: () => t });
+    await fetcher.fetch({ ...eu, source: 'dwd_aicon' });
+    t = Date.parse('2026-09-23T14:00:30Z');
+    await fetcher.fetch({ ...eu, source: 'dwd_aicon' });
+    expect(upstream).toHaveBeenCalledTimes(1);
+    expect(upstream.mock.calls[0][0].timeIso).toBe('2026-09-23T12:00:00Z');
+  });
+
+  it('does not serve a pre-hour cache entry to a fetch after the hour rolls over', async () => {
+    let t = Date.parse('2026-09-23T15:59:40Z');
+    const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream, ttlMs: 60_000, now: () => t });
+    await fetcher.fetch(eu);
+    t = Date.parse('2026-09-23T16:00:30Z'); // 50 s later — inside the TTL
+    await fetcher.fetch(eu);
+    expect(upstream).toHaveBeenCalledTimes(2);
+    expect(upstream.mock.calls[1][0].timeIso).toBe('2026-09-23T16:00:00Z');
   });
 });
