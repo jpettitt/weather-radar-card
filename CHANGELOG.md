@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.1-beta1] - 2026-09-23
+
+> **Beta pre-release.** Fixes wind arrows/barbs/flow showing a day-old wind field (sometimes looking reversed) outside the US. Drop-in upgrade from 3.9.0 — no config changes required.
+
 ### Fixed
 
 - **Wind arrows/barbs/flow could show a day-old wind field, sometimes looking 180° reversed** — the DWD wind sources (`dwd_aicon`, the non-US default, and `dwd_icon`) were requested without a valid time, and DWD's server silently answers that with its *oldest* slice (currently ~1.5 days back) instead of the current one. This hit every non-DWD radar source (RainViewer/NOAA) and, for AICON, any DWD-radar anchor that wasn't on a 3-hour step. Requests are now always floored to the source's own time step (ICON hourly, AICON 3-hourly). US/NDFD wind was unaffected. ([#262](https://github.com/jpettitt/weather-radar-card/issues/262))
