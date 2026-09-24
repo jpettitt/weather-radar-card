@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-09-24
+
+> **Stable release.** Fixes the wind overlays showing a day-old wind field (sometimes looking reversed) outside the US, and adds a YAML-only `disable_wheel_zoom` option so the mouse wheel can scroll the dashboard instead of zooming the map. Drop-in upgrade from 3.9.0 — no config changes required. The entries below are what changed since 3.9.0.
+
+### Added
+
+- **`disable_wheel_zoom` option (YAML-only)** — stops the mouse wheel zooming the map so it scrolls the dashboard instead, while the +/- buttons (`show_zoom`), pinch-zoom and drag keep working. Unlike `static_map`, which removes all zoom controls too. ([#263](https://github.com/jpettitt/weather-radar-card/issues/263))
+
+### Fixed
+
+- **Wind arrows/barbs/flow could show a day-old wind field, sometimes looking 180° reversed** — the DWD wind sources (`dwd_aicon`, the non-US default, and `dwd_icon`) were requested without a valid time, and DWD's server silently answers that with its *oldest* slice (currently ~1.5 days back) instead of the current one. This hit every non-DWD radar source (RainViewer/NOAA) and, for AICON, any DWD-radar anchor that wasn't on a 3-hour step. Requests are now always floored to the source's own time step (ICON hourly, AICON 3-hourly). US/NDFD wind was unaffected. ([#262](https://github.com/jpettitt/weather-radar-card/issues/262))
+- Corrected the editor/docs claim that AICON has "hourly cadence" — it's 3-hourly.
+
+### Internal
+
+- Dev-tooling dependency security updates (`npm audit` now clean); none of it ships in the card bundle.
+- The time-format unit test no longer assumes an English runtime locale. Thanks @dajiaohuang. ([#261](https://github.com/jpettitt/weather-radar-card/pull/261))
+
 ## [3.10.0-beta1] - 2026-09-23
 
 > **Beta pre-release.** Adds a YAML-only `disable_wheel_zoom` option so the mouse wheel can scroll the dashboard instead of zooming the map, and carries the [3.9.1-beta1](#391-beta1---2026-09-23) wind fix. Drop-in upgrade from 3.9.x — no config changes required.
