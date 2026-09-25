@@ -187,11 +187,33 @@ Layout:
   [`tests/fetch-abort.test.ts`](tests/fetch-abort.test.ts) and
   [`tests/wind-helpers.test.ts`](tests/wind-helpers.test.ts) for the
   pattern.
+- Build the value under test in `beforeEach`/inside the `it`, never in
+  a `describe` body: a throw there fails collection for the whole file
+  with no per-test failure, so a mutant that breaks the code is
+  reported as *surviving* (this hid ~64 mutants in
+  `wind-grid-fetcher`).
 - Browser-only behaviour (fetch's forbidden-header rule, real
   pointer events, real ResizeObserver timing) will not surface in
   happy-dom. When that's the surface under test, exercise it in the
   Docker HA testbed and document the manual steps in the PR test
   plan rather than fabricating a test that can't actually fail.
+
+#### Mutation testing (optional)
+
+`npm run mutate` runs [Stryker](https://stryker-mutator.io/) over the
+pure-helper modules listed in [`stryker.config.json`](stryker.config.json)
+(~2 min). It flips operators/conditions in `src/` and reports mutants
+no test notices — use it when you touch one of those files, e.g.
+`npx stryker run --mutate src/geo-utils.ts`. It is not part of CI or
+the required checks, and there is no score gate.
+
+A survivor is either a missing assertion (add a test) or an
+*equivalent* mutant (`<` vs `<=` on a min/max scan) — for the latter,
+annotate with `// Stryker disable next-line <Mutator>: <why>` rather
+than writing a test that can't distinguish them. A disable covers
+*every* mutant of that mutator on the line, so it also hides killed
+siblings from future runs — keep the annotated line small. Reports
+land in `reports/mutation/` (gitignored).
 
 ### Commit messages
 
