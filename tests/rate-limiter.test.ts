@@ -146,13 +146,24 @@ describe('RateLimiter — bounded URL cache (2026-06 review backlog)', () => {
 
   it('re-confirming a URL refreshes its recency', () => {
     const rl = new RateLimiter(1);
+    // Fill to exactly the cap (keep + 999 fillers), then re-confirm keep.
     rl.recordSuccess('https://t.test/keep.png');
-    for (let i = 0; i < 1000; i++) rl.recordSuccess(`https://t.test/f${i}.png`);
-    // keep.png was first in, but NOT re-confirmed → at cap+1 it evicts...
-    // unless re-added. Re-confirm and push one more: now f0 evicts instead.
+    for (let i = 0; i < 999; i++) rl.recordSuccess(`https://t.test/f${i}.png`);
     rl.recordSuccess('https://t.test/keep.png');
+    // One more pushes past the cap: f0 is now the oldest and must be the
+    // one evicted. Set.add() alone does NOT move an existing entry, so
+    // without the delete-then-add keep.png would be evicted instead.
     rl.recordSuccess('https://t.test/extra.png');
-    rl.record('https://t.test/keep.png');       // still cached → no slot used
+    rl.record('https://t.test/keep.png');       // cached → no window slot used
+    expect(rl.canFetch('https://t.test/anything.png')).toBe(true);
+    rl.record('https://t.test/f0.png');         // evicted → takes the only slot
+    expect(rl.canFetch('https://t.test/anything.png')).toBe(false);
+  });
+
+  it('keeps all URLs when exactly at the cap (eviction starts only beyond it)', () => {
+    const rl = new RateLimiter(1);
+    for (let i = 0; i < 1000; i++) rl.recordSuccess(`https://t.test/${i}.png`);
+    rl.record('https://t.test/0.png');          // oldest, still cached → no slot used
     expect(rl.canFetch('https://t.test/anything.png')).toBe(true);
   });
 });

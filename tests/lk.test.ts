@@ -22,9 +22,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   lucasKanadePyramidal,
+  lkSingleLevel,
   buildPyramid,
   sobel,
   extractChannel,
+  ChannelMode,
 } from '../src/lk';
 import { LK_ALGORITHM_SOURCE } from '../src/lk-worker';
 
@@ -155,6 +157,28 @@ describe('lucasKanadePyramidal — synthetic correctness', () => {
     expect(result.dx).toBeCloseTo(30, -0.5);
     expect(result.dy).toBeCloseTo(-20, -0.5);
   });
+
+  it('recovers a coherent (-5, +3) motion (leftward / downward sign combination)', () => {
+    // The (+5, -3) test above never samples left of x=0 or below the last
+    // row, so the opposite signs need their own coverage.
+    const { I0, I1 } = makeCoherent(-5, 3);
+    const result = lucasKanadePyramidal(I0, I1, SIZE, SIZE);
+    expect(result.dx).toBeCloseTo(-5, 2);
+    expect(result.dy).toBeCloseTo(3, 2);
+  });
+
+  it('reports angleDeg in 0..360 (+x = 0°, +y = 90°) and magnitude as the vector length', () => {
+    // Down-left (-10, +10): 135°. Up-right (+10, -10): atan2 is -45°, must wrap to 315°.
+    const dl = makeCoherent(-10, 10);
+    const downLeft = lucasKanadePyramidal(dl.I0, dl.I1, SIZE, SIZE);
+    expect(downLeft.angleDeg).toBeCloseTo(135, 1);
+    expect(downLeft.magnitude).toBeCloseTo(Math.hypot(10, 10), 2);
+
+    const ur = makeCoherent(10, -10);
+    const upRight = lucasKanadePyramidal(ur.I0, ur.I1, SIZE, SIZE);
+    expect(upRight.angleDeg).toBeCloseTo(315, 1);
+    expect(upRight.magnitude).toBeCloseTo(Math.hypot(10, 10), 2);
+  });
 });
 
 // ── 2. Primitives ────────────────────────────────────────────────────────
@@ -179,12 +203,85 @@ describe('buildPyramid', () => {
   it('stops adding levels once a halved dimension falls below 4', () => {
     const w = 8; const h = 8;
     const img = new Float32Array(w * h).fill(50);
-    // Asking for 5 levels — should stop at 3 (8 → 4 → 2 would be < 4).
+    // Asking for 5 levels — 8 → 4 is allowed, but 4 → 2 falls below 4 and is refused.
     const pyramid = buildPyramid(img, w, h, 5);
-    expect(pyramid.length).toBeLessThanOrEqual(3);
-    for (const level of pyramid) {
-      expect(level.width).toBeGreaterThanOrEqual(2);
+    expect(pyramid.map(l => [l.width, l.height])).toEqual([[8, 8], [4, 4]]);
+  });
+
+  it('stops when only the width would fall below 4 (narrow image)', () => {
+    // 6 → 3 wide is refused even though 16 → 8 tall would be fine.
+    const pyramid = buildPyramid(new Float32Array(6 * 16).fill(50), 6, 16, 3);
+    expect(pyramid.map(l => [l.width, l.height])).toEqual([[6, 16]]);
+  });
+
+  it('stops when only the height would fall below 4 (short image)', () => {
+    const pyramid = buildPyramid(new Float32Array(16 * 6).fill(50), 16, 6, 3);
+    expect(pyramid.map(l => [l.width, l.height])).toEqual([[16, 6]]);
+  });
+});
+
+// ── lkSingleLevel ────────────────────────────────────────────────────────
+
+describe('lkSingleLevel', () => {
+  const W = 16;
+  const H = 16;
+  const BLOCK = 5;
+
+  /** A BLOCK×BLOCK square of 200 with its top-left at (x0, y0), zero elsewhere. */
+  function block(x0: number, y0: number): Float32Array {
+    const img = new Float32Array(W * H);
+    for (let y = y0; y < y0 + BLOCK; y++) {
+      for (let x = x0; x < x0 + BLOCK; x++) img[y * W + x] = 200;
     }
+    return img;
+  }
+
+  // I1 is I0 shifted by an exact integer (d, d), and the initial guess is
+  // that same shift, so the warp is a pure pixel copy and the estimate must
+  // not move. Chosen so the shifted block touches the image edge: the warp
+  // then samples exactly on x=0 / y=0 (or x=W-1 / y=H-1), which must be
+  // treated as in-bounds. Samples left of / above the edge must read as 0,
+  // not wrap into the previous row.
+  it.each([
+    { edge: 'top-left', i0: [3, 3], i1: [0, 0], d: -3 },
+    { edge: 'bottom-right', i0: [8, 8], i1: [11, 11], d: 3 },
+  ])('an exact integer shift at the $edge edge is a fixed point (v stays at $d)', ({ i0, i1, d }) => {
+    const r = lkSingleLevel(block(i0[0], i0[1]), block(i1[0], i1[1]), W, H, d, d, 5);
+    expect(r.vx).toBe(d);
+    expect(r.vy).toBe(d);
+    expect(r.confidence).toBeGreaterThan(0);
+    // Zero residual on the first pass → converged immediately.
+    expect(r.iterations).toBe(1);
+  });
+
+  // One centred blob is symmetric about its axes, so a pure x (or y) shift
+  // gives an update on the other axis of ~0 (1e-16), unlike the two-blob
+  // fixtures whose cross-axis residual (~0.006) sits right at the threshold.
+  function singleBlob(dx: number, dy: number): { I0: Float32Array; I1: Float32Array } {
+    const I0 = new Float32Array(SIZE * SIZE);
+    const I1 = new Float32Array(SIZE * SIZE);
+    addBlob(I0, SIZE, SIZE, 64, 64, 8, 200);
+    addBlob(I1, SIZE, SIZE, 64 + dx, 64 + dy, 8, 200);
+    return { I0, I1 };
+  }
+
+  it('does not stop early when only one axis has converged (pure x and pure y motion)', () => {
+    // The other axis's update is ~0 on the first pass while this axis is
+    // still ~0.2 px short (4 px from a zero guess), so it must keep going.
+    for (const [dx, dy] of [[4, 0], [0, 4]]) {
+      const { I0, I1 } = singleBlob(dx, dy);
+      const r = lkSingleLevel(I0, I1, SIZE, SIZE, 0, 0, 5);
+      expect(r.vx).toBeCloseTo(dx, 2);
+      expect(r.vy).toBeCloseTo(dy, 2);
+      expect(r.iterations).toBeGreaterThan(1);
+    }
+  });
+
+  it('reports the iteration cap when it has not converged', () => {
+    // 4 px from a zero guess cannot reach the 0.005 px threshold in 2 passes.
+    const { I0, I1 } = singleBlob(4, 0);
+    const r = lkSingleLevel(I0, I1, SIZE, SIZE, 0, 0, 2);
+    expect(r.iterations).toBe(2);
   });
 });
 
@@ -259,6 +356,46 @@ describe('extractChannel', () => {
     // 205 * 128 / 255 = 26240/255 ≈ 102.9
     const halfRed = fakeImageData([255, 50, 50, 128]);
     expect(extractChannel(halfRed, 'distance-from-white')[0]).toBeCloseTo(103, 0);
+  });
+
+  it('reads every pixel of a 2-D image, RGBA-strided (distance-from-white)', () => {
+    // 2×2 so width×height ≠ width/height, and pixels 1..3 use distinct
+    // R, G, B so a mis-strided channel read shows up. Single-pixel images
+    // above only ever read indices 0..3.
+    const img = {
+      data: new Uint8ClampedArray([
+        150, 200, 255, 255, // 255 - min(150,200,255) = 105
+        255, 50, 60, 255,   // 255 - 50 = 205
+        70, 255, 255, 255,  // 255 - 70 = 185
+        0, 0, 0, 0,         // transparent → 0
+      ]),
+      width: 2,
+      height: 2,
+    };
+    expect(Array.from(extractChannel(img, 'distance-from-white'))).toEqual([105, 205, 185, 0]);
+  });
+
+  it('luminance uses BT.601 weights and is 0 for transparent pixels', () => {
+    // 0.299·100 + 0.587·150 + 0.114·200 = 29.9 + 88.05 + 22.8 = 140.75
+    const img = fakeImageData([100, 150, 200, 255, 100, 150, 200, 0, 0, 0, 255, 255]);
+    const out = extractChannel(img, 'luminance');
+    expect(out[0]).toBeCloseTo(140.75, 3);
+    expect(out[1]).toBe(0);
+    // Pure blue: 0.114·255 = 29.07 — isolates the B weight.
+    expect(out[2]).toBeCloseTo(29.07, 3);
+  });
+
+  it('saturation is max(R,G,B) - min(R,G,B) and 0 for transparent pixels', () => {
+    const img = fakeImageData([200, 100, 50, 255, 200, 100, 50, 0]);
+    const out = extractChannel(img, 'saturation');
+    expect(out[0]).toBe(150);
+    expect(out[1]).toBe(0);
+  });
+
+  it('an unrecognised mode falls back to the alpha channel', () => {
+    const img = fakeImageData([255, 0, 0, 100, 0, 255, 0, 200]);
+    const out = extractChannel(img, 'bogus' as unknown as ChannelMode);
+    expect(Array.from(out)).toEqual([100, 200]);
   });
 });
 

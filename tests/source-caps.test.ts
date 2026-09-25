@@ -131,6 +131,40 @@ describe('getEffectiveTimeRange', () => {
   });
 });
 
+describe('getEffectiveTimeRange — stride edge cases', () => {
+  it.each([0, -3])('NOAA treats frame_stride_minutes=%i as unset (default stride), not the smallest choice', (s) => {
+    // Without the positive-value guard, the nearest-choice snap would pick 2.
+    const r = getEffectiveTimeRange({ ...base, data_source: 'NOAA', frame_stride_minutes: s });
+    expect(r.strideMin).toBe(5);
+  });
+
+  it.each([[3.5, 2], [7.5, 5]])('NOAA snaps an equidistant frame_stride_minutes=%f to the shorter choice (%i)', (s, expected) => {
+    const r = getEffectiveTimeRange({ ...base, data_source: 'NOAA', frame_stride_minutes: s });
+    expect(r.strideMin).toBe(expected);
+  });
+
+  it('a grid source falls back to native stride for NaN (YAML `.nan`) instead of propagating it', () => {
+    // NaN fails `>= intervalMin`; without that guard Math.max(1, NaN) is NaN
+    // and frameCount goes NaN too.
+    const r = getEffectiveTimeRange({ ...base, data_source: 'RainViewer', frame_stride_minutes: NaN });
+    expect(r.strideMin).toBe(10);
+    expect(r.frameCount).toBe(7);
+  });
+
+  it('a source with an empty strideChoices list uses the grid-stride rules', () => {
+    // No shipped source has an empty list; the length guard keeps a future
+    // half-configured row from hitting reduce() on [] (which throws).
+    SOURCE_CAPS.__EmptyChoices = { ...SOURCE_CAPS.RainViewer, strideChoices: [] };
+    try {
+      const r = getEffectiveTimeRange({ ...base, data_source: '__EmptyChoices', frame_stride_minutes: 30 });
+      expect(r.strideMin).toBe(30);
+      expect(getEffectiveTimeRange({ ...base, data_source: '__EmptyChoices' }).strideMin).toBe(10);
+    } finally {
+      delete SOURCE_CAPS.__EmptyChoices;
+    }
+  });
+});
+
 describe('shouldShowPlayback', () => {
   it('is false when show_playback is off, regardless of frame count', () => {
     expect(shouldShowPlayback({ ...base, show_playback: false, past_minutes: 60 })).toBe(false);

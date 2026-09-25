@@ -66,6 +66,35 @@ describe('resolveCoordinate', () => {
     const hass = mockHass({ states: {} });
     expect(resolveCoordinate({ entity: 'sensor.missing' }, 'latitude', -33.86, hass)).toBe(-33.86);
   });
+
+  it('resolves EntityCoordinate longitude with the default attribute name', () => {
+    const hass = mockHass({ states: { 'sensor.loc': entityState(-34, 151) } });
+    expect(resolveCoordinate({ entity: 'sensor.loc' }, 'longitude', 0, hass)).toBe(151);
+  });
+
+  it('returns fallback for an entity string when hass is undefined', () => {
+    expect(resolveCoordinate('device_tracker.van', 'latitude', -33.86, undefined)).toBe(-33.86);
+  });
+
+  it('returns fallback when a string-config entity has no attributes object', () => {
+    const hass = mockHass({ states: { 'sensor.bare': { state: 'on' } } });
+    expect(resolveCoordinate('sensor.bare', 'latitude', -33.86, hass)).toBe(-33.86);
+  });
+
+  it('returns fallback when an EntityCoordinate entity has no attributes object', () => {
+    const hass = mockHass({ states: { 'sensor.bare': { state: 'on' } } });
+    expect(resolveCoordinate({ entity: 'sensor.bare' }, 'longitude', 151.21, hass)).toBe(151.21);
+  });
+
+  it('does not look up a state when an object config has no entity key', () => {
+    // A guard-less lookup would stringify the missing entity to the key "undefined".
+    const hass = mockHass({ states: { undefined: entityState(-34, 151) } });
+    expect(resolveCoordinate({ latitude_attribute: 'latitude' } as any, 'latitude', -33.86, hass)).toBe(-33.86);
+  });
+
+  it('returns fallback for a malformed boolean config instead of throwing', () => {
+    expect(resolveCoordinate(true as any, 'latitude', -33.86, mockHass())).toBe(-33.86);
+  });
 });
 
 // ── resolveCoordinatePair ────────────────────────────────────────────────────
@@ -99,6 +128,34 @@ describe('resolveCoordinatePair', () => {
     const hass = mockHass({ states: { 'zone.null_island': entityState(0, 0) } });
     expect(resolveCoordinatePair('zone.null_island', 'zone.null_island', -33.86, 151.21, hass))
       .toEqual({ lat: 0, lon: 0 });
+  });
+
+  it('takes lat and lon from their own entities when both entities have non-zero coordinates', () => {
+    // Zero coordinates elsewhere mask a wrongly-shared lookup: the shortcut skips falsy values.
+    const hass = mockHass({ states: {
+      'device_tracker.a': entityState(-34, 100),
+      'device_tracker.b': entityState(10, 151),
+    }});
+    expect(resolveCoordinatePair('device_tracker.a', 'device_tracker.b', 0, 0, hass))
+      .toEqual({ lat: -34, lon: 151 });
+  });
+
+  it('falls back per axis when the shared entity has an unparseable latitude', () => {
+    const hass = mockHass({ states: { 'device_tracker.van': entityState('unknown', 151) } });
+    expect(resolveCoordinatePair('device_tracker.van', 'device_tracker.van', -33.86, 0, hass))
+      .toEqual({ lat: -33.86, lon: 151 });
+  });
+
+  it('falls back per axis when the shared entity has an unparseable longitude', () => {
+    const hass = mockHass({ states: { 'device_tracker.van': entityState(-34, 'unknown') } });
+    expect(resolveCoordinatePair('device_tracker.van', 'device_tracker.van', 0, 151.21, hass))
+      .toEqual({ lat: -34, lon: 151.21 });
+  });
+
+  it('returns the fallback pair when the shared entity has no attributes object', () => {
+    const hass = mockHass({ states: { 'sensor.bare': { state: 'on' } } });
+    expect(resolveCoordinatePair('sensor.bare', 'sensor.bare', -33.86, 151.21, hass))
+      .toEqual({ lat: -33.86, lon: 151.21 });
   });
 });
 
@@ -154,6 +211,48 @@ describe('getCurrentUserInfo', () => {
       },
     });
     expect(getCurrentUserInfo(hass)?.deviceTracker).toBeUndefined();
+  });
+
+  it('returns null when hass has no user object', () => {
+    const hass = { states: {} } as any;
+    expect(getCurrentUserInfo(hass)).toBeNull();
+  });
+
+  it('returns null without a user even if a person entity has no user_id', () => {
+    // undefined === undefined would otherwise "match" an unlinked person.
+    const hass = { states: { 'person.unlinked': { state: 'home', attributes: {} } } } as any;
+    expect(getCurrentUserInfo(hass)).toBeNull();
+  });
+
+  it('ignores non-person entities that carry a matching user_id', () => {
+    const hass = mockHass({
+      userId: 'user-abc',
+      states: {
+        'sensor.impostor': { state: 'on', attributes: { user_id: 'user-abc' } },
+      },
+    });
+    expect(getCurrentUserInfo(hass)).toBeNull();
+  });
+
+  it('skips a person entity that has no attributes object and keeps searching', () => {
+    const hass = mockHass({
+      userId: 'user-abc',
+      states: {
+        'person.ghost': { state: 'unknown' },
+        'person.john': { state: 'home', attributes: { user_id: 'user-abc' } },
+      },
+    });
+    expect(getCurrentUserInfo(hass)?.personEntity).toBe('person.john');
+  });
+
+  it('trims whitespace around the first comma-separated device tracker', () => {
+    const hass = mockHass({
+      userId: 'user-abc',
+      states: {
+        'person.john': { state: 'home', attributes: { user_id: 'user-abc', device_trackers: '  device_tracker.phone , device_tracker.tablet' } },
+      },
+    });
+    expect(getCurrentUserInfo(hass)?.deviceTracker).toBe('device_tracker.phone');
   });
 });
 

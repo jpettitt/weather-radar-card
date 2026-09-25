@@ -29,11 +29,14 @@ export function geometryLngLatBounds(
       const [lng, lat] = p;
       if (typeof lng !== 'number' || typeof lat !== 'number') continue;
       lngs.push(lng);
+      // Stryker disable next-line EqualityOperator: `<` vs `<=` assigns an identical value
       if (lat < minLat) minLat = lat;
+      // Stryker disable next-line EqualityOperator: `>` vs `>=` assigns an identical value
       if (lat > maxLat) maxLat = lat;
       any = true;
     }
   };
+  // Stryker disable BlockStatement: emptying the final else (return null) is unobservable — falling through also yields null via the !any guard below
   if (geom.type === 'Polygon') {
     for (const r of geom.coordinates) visit(r);
   } else if (geom.type === 'MultiPolygon') {
@@ -41,10 +44,12 @@ export function geometryLngLatBounds(
   } else {
     return null;
   }
+  // Stryker restore BlockStatement
   if (!any) return null;
 
   let minLng = Math.min(...lngs);
   let maxLng = Math.max(...lngs);
+  // Stryker disable next-line EqualityOperator: at exactly 180 both windows are equally wide, so the tighter-window check below keeps naive either way
   if (maxLng - minLng > 180) {
     // Suspected dateline crossing — recompute in a 0..360 window.
     // (A real single geometry spanning >180° of longitude without
@@ -71,6 +76,7 @@ export function centroidLngLat(geom: GeoJSON.Geometry): [number, number] | null 
   const b = geometryLngLatBounds(geom);
   if (!b) return null;
   let lng = (b.minLng + b.maxLng) / 2;
+  // Stryker disable next-line EqualityOperator: 180 and -180 are the same meridian, both inside the documented range
   if (lng > 180) lng -= 360;
   return [lng, (b.minLat + b.maxLat) / 2];
 }

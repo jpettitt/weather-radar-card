@@ -31,6 +31,18 @@ describe('resolveMarkerPosition', () => {
       .toEqual({ lat: -33.86, lon: 151.21 });
   });
 
+  it('falls back to the static position when only the entity latitude is numeric', () => {
+    const hass = mockHass({ states: { 'device_tracker.van': entityState(-34.0, 'unknown') } });
+    expect(resolveMarkerPosition({ entity: 'device_tracker.van', latitude: -10, longitude: 20 }, hass, 0, 0))
+      .toEqual({ lat: -10, lon: 20 });
+  });
+
+  it('falls back to the static position when only the entity longitude is numeric', () => {
+    const hass = mockHass({ states: { 'device_tracker.van': entityState('unknown', 152.0) } });
+    expect(resolveMarkerPosition({ entity: 'device_tracker.van', latitude: -10, longitude: 20 }, hass, 0, 0))
+      .toEqual({ lat: -10, lon: 20 });
+  });
+
   it('falls back to fallback values when hass is undefined', () => {
     expect(resolveMarkerPosition({}, undefined, -33.86, 151.21)).toEqual({ lat: -33.86, lon: 151.21 });
   });

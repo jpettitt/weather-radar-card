@@ -39,6 +39,7 @@ export function parseTimeDimension(xml: string): number[] {
   // version change can't silently blank the list.
   const m = xml.match(/<(?:Dimension|Extent)[^>]*name="time"[^>]*>([^<]+)<\/(?:Dimension|Extent)>/i);
   if (!m) return [];
+  // Stryker disable next-line MethodExpression: redundant with the per-entry trim below (whitespace never contains '/')
   const raw = m[1].trim();
   if (raw.includes('/')) return [];   // interval form — not expanded, see doc block
   const out: number[] = [];
@@ -81,17 +82,22 @@ export function pickFrameTimes(listedSec: number[], pastMin: number, strideMin: 
     const ideal = newest - i * strideSec;
     picked.add(nearestListed(listedSec, ideal));
   }
+  // Stryker disable next-line MethodExpression,ArithmeticOperator: Set insertion order is already ascending (nearestListed is monotone in target); the sort is defensive
   return Array.from(picked).sort((a, b) => a - b);
 }
 
 // Binary search for the listed time nearest to `target` (ties → newer).
 function nearestListed(sorted: number[], target: number): number {
+  // Stryker disable next-line ArithmeticOperator: unreachable via pickFrameTimes (target <= newest); an out-of-range mid reads undefined, compares false and shrinks hi back
   let lo = 0, hi = sorted.length - 1;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
+    // Stryker disable next-line EqualityOperator: `<=` lands on the first value > target, and the below-candidate check returns the same time for an exact match
     if (sorted[mid] < target) lo = mid + 1; else hi = mid;
   }
   // sorted[lo] is the first value >= target; candidate below is lo-1.
+  // (At lo = 0, sorted[-1] is undefined so the comparison is NaN/false and
+  // the lo > 0 guard is redundant.)
   if (lo > 0 && target - sorted[lo - 1] < sorted[lo] - target) return sorted[lo - 1];
   return sorted[lo];
 }

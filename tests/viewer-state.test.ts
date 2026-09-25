@@ -142,6 +142,60 @@ describe('ViewerState — identity minting', () => {
     expect(m.state.isActive).toBe(false);
     expect(_liveCardsForTests().size).toBe(0);
   });
+
+  it('re-mints when the stored nonce is not a string', () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 12345 as unknown as string },
+    });
+    m.state.ensureIdentity();
+    expect(m.onIdentityMinted).toHaveBeenCalledOnce();
+    expect(m.state.isActive).toBe(false);
+  });
+
+  it('mints with an empty dash when there is no window (SSR / non-browser host)', () => {
+    vi.stubGlobal('window', undefined);
+    try {
+      const m = makeState({ viewer_layer_control: true });
+      m.state.ensureIdentity();
+      expect(m.onIdentityMinted).toHaveBeenCalledOnce();
+      expect((m.onIdentityMinted.mock.calls[0][0] as LayerStateId).dash).toBe('');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('a dashboard-path change under a live card re-mints and deactivates it', () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'moved01' },
+    });
+    m.state.ensureIdentity();
+    expect(m.state.isActive).toBe(true);
+
+    window.history.replaceState({}, '', '/other-dashboard/1');
+    m.state.ensureIdentity();
+
+    expect(m.onIdentityMinted).toHaveBeenCalledOnce();
+    // Stays inactive until the new id round-trips through config; the old
+    // nonce must not stay claimed in the meantime.
+    expect(m.state.isActive).toBe(false);
+    expect(_liveCardsForTests().size).toBe(0);
+  });
+
+  it('moving to a new nonce releases the old one from the live-card map', () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'swap001' },
+    });
+    m.state.ensureIdentity();
+    m.setConfig({ _layer_state_id: { dash: '/lovelace/0', nonce: 'swap002' } });
+    m.state.ensureIdentity();
+
+    expect(m.state.storageKey).toBe('weather-radar-card.viewer-state.swap002');
+    // A leaked 'swap001' would make any later card reusing it re-mint forever.
+    expect([..._liveCardsForTests().keys()]).toEqual(['swap002']);
+  });
 });
 
 // ── Within-dashboard collision detection ─────────────────────────────────
@@ -176,6 +230,21 @@ describe('ViewerState — copy-paste collision', () => {
     second.state.ensureIdentity();
     expect(second.onIdentityMinted).not.toHaveBeenCalled();
     expect(second.state.isActive).toBe(true);
+  });
+
+  it('dispose does not evict a different card that now owns the nonce', () => {
+    const id: LayerStateId = { dash: '/lovelace/0', nonce: 'owner01' };
+
+    const stale = makeState({ viewer_layer_control: true, _layer_state_id: id });
+    stale.state.ensureIdentity();
+    // Clearing the map lets a second card take over the same nonce while
+    // `stale` still believes it is registered.
+    _resetLiveCardsForTests();
+    const owner = makeState({ viewer_layer_control: true, _layer_state_id: id });
+    owner.state.ensureIdentity();
+
+    stale.state.dispose();
+    expect(_liveCardsForTests().get('owner01')).toBe(owner.state);
   });
 });
 
@@ -242,8 +311,38 @@ describe('ViewerState — hydration + get', () => {
 
     await m.state.hydrate();
     expect(warn).toHaveBeenCalledOnce();
+    // The op label is the only thing telling a bug report which WS call failed.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('hydrate failed'), expect.any(Error));
     expect(m.state.get<unknown>('anything')).toBeUndefined();
     warn.mockRestore();
+  });
+
+  it('does not retry a failed hydrate', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'hydra05' },
+    });
+    m.state.ensureIdentity();
+    m.callWS.mockRejectedValue(new Error('ws unavailable'));
+
+    await m.state.hydrate();
+    await m.state.hydrate();
+    expect(m.callWS).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('ignores a persisted value that is not an object', async () => {
+    // Spreading a string would smear its characters into the cache as "0", "1", …
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'hydra06' },
+    });
+    m.state.ensureIdentity();
+    m.callWS.mockResolvedValueOnce({ value: 'garbage' });
+
+    await m.state.hydrate();
+    expect(m.state.get<unknown>('0')).toBeUndefined();
   });
 });
 
@@ -329,8 +428,12 @@ describe('ViewerState — delete', () => {
     m.state.ensureIdentity();
     m.state.set('a', 1);
     m.state.set('b', 2);
+    // Drain set()'s own debounced write so the assertions below can only be
+    // satisfied by the write that delete() schedules.
+    await vi.runAllTimersAsync();
     m.callWS.mockClear();
     m.state.delete('a');
+    expect(m.callWS).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(500);
     await vi.runAllTimersAsync();
@@ -478,6 +581,36 @@ describe('ViewerState — dispose', () => {
     expect(m.callWS).not.toHaveBeenCalled();
     expect(_liveCardsForTests().size).toBe(0);
   });
+
+  it('dispose cancels the pending debounce timer rather than leaving it to fire', () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'dispos3' },
+    });
+    m.state.ensureIdentity();
+    m.state.set('a', 1);
+    expect(vi.getTimerCount()).toBe(1);
+    m.state.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('dispose drops subscribers so they cannot keep a torn-down card reachable', () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'dispos4' },
+    });
+    m.state.ensureIdentity();
+    const stale = vi.fn();
+    m.state.subscribe(stale);
+
+    // The listener set is private; re-activating the instance is the only
+    // way to observe whether dispose() actually released it.
+    m.state.dispose();
+    m.state.ensureIdentity();
+    m.state.set('a', 1);
+
+    expect(stale).not.toHaveBeenCalled();
+  });
 });
 
 // ── Hydrate/set races (regressions from the 2026-06-09 review) ──────────
@@ -555,5 +688,190 @@ describe('ViewerState — hydrate/set races', () => {
       (c) => (c[0] as { type: string }).type === 'frontend/get_user_data',
     );
     expect(getCalls).toHaveLength(1);
+  });
+
+  it('a flush that resumes after dispose mid-hydrate is dropped, not written under the dead key', async () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'race004' },
+    });
+    m.state.ensureIdentity();
+    let releaseGet!: (v: unknown) => void;
+    m.callWS.mockImplementation((msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') {
+        return new Promise((res) => { releaseGet = res; });
+      }
+      return Promise.resolve({});
+    });
+
+    m.state.set('a', 1);
+    vi.advanceTimersByTime(500);   // debounce fires; _flush parks on the hydrate GET
+    m.state.dispose();             // timer already fired, so nothing is flushed here
+    releaseGet({ value: { old_key: 'precious' } });
+    await vi.runAllTimersAsync();
+
+    const setCalls = m.callWS.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'frontend/set_user_data',
+    );
+    expect(setCalls).toHaveLength(0);
+  });
+});
+
+// ── Deactivation after use ───────────────────────────────────────────────
+// The cache outlives a deactivation (viewer_layer_control flipped off), so
+// every consumer entry point must re-check isActive rather than trust it.
+
+describe('ViewerState — deactivated after use', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  function makeDeactivated(nonce: string): MockSetup {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce },
+    });
+    m.state.ensureIdentity();
+    m.state.set('a', 1);
+    m.setConfig({ viewer_layer_control: false });
+    m.state.ensureIdentity();
+    expect(m.state.isActive).toBe(false);
+    return m;
+  }
+
+  it('get returns undefined even though the cache still holds the value', () => {
+    const m = makeDeactivated('deact01');
+    expect(m.state.get<number>('a')).toBeUndefined();
+  });
+
+  it('delete is silent: no event, no write', async () => {
+    const m = makeDeactivated('deact02');
+    await vi.runAllTimersAsync();  // drain the write set() scheduled while active
+    m.callWS.mockClear();
+    const listener = vi.fn();
+    m.state.subscribe(listener);
+
+    m.state.delete('a');
+    await vi.runAllTimersAsync();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(m.callWS).not.toHaveBeenCalled();
+  });
+
+  it('a write pending at deactivation is dropped, not sent under a null key', async () => {
+    const m = makeDeactivated('deact03');   // set('a') left a write pending
+    await vi.runAllTimersAsync();
+    expect(m.callWS).not.toHaveBeenCalled();
+  });
+
+  it('set while inactive emits nothing and leaves no value behind for a later activation', () => {
+    const m = makeState();                  // viewer_layer_control off
+    const listener = vi.fn();
+    m.state.subscribe(listener);
+    m.state.set('a', 1);
+    expect(listener).not.toHaveBeenCalled();
+
+    m.setConfig({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'deact04' },
+    });
+    m.state.ensureIdentity();
+    expect(m.state.isActive).toBe(true);
+    expect(m.state.get<number>('a')).toBeUndefined();
+  });
+
+  it('reset while inactive is a no-op: no event, no WS call', async () => {
+    const m = makeState();
+    const listener = vi.fn();
+    m.state.subscribe(listener);
+
+    await m.state.reset();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(m.callWS).not.toHaveBeenCalled();
+  });
+});
+
+// ── Reset: pending-write cancellation ────────────────────────────────────
+
+describe('ViewerState — reset vs pending write', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it('reset cancels a pending debounced write so it cannot fire a second time', async () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'rsetpen' },
+    });
+    m.state.ensureIdentity();
+    await m.state.hydrate();
+    m.state.set('a', 1);            // debounced write pending
+    m.callWS.mockClear();
+
+    await m.state.reset();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // Only reset's own write; the stale debounced flush must be gone.
+    expect(m.callWS).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// ── WS failure handling ──────────────────────────────────────────────────
+
+describe('ViewerState — WS failures', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  function makeActive(nonce: string): MockSetup {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce },
+    });
+    m.state.ensureIdentity();
+    return m;
+  }
+
+  it('reset swallows a WS failure and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = makeActive('wsfail1');
+    m.callWS.mockRejectedValueOnce(new Error('ws down'));
+
+    await expect(m.state.reset()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('reset failed'), expect.any(Error));
+    warn.mockRestore();
+  });
+
+  it('a failed debounced write is caught and warned, not left as an unhandled rejection', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = makeActive('wsfail2');
+    await m.state.hydrate();
+    m.state.set('a', 1);
+    m.callWS.mockRejectedValueOnce(new Error('ws down'));
+
+    await vi.runAllTimersAsync();
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('write failed'), expect.any(Error));
+    // The optimistic value survives; only persistence failed.
+    expect(m.state.get<number>('a')).toBe(1);
+    warn.mockRestore();
+  });
+
+  it('warns only once across different failing operations', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = makeActive('wsfail3');
+    m.callWS.mockRejectedValue(new Error('ws down'));
+
+    await m.state.hydrate();                // fails → warns
+    m.state.set('a', 1);
+    await vi.runAllTimersAsync();           // write fails → suppressed
+    await m.state.reset();                  // reset fails → suppressed
+
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 });

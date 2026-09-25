@@ -139,6 +139,7 @@ export function resolveTracking(
 
   for (let i = 0; i < markers.length; i++) {
     const m = markers[i];
+    // Stryker disable next-line ConditionalExpression: an untracked marker gets p === 0 and is skipped by the guard below
     if (!m.track) continue;
 
     let p = 0;

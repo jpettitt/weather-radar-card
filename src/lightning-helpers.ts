@@ -81,8 +81,10 @@ export function colorForAge(ageSec: number, maxAgeSec: number): string {
   for (let i = 0; i < COLOR_STOPS.length - 1; i++) {
     const a = COLOR_STOPS[i];
     const b = COLOR_STOPS[i + 1];
+    // Stryker disable next-line EqualityOperator: at t === b.t the two segments' lerps both yield stop b's colour
     if (t <= b.t) {
       const span = b.t - a.t;
+      // Stryker disable next-line ConditionalExpression, EqualityOperator: COLOR_STOPS is a fixed, evenly spaced constant so span is always 0.2; the guard is for a future bad edit
       return lerpHex(a.c, b.c, span > 0 ? (t - a.t) / span : 0);
     }
   }

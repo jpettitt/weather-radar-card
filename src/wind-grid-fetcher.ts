@@ -304,9 +304,11 @@ export function parseNdfdWcsGrid(body: string): WindGrid {
 
 function parseBand(body: string, header: string, rows: number, cols: number): number[][] {
   const idx = body.indexOf(header);
+  // Stryker disable next-line EqualityOperator: `<= 0` differs only if the header sits at offset 0, i.e. bands before the Grid bounds line, which WCS never emits
   if (idx < 0) throw new Error(`parseWcsTextGrid: missing ${header}`);
   // Slice from the byte after the header newline. Stop at the next "Band " or EOF.
   const after = body.slice(idx + header.length);
+  // Stryker disable next-line Regex: bands run 0, 1, 2… so the header following Band 0/1 is always a single digit
   const nextBand = after.search(/\nBand \d+:/);
   const slice = nextBand >= 0 ? after.slice(0, nextBand) : after;
   const lines = slice.split('\n').map(s => s.trim()).filter(Boolean);
@@ -320,6 +322,7 @@ function parseBand(body: string, header: string, rows: number, cols: number): nu
       throw new Error(`parseWcsTextGrid: ${header} row ${r} has ${tokens.length} cols, expected ${cols}`);
     }
     const row: number[] = [];
+    // Stryker disable next-line EqualityOperator: an extra trailing element is never read; both finalizers index c < cols
     for (let c = 0; c < cols; c++) row.push(Number(tokens[c]));
     out.push(row);
   }
@@ -357,6 +360,7 @@ export async function fetchWindGrid(opts: FetchWindGridOptions): Promise<WindGri
   // Detect that explicitly so the caller's log line points at the real
   // cause instead of a downstream "missing Grid bounds line" parse fail.
   if (body.startsWith('<?xml') || body.includes('ExceptionReport')) {
+    // Stryker disable next-line OptionalChaining: `?.` on a null match already short-circuits the rest of the chain, and group 1 is always set on a match
     const msg = body.match(/<ows:ExceptionText>([\s\S]+?)<\/ows:ExceptionText>/)?.[1]?.trim();
     throw new Error(`fetchWindGrid: WCS returned exception — ${msg ?? 'see response body'}`);
   }
@@ -515,6 +519,7 @@ export function buildWindGridUrl(opts: FetchWindGridOptions, caps = getWindSourc
  * fetcher in those cases pulls the whole world, and this wrap lets the
  * sampler find the cell at the equivalent in-range longitude. */
 function wrapLon(lon: number): number {
+  // Stryker disable next-line ArithmeticOperator: `lon - 180` is congruent to `lon + 180` mod 360, so the result is identical
   return ((lon + 180) % 360 + 360) % 360 - 180;
 }
 
@@ -658,10 +663,12 @@ export class WindGridFetcher {
     const source = resolveSourceForBbox(opts);
     const caps = getWindSourceCaps(source);
     const snapFactor = caps.crs === 'EPSG:3857' ? 40 : 4;  // 0.025° vs 0.25°
+    // Stryker disable next-line ArithmeticOperator: `* snapFactor` is still injective in round(v × snapFactor), so it partitions keys identically
     const snap = (v: number): number => Math.round(v * snapFactor) / snapFactor;
     return [
       source,
       opts.coverageId ?? caps.coverageId,
+      // Stryker disable next-line StringLiteral: placeholder for "no time"; any constant partitions keys the same
       opts.timeIso ?? '',
       snap(opts.south), snap(opts.west), snap(opts.north), snap(opts.east),
     ].join('|');

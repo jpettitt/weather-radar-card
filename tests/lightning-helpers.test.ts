@@ -128,6 +128,14 @@ describe('colorForAge', () => {
     expect(BOLT_DURATION_SEC).toBe(30);
   });
 
+  it('falls through to dark red for a NaN age instead of throwing', () => {
+    // NaN survives the clamp and matches no segment, so it reaches the
+    // trailing fallback. Records CURRENT behaviour only — a NaN-aged
+    // strike rendering as the oldest colour is arguably a bug, not a
+    // contract; change this assertion freely if NaN is ever handled.
+    expect(colorForAge(NaN, 600)).toBe('#8b0000');
+  });
+
   it('progresses monotonically through the gradient (no backwards segments)', () => {
     // Sample a sequence of ages and confirm each successive colour differs.
     // Just a smoke check that the segment boundaries don't double back.
@@ -167,6 +175,12 @@ describe('bearingCardinal', () => {
 
   it('handles same-point input gracefully (atan2(0,0) → 0 → N)', () => {
     expect(bearingCardinal(ORIGIN.lat, ORIGIN.lon, ORIGIN.lat, ORIGIN.lon)).toBe('n');
+  });
+
+  it('uses the great-circle initial bearing over long distances (New York → London is NE, ~51°)', () => {
+    // A rhumb line would give ~78° (E). Also exercises the cos(φ2) and
+    // cos(Δλ) terms, which are near 1 at the short ranges above.
+    expect(bearingCardinal(40.7128, -74.0060, 51.5074, -0.1278)).toBe('ne');
   });
 
   it('handles antimeridian crossing without wrapping into the wrong sector', () => {

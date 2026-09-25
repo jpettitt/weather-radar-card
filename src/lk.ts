@@ -94,7 +94,9 @@ export function buildPyramid(
     const h = prev.height >> 1;
     if (w < 4 || h < 4) break;
     const out = new Float32Array(w * h);
+    // Stryker disable next-line EqualityOperator: y === h only writes past the end of a typed array (a no-op) and never throws
     for (let y = 0; y < h; y++) {
+      // Stryker disable next-line EqualityOperator: x === w writes into the next row's first cell, which that row then overwrites (or past the end, a no-op)
       for (let x = 0; x < w; x++) {
         const sx = x << 1;
         const sy = y << 1;
@@ -171,7 +173,9 @@ function warp(
   img: Float32Array, width: number, height: number, vx: number, vy: number,
 ): Float32Array {
   const out = new Float32Array(width * height);
+  // Stryker disable next-line EqualityOperator: y === height only writes past the end of a typed array (a no-op) and never throws
   for (let y = 0; y < height; y++) {
+    // Stryker disable next-line EqualityOperator: x === width writes into the next row's first cell, which that row then overwrites (or past the end, a no-op)
     for (let x = 0; x < width; x++) {
       out[y * width + x] = sampleBilinear(img, width, height, x + vx, y + vy);
     }
@@ -226,6 +230,7 @@ export function lkSingleLevel(
   const minEig = trace * 0.5 - sqrtDisc;
   const confidence = minEig / I0.length;
 
+  // Stryker disable next-line EqualityOperator: det is a float sum, so exactly 1e-6 is unreachable; 0 (the flat-field case) takes the same branch either way
   if (det < 1e-6) {
     return { vx, vy, confidence: 0, iterations: 0 };
   }
@@ -247,6 +252,7 @@ export function lkSingleLevel(
     // Convergence threshold of 0.005 px tracks the prototype's tuning
     // — finer than radar can plausibly resolve, but cheap enough that
     // tightening doesn't cost much when iterations are already capped.
+    // Stryker disable next-line EqualityOperator: exact-threshold tie on a float step is unreachable
     if (Math.abs(dvx) < 0.005 && Math.abs(dvy) < 0.005) break;
   }
   return { vx, vy, confidence, iterations: actualIters };
@@ -276,6 +282,7 @@ export function lucasKanadePyramidal(
 
   const pyr0 = buildPyramid(I0, width, height, levels);
   const pyr1 = buildPyramid(I1, width, height, levels);
+  // Stryker disable next-line MethodExpression: both pyramids are built from the same dims and level cap, so their lengths are always equal
   const actualLevels = Math.min(pyr0.length, pyr1.length);
 
   let vx = 0;
@@ -284,6 +291,7 @@ export function lucasKanadePyramidal(
   const perLevel: LkPerLevelResult[] = [];
 
   for (let level = actualLevels - 1; level >= 0; level--) {
+    // Stryker disable next-line ConditionalExpression, EqualityOperator, ArithmeticOperator: at the coarsest level vx = vy = 0, so scaling by 2 there is a no-op
     if (level < actualLevels - 1) {
       vx *= 2;
       vy *= 2;
@@ -350,6 +358,7 @@ export function extractChannel(
 ): Float32Array {
   const out = new Float32Array(imgData.width * imgData.height);
   const data = imgData.data;
+  // Stryker disable next-line EqualityOperator: i === out.length reads past the array (undefined) and writes past the end of a typed array (a no-op)
   for (let i = 0; i < out.length; i++) {
     const r = data[i * 4];
     const g = data[i * 4 + 1];
@@ -377,6 +386,7 @@ export function extractChannel(
         // translation that LK could chase. Reverted to linear; dense
         // per-region flow is the real fix and that's a v2 project.
         // See docs/motion-compensation-feature-design.md.
+        // Stryker disable next-line ConditionalExpression: with a === 0 the alpha weighting already yields 0, so the gate is redundant
         out[i] = a === 0 ? 0 : ((255 - Math.min(r, g, b)) * a) / 255;
         break;
       case 'saturation':

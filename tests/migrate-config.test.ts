@@ -134,6 +134,80 @@ describe('migrateConfig', () => {
     expect(result.markers![1].mobile_only).toBe(true);
   });
 
+  it('keeps a lone marker_latitude as a static latitude instead of defaulting to zone.home', () => {
+    const cfg = { ...base, show_marker: true, marker_latitude: 40 };
+    expect(migrateConfig(cfg).markers).toStrictEqual([{ latitude: 40 }]);
+  });
+
+  it('keeps a lone marker_longitude as a static longitude instead of defaulting to zone.home', () => {
+    const cfg = { ...base, show_marker: true, marker_longitude: 10 };
+    expect(migrateConfig(cfg).markers).toStrictEqual([{ longitude: 10 }]);
+  });
+
+  it('keeps a numeric marker_longitude next to a marker_latitude entity string', () => {
+    const cfg = { ...base, show_marker: true, marker_latitude: 'device_tracker.van', marker_longitude: 151.2 };
+    expect(migrateConfig(cfg).markers).toStrictEqual([{ entity: 'device_tracker.van', longitude: 151.2 }]);
+  });
+
+  it('adds no icon keys to the migrated marker when no legacy icon fields are set', () => {
+    // toStrictEqual: an `icon: undefined` key would survive a plain toEqual.
+    const cfg = { ...base, show_marker: true, marker_latitude: 1, marker_longitude: 2 };
+    expect(migrateConfig(cfg).markers).toStrictEqual([{ latitude: 1, longitude: 2 }]);
+  });
+
+  it('adds no icon keys to the mobile marker when no legacy mobile icon fields are set', () => {
+    const cfg = {
+      ...base, show_marker: true,
+      marker_latitude: 1, marker_longitude: 2,
+      mobile_marker_latitude: 3, mobile_marker_longitude: 4,
+    };
+    expect(migrateConfig(cfg).markers![1]).toStrictEqual({ mobile_only: true, latitude: 3, longitude: 4 });
+  });
+
+  it('creates a mobile marker when only the mobile latitude differs from desktop', () => {
+    const cfg = {
+      ...base, show_marker: true,
+      marker_latitude: 1, marker_longitude: 2,
+      mobile_marker_latitude: 5, mobile_marker_longitude: 2,
+    };
+    expect(migrateConfig(cfg).markers).toStrictEqual([
+      { latitude: 1, longitude: 2 },
+      { mobile_only: true, latitude: 5, longitude: 2 },
+    ]);
+  });
+
+  it('creates a mobile marker when only the mobile longitude differs from desktop', () => {
+    const cfg = {
+      ...base, show_marker: true,
+      marker_latitude: 1, marker_longitude: 2,
+      mobile_marker_latitude: 1, mobile_marker_longitude: 7,
+    };
+    expect(migrateConfig(cfg).markers).toStrictEqual([
+      { latitude: 1, longitude: 2 },
+      { mobile_only: true, latitude: 1, longitude: 7 },
+    ]);
+  });
+
+  it('creates a mobile marker from a lone mobile_marker_latitude', () => {
+    const cfg = { ...base, show_marker: true, marker_latitude: 1, marker_longitude: 2, mobile_marker_latitude: 5 };
+    expect(migrateConfig(cfg).markers![1]).toStrictEqual({ mobile_only: true, latitude: 5 });
+  });
+
+  it('creates a mobile marker from a lone mobile_marker_longitude', () => {
+    const cfg = { ...base, show_marker: true, marker_latitude: 1, marker_longitude: 2, mobile_marker_longitude: 7 };
+    expect(migrateConfig(cfg).markers![1]).toStrictEqual({ mobile_only: true, longitude: 7 });
+  });
+
+  it('keeps a numeric mobile longitude next to a mobile latitude entity string', () => {
+    const cfg = {
+      ...base, show_marker: true,
+      marker_latitude: 1, marker_longitude: 2,
+      mobile_marker_latitude: 'device_tracker.phone', mobile_marker_longitude: 7,
+    };
+    expect(migrateConfig(cfg).markers![1])
+      .toStrictEqual({ mobile_only: true, entity: 'device_tracker.phone', longitude: 7 });
+  });
+
   it('does not mutate the original config object', () => {
     const cfg = { ...base, show_marker: true, marker_latitude: -33.86, marker_longitude: 151.21 };
     const snapshot = JSON.stringify(cfg);
@@ -192,6 +266,30 @@ describe('migrateConfig', () => {
       const cfg = { ...base, frame_count: 0 };
       // (0 - 1) × 10 = -10 → clamped to 0
       expect(migrateConfig(cfg).past_minutes).toBe(0);
+    });
+
+    it('does not synthesise past_minutes when only dwd_forecast_hours is set', () => {
+      const r = migrateConfig({ ...base, data_source: 'DWD', dwd_forecast_hours: 2 });
+      expect(r.past_minutes).toBeUndefined();
+      expect(r.forecast_minutes).toBe(120);
+    });
+
+    it('does not synthesise forecast_minutes when only frame_count is set', () => {
+      const r = migrateConfig({ ...base, data_source: 'RainViewer', frame_count: 5 });
+      expect(r.forecast_minutes).toBeUndefined();
+      expect(r.past_minutes).toBe(40);
+    });
+
+    it('keeps explicit past_minutes while still migrating dwd_forecast_hours', () => {
+      const r = migrateConfig({ ...base, data_source: 'DWD', frame_count: 5, past_minutes: 90, dwd_forecast_hours: 2 });
+      expect(r.past_minutes).toBe(90);
+      expect(r.forecast_minutes).toBe(120);
+    });
+
+    it('keeps explicit forecast_minutes while still migrating frame_count', () => {
+      const r = migrateConfig({ ...base, data_source: 'DWD', frame_count: 13, forecast_minutes: 30, dwd_forecast_hours: 2 });
+      expect(r.forecast_minutes).toBe(30);
+      expect(r.past_minutes).toBe(60);
     });
 
     it('migrates both frame_count and dwd_forecast_hours together for DWD', () => {
