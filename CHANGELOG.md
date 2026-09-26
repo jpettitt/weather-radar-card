@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Wind overlays could throw on a one-cell-wide grid** — the bilinear sampler indexed past the end of a 1-row or 1-column grid (e.g. a bbox narrower than one native cell), which would abort the overlay render. ([#267](https://github.com/jpettitt/weather-radar-card/issues/267))
+- **Viewer layer state could lose saved settings after a failed read** — if a card's initial read of its saved state failed, the next change overwrote the whole saved record with only that session's keys, and a reset during that read could be undone by the late response. Writes now wait for a successful read and are kept in memory until one succeeds. ([#268](https://github.com/jpettitt/weather-radar-card/issues/268))
 
 ## [3.10.0] - 2026-09-24
 
