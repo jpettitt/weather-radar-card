@@ -560,14 +560,20 @@ export function sampleWindGridBilinear(
   if (fr < -0.5 || fr > grid.rows - 0.5 || fc < -0.5 || fc > grid.cols - 0.5) {
     return { u: 0, v: 0 };
   }
-  const r0 = Math.max(0, Math.min(grid.rows - 2, Math.floor(fr)));
-  const c0 = Math.max(0, Math.min(grid.cols - 2, Math.floor(fc)));
+  // The in-range check bounds floor(fr) to [-1, rows - 1]. In the last half
+  // cell r0 is the last row and r1 clamps onto it, so both corners are the
+  // same cell. That also covers a one-cell axis (a valid 1-wide grid, e.g. a
+  // bbox under one native cell), which has no +1 neighbour to read.
+  const r0 = Math.max(0, Math.floor(fr));
+  const c0 = Math.max(0, Math.floor(fc));
+  const r1 = Math.min(r0 + 1, grid.rows - 1);
+  const c1 = Math.min(c0 + 1, grid.cols - 1);
   const dr = Math.max(0, Math.min(1, fr - r0));
   const dc = Math.max(0, Math.min(1, fc - c0));
   const a = grid.cells[r0][c0];
-  const b = grid.cells[r0][c0 + 1];
-  const c = grid.cells[r0 + 1][c0];
-  const d = grid.cells[r0 + 1][c0 + 1];
+  const b = grid.cells[r0][c1];
+  const c = grid.cells[r1][c0];
+  const d = grid.cells[r1][c1];
   const u = (1 - dr) * ((1 - dc) * a.u + dc * b.u) + dr * ((1 - dc) * c.u + dc * d.u);
   const v = (1 - dr) * ((1 - dc) * a.v + dc * b.v) + dr * ((1 - dc) * c.v + dc * d.v);
   return { u, v };

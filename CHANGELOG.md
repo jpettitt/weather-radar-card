@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Wind overlays could throw on a one-cell-wide grid** — the bilinear sampler indexed past the end of a 1-row or 1-column grid (e.g. a bbox narrower than one native cell), which would abort the overlay render. ([#267](https://github.com/jpettitt/weather-radar-card/issues/267))
+
 ## [3.10.0] - 2026-09-24
 
 > **Stable release.** Fixes the wind overlays showing a day-old wind field (sometimes looking reversed) outside the US, and adds a YAML-only `disable_wheel_zoom` option so the mouse wheel can scroll the dashboard instead of zooming the map. Drop-in upgrade from 3.9.0 — no config changes required. The entries below are what changed since 3.9.0.
