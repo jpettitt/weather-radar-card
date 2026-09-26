@@ -376,6 +376,51 @@ describe('sampleWindGridBilinear', () => {
     expect(sampleWindGridBilinear(noCols, 50.125, 10)).toEqual({ u: 0, v: 0 });
   });
 
+  // A one-cell axis (parseWcsTextGrid accepts rows/cols of 1, e.g. a bbox
+  // narrower than one native cell) has no neighbour to interpolate towards,
+  // so the sampler must reuse that cell instead of reading past the array.
+  describe('single-row / single-column grids', () => {
+    it('returns the lone cell of a 1×1 grid at its centre and at both bbox corners', () => {
+      const one: WindGrid = { rows: 1, cols: 1, latMin: 50, lonMin: 10, step: 0.25, cells: [[{ u: 7, v: -3 }]] };
+      expect(sampleWindGridBilinear(one, 50.125, 10.125)).toEqual({ u: 7, v: -3 });
+      expect(sampleWindGridBilinear(one, 50, 10)).toEqual({ u: 7, v: -3 });
+      expect(sampleWindGridBilinear(one, 50.25, 10.25)).toEqual({ u: 7, v: -3 });
+    });
+
+    it('still returns (0, 0) outside the bbox of a 1×1 grid', () => {
+      const one: WindGrid = { rows: 1, cols: 1, latMin: 50, lonMin: 10, step: 0.25, cells: [[{ u: 7, v: -3 }]] };
+      expect(sampleWindGridBilinear(one, 49, 10.125)).toEqual({ u: 0, v: 0 });
+      expect(sampleWindGridBilinear(one, 50.125, 11)).toEqual({ u: 0, v: 0 });
+    });
+
+    it('interpolates along the columns of a 1×3 grid and ignores latitude', () => {
+      // Cell centres lon 10.125 / 10.375 / 10.625 carry u = 0 / 10 / 20.
+      const row: WindGrid = {
+        rows: 1, cols: 3, latMin: 50, lonMin: 10, step: 0.25,
+        cells: [[{ u: 0, v: 5 }, { u: 10, v: 5 }, { u: 20, v: 5 }]],
+      };
+      const mid = sampleWindGridBilinear(row, 50.125, 10.25);   // halfway between col 0 and col 1
+      expect(mid.u).toBeCloseTo(5, 6);
+      expect(mid.v).toBeCloseTo(5, 6);
+      expect(sampleWindGridBilinear(row, 50.125, 10.625)).toEqual({ u: 20, v: 5 });
+      // Off the row's centre line but inside the bbox: same answer.
+      expect(sampleWindGridBilinear(row, 50.2, 10.25).u).toBeCloseTo(5, 6);
+    });
+
+    it('interpolates along the rows of a 3×1 grid and ignores longitude', () => {
+      // Cell centres lat 50.125 / 50.375 / 50.625 carry v = 0 / 4 / 8.
+      const col: WindGrid = {
+        rows: 3, cols: 1, latMin: 50, lonMin: 10, step: 0.25,
+        cells: [[{ u: 3, v: 0 }], [{ u: 3, v: 4 }], [{ u: 3, v: 8 }]],
+      };
+      const mid = sampleWindGridBilinear(col, 50.25, 10.125);   // halfway between row 0 and row 1
+      expect(mid.u).toBeCloseTo(3, 6);
+      expect(mid.v).toBeCloseTo(2, 6);
+      expect(sampleWindGridBilinear(col, 50.625, 10.125)).toEqual({ u: 3, v: 8 });
+      expect(sampleWindGridBilinear(col, 50.25, 10.2).v).toBeCloseTo(2, 6);
+    });
+  });
+
   it('clamps to the edge cell exactly at the far bbox edges', () => {
     // lat 50.5 / lon 10.5 are the north / east bbox edges: fr or fc lands on
     // rows - 0.5 / cols - 0.5, the last position that is still in range.
