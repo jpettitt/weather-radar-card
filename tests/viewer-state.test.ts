@@ -675,6 +675,85 @@ describe('ViewerState — hydrate/set races', () => {
     });
   });
 
+  it('reset() during the hydrate round-trip is not undone by the late response (#268)', async () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'race003' },
+    });
+    m.state.ensureIdentity();
+    let releaseGet!: (v: unknown) => void;
+    m.callWS.mockImplementation((msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') {
+        return new Promise((res) => { releaseGet = res; });
+      }
+      return Promise.resolve({});
+    });
+
+    const hydratePromise = m.state.hydrate();
+    await m.state.reset();
+    releaseGet({ value: { x: 1, y: 2 } });   // pre-reset record arrives late
+    await hydratePromise;
+
+    expect(m.state.get('x')).toBeUndefined();
+    expect(m.state.get('y')).toBeUndefined();
+
+    // The next change must persist only itself, not the resurrected keys.
+    m.state.set('n', 1);
+    await vi.runAllTimersAsync();
+    const setCalls = m.callWS.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'frontend/set_user_data',
+    );
+    expect(setCalls[setCalls.length - 1][0]).toMatchObject({ value: { n: 1 } });
+    expect((setCalls[setCalls.length - 1][0] as { value: object }).value).toEqual({ n: 1 });
+  });
+
+  it('a flush during an in-flight hydrate shares its read instead of issuing a second GET', async () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'race004' },
+    });
+    m.state.ensureIdentity();
+    let releaseGet!: (v: unknown) => void;
+    m.callWS.mockImplementation((msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') {
+        return new Promise((res) => { releaseGet = res; });
+      }
+      return Promise.resolve({});
+    });
+
+    const hydratePromise = m.state.hydrate();
+    m.state.set('a', 1);
+    await vi.advanceTimersByTimeAsync(600);   // debounce fires while the GET is still pending
+    releaseGet({ value: { old_key: 'precious' } });
+    await hydratePromise;
+    await vi.runAllTimersAsync();
+
+    const gets = m.callWS.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'frontend/get_user_data',
+    );
+    expect(gets).toHaveLength(1);
+    const sets = m.callWS.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'frontend/set_user_data',
+    );
+    expect(sets).toHaveLength(1);
+    expect(sets[0][0]).toMatchObject({ value: { old_key: 'precious', a: 1 } });
+  });
+
+  it('a flush after dispose writes nothing, even on a fully hydrated instance', async () => {
+    const m = makeState({
+      viewer_layer_control: true,
+      _layer_state_id: { dash: '/lovelace/0', nonce: 'race005' },
+    });
+    m.state.ensureIdentity();
+    await m.state.hydrate();
+    m.state.dispose();
+    m.callWS.mockClear();
+
+    await m.state._flush();
+
+    expect(m.callWS).not.toHaveBeenCalled();
+  });
+
   it('concurrent hydrate() calls share one WS round-trip', async () => {
     const m = makeState({
       viewer_layer_control: true,
@@ -858,6 +937,103 @@ describe('ViewerState — WS failures', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('write failed'), expect.any(Error));
     // The optimistic value survives; only persistence failed.
     expect(m.state.get<number>('a')).toBe(1);
+    warn.mockRestore();
+  });
+
+  // After a failed hydrate the cache holds only this session's keys, so
+  // writing it would replace the persisted record and destroy every key we
+  // never managed to read (#268).
+  const setUserDataCalls = (m: MockSetup) =>
+    m.callWS.mock.calls.filter((c) => (c[0] as { type: string }).type === 'frontend/set_user_data');
+
+  it('a write after a failed hydrate re-reads first and keeps previously persisted keys', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = makeActive('wsfail4');
+    let gets = 0;
+    m.callWS.mockImplementation(async (msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') {
+        if (++gets === 1) throw new Error('transient');
+        return { value: { old_key: 'precious' } };
+      }
+      return {};
+    });
+
+    await m.state.hydrate();                 // fails once
+    m.state.set('a', 1);
+    await vi.runAllTimersAsync();
+
+    expect(setUserDataCalls(m)).toHaveLength(1);
+    expect(setUserDataCalls(m)[0][0]).toMatchObject({ value: { old_key: 'precious', a: 1 } });
+    // The retry's merge-under also surfaces the persisted key to readers.
+    expect(m.state.get<string>('old_key')).toBe('precious');
+    expect(m.state.get<number>('a')).toBe(1);
+    warn.mockRestore();
+  });
+
+  it('skips the write while the persisted record still cannot be read, keeping the value in memory', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = makeActive('wsfail5');
+    m.callWS.mockImplementation(async (msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') throw new Error('ws down');
+      return {};
+    });
+
+    await m.state.hydrate();
+    m.state.set('a', 1);
+    await vi.runAllTimersAsync();
+
+    expect(setUserDataCalls(m)).toHaveLength(0);
+    expect(m.state.get<number>('a')).toBe(1);
+    warn.mockRestore();
+  });
+
+  it('a skipped write is retried on the next change once the WS recovers', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = makeActive('wsfail6');
+    let up = false;
+    m.callWS.mockImplementation(async (msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') {
+        if (!up) throw new Error('ws down');
+        return { value: { old_key: 'precious' } };
+      }
+      return {};
+    });
+
+    await m.state.hydrate();
+    m.state.set('a', 1);
+    await vi.runAllTimersAsync();            // skipped: still down
+    expect(setUserDataCalls(m)).toHaveLength(0);
+
+    up = true;
+    m.state.set('b', 2);
+    await vi.runAllTimersAsync();
+
+    expect(setUserDataCalls(m)).toHaveLength(1);
+    expect(setUserDataCalls(m)[0][0]).toMatchObject({ value: { old_key: 'precious', a: 1, b: 2 } });
+    warn.mockRestore();
+  });
+
+  it('a retry that resumes after dispose is dropped, not written under the dead key', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = makeActive('wsfail7');
+    let releaseRetry!: (v: unknown) => void;
+    let gets = 0;
+    m.callWS.mockImplementation((msg: { type: string }) => {
+      if (msg.type === 'frontend/get_user_data') {
+        if (++gets === 1) return Promise.reject(new Error('transient'));
+        return new Promise((res) => { releaseRetry = res; });
+      }
+      return Promise.resolve({});
+    });
+
+    await m.state.hydrate();                 // fails once
+    m.state.set('a', 1);
+    await vi.advanceTimersByTimeAsync(600);  // debounce fires; the retry read is now in flight
+    m.state.dispose();
+    releaseRetry({ value: { old_key: 'precious' } });
+    await vi.runAllTimersAsync();
+
+    expect(setUserDataCalls(m)).toHaveLength(0);
     warn.mockRestore();
   });
 

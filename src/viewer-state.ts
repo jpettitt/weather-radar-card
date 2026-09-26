@@ -93,6 +93,14 @@ export class ViewerState {
 
   private _writeTimer: ReturnType<typeof setTimeout> | null = null;
   private _hydrated = false;
+  // True only once the persisted record was actually read into the cache.
+  // `_hydrated` also flips on a failed read (so hydrate() doesn't retry),
+  // which must not license a write: the cache would then hold only this
+  // session's keys and replace the whole record.
+  private _persistedRead = false;
+  // Bumped by reset() so a hydrate GET already in flight can tell its
+  // response predates the reset and must not merge the old record back.
+  private _resetEpoch = 0;
   // In-flight hydrate promise, so concurrent hydrate() calls (and
   // _flush()'s wait-for-hydrate) share one WS round-trip instead of
   // racing two GETs whose second response would clobber the first.
@@ -211,12 +219,16 @@ export class ViewerState {
 
   // Stryker restore BlockStatement
   private async _doHydrate(): Promise<void> {
+    const epoch = this._resetEpoch;
     try {
       const result = await this._hass.callWS<{ value?: Record<string, unknown> } | null>({
         type: 'frontend/get_user_data',
         key: this.storageKey!,
       });
-      if (result?.value && typeof result.value === 'object') {
+      // A reset() that landed mid-flight already emptied the cache and the
+      // record; this response is the pre-reset data, so merging it would
+      // resurrect keys the user just cleared (and the next write persist them).
+      if (epoch === this._resetEpoch && result?.value && typeof result.value === 'object') {
         // Merge UNDER the in-memory cache, not wholesale replace. set()
         // is legal while the WS round-trip is in flight (isActive is
         // true as soon as the nonce registers, before hydrate resolves)
@@ -227,6 +239,7 @@ export class ViewerState {
         // strictly newer.
         this._cache = { ...result.value, ...this._cache };
       }
+      this._persistedRead = true;
       this._hydrated = true;
       this._emit({ key: null, value: this._cache, source: 'hydrate' });
     } catch (err) {
@@ -276,6 +289,8 @@ export class ViewerState {
   async reset(): Promise<void> {
     if (!this.isActive) return;
     this._cache = {};
+    // Stryker disable next-line UpdateOperator: the epoch is only compared for equality, so ++ vs -- is equivalent
+    this._resetEpoch++;
     this._emit({ key: null, value: {}, source: 'reset' });
     if (this._writeTimer) {
       clearTimeout(this._writeTimer);
@@ -372,7 +387,15 @@ export class ViewerState {
       // belongs to `key`; writing it would corrupt another identity's
       // record (or write under a dead key). Drop the flush.
       if (this.storageKey !== key) return;
+    } else if (!this._persistedRead) {
+      // An earlier hydrate failed, so the cache is only this session's
+      // keys. Re-read and merge under it; same identity check as above.
+      await this._doHydrate();
+      if (this.storageKey !== key) return;
     }
+    // Still unreadable: skip rather than replace a record we couldn't see.
+    // The value stays in memory and the next change retries the read.
+    if (!this._persistedRead) return;
     try {
       await this._hass.callWS({
         type: 'frontend/set_user_data',

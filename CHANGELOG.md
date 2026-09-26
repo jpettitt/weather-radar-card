@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Viewer layer state could lose saved settings after a failed read** — if a card's initial read of its saved state failed, the next change overwrote the whole saved record with only that session's keys, and a reset during that read could be undone by the late response. Writes now wait for a successful read and are kept in memory until one succeeds. ([#268](https://github.com/jpettitt/weather-radar-card/issues/268))
+
 ## [3.10.0] - 2026-09-24
 
 > **Stable release.** Fixes the wind overlays showing a day-old wind field (sometimes looking reversed) outside the US, and adds a YAML-only `disable_wheel_zoom` option so the mouse wheel can scroll the dashboard instead of zooming the map. Drop-in upgrade from 3.9.0 — no config changes required. The entries below are what changed since 3.9.0.
