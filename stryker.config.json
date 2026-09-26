@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "checkers": ["typescript"],
+  "tsconfigFile": "tsconfig.json",
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/coordinate-utils.ts",
+    "src/geo-utils.ts",
+    "src/lightning-helpers.ts",
+    "src/lk.ts",
+    "src/marker-utils.ts",
+    "src/noaa-frame-list.ts",
+    "src/rate-limiter.ts",
+    "src/source-caps.ts",
+    "src/viewer-state.ts",
+    "src/wind-grid-fetcher.ts"
+  ],
+  "incremental": true,
+  "incrementalFile": ".stryker-tmp/incremental.json",
+  "reporters": ["clear-text", "progress", "html"],
+  "clearTextReporter": { "logTests": false, "reportTests": false },
+  "htmlReporter": { "fileName": "reports/mutation/index.html" },
+  "thresholds": { "high": 90, "low": 75, "break": null }
+}

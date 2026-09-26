@@ -72,6 +72,24 @@ describe('geometryLngLatBounds', () => {
       minLng: 0, minLat: 0, maxLng: 10, maxLat: 10,
     });
   });
+
+  it('drops a pair when either coordinate is non-numeric, so it cannot stretch the bbox', () => {
+    // Each bad pair carries an out-of-range value in its *valid* half
+    // (lat 50 / lng -50), so a check that only inspects one coordinate
+    // or requires both to be bad lets it leak into the bbox.
+    const dirty: GeoJSON.Polygon = {
+      type: 'Polygon',
+      coordinates: [[
+        [0, 0],
+        [null as any, 50],
+        [-50, 'north' as any],
+        [10, 10],
+      ]],
+    };
+    expect(geometryLngLatBounds(dirty)).toEqual({
+      minLng: 0, minLat: 0, maxLng: 10, maxLat: 10,
+    });
+  });
 });
 
 describe('centroidLngLat', () => {
@@ -223,5 +241,62 @@ describe('geometryLngLatBounds — antimeridian', () => {
   it('non-crossing geometries keep ordinary bounds', () => {
     const b = geometryLngLatBounds(unitSquare)!;
     expect(b).toEqual({ minLng: -1, minLat: -1, maxLng: 1, maxLat: 1 });
+  });
+
+  it('leaves an all-negative (western hemisphere) polygon in native coordinates', () => {
+    // Without the >180 span guard, +360 rounding makes the shifted span
+    // a hair smaller than the naive one for these values and the bbox
+    // jumps to ~272 deg.
+    const chicago: GeoJSON.Polygon = {
+      type: 'Polygon',
+      coordinates: [[[-87.7298, 41.8], [-87.5298, 41.8], [-87.5798, 41.9], [-87.6798, 41.9], [-87.7298, 41.8]]],
+    };
+    expect(geometryLngLatBounds(chicago)).toEqual({
+      minLng: -87.7298, minLat: 41.8, maxLng: -87.5298, maxLat: 41.9,
+    });
+  });
+
+  it('keeps the naive bbox when the shifted window is wider (degenerate >180 span)', () => {
+    // Naive span 270; shifting negatives by 360 gives 1..359 = 358, so
+    // the shift must not be adopted.
+    const wide: GeoJSON.Polygon = {
+      type: 'Polygon',
+      coordinates: [[[-170, 10], [-1, 11], [1, 12], [100, 13], [-170, 10]]],
+    };
+    expect(geometryLngLatBounds(wide)).toEqual({
+      minLng: -170, minLat: 10, maxLng: 100, maxLat: 13,
+    });
+  });
+
+  it('keeps the naive bbox when the shifted window is exactly as wide (only adopt if tighter)', () => {
+    // Naive -100..100 = 200; shifted 80..280 = 200 — a tie stays naive.
+    const tie: GeoJSON.Polygon = {
+      type: 'Polygon',
+      coordinates: [[[-100, 0], [-80, 1], [80, 2], [100, 3], [-100, 0]]],
+    };
+    expect(geometryLngLatBounds(tie)).toEqual({
+      minLng: -100, minLat: 0, maxLng: 100, maxLat: 3,
+    });
+  });
+
+  it('treats lng 0 as non-negative when renormalising across the dateline', () => {
+    // 0 stays 0: shifted 0..185 (185 wide) beats 170..360 (190 wide),
+    // which is what you'd get if 0 were bumped to 360.
+    const touchesZero: GeoJSON.Polygon = {
+      type: 'Polygon',
+      coordinates: [[[0, 60], [170, 61], [-175, 62], [0, 60]]],
+    };
+    expect(geometryLngLatBounds(touchesZero)).toEqual({
+      minLng: 0, minLat: 60, maxLng: 185, maxLat: 62,
+    });
+  });
+
+  it('centroid of a crossing geometry whose window centre is past 180 wraps to the western hemisphere', () => {
+    // Window 179..190 -> centre 184.5 -> -175.5.
+    const poly: GeoJSON.Polygon = {
+      type: 'Polygon',
+      coordinates: [[[179, 50], [-170, 52], [-175, 51], [-178, 50], [179, 50]]],
+    };
+    expect(centroidLngLat(poly)).toEqual([-175.5, 51]);
   });
 });

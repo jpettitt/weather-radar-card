@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import {
   parseWcsTextGrid,
   parseNdfdWcsGrid,
@@ -13,7 +13,7 @@ import {
   type WindGrid,
   type FetchWindGridOptions,
 } from '../src/wind-grid-fetcher';
-import { DEFAULT_WIND_SOURCE } from '../src/wind-source-caps';
+import { DEFAULT_WIND_SOURCE, getWindSourceCaps } from '../src/wind-source-caps';
 
 // ── parseWcsTextGrid ───────────────────────────────────────────────────────
 //
@@ -59,6 +59,19 @@ Band 1:
 6.0 6.1 6.2 6.3 6.4 6.5 6.6 6.7
 7.0 7.1 7.2 7.3 7.4 7.5 7.6 7.7
 8.0 8.1 8.2 8.3 8.4 8.5 8.6 8.7
+`;
+
+// Smallest valid grid: one cell, bounds exactly one step wide.
+const TINY_1x1 = `Grid bounds: GeneralBounds[(10.0, 50.0), (10.25, 50.25)]
+Grid CRS: …
+Grid to world: PARAM_MT["Affine",
+  PARAMETER["elt_0_0", 0.25],
+  PARAMETER["elt_1_1", -0.25]]
+Contents:
+Band 0:
+3.5
+Band 1:
+-1.25
 `;
 
 describe('parseWcsTextGrid', () => {
@@ -171,12 +184,82 @@ Band 1:
     expect(g.cols).toBe(1);
     expect(g.cells[0][0]).toEqual({ u: 3.5, v: -1.25 });
   });
+
+  it('throws on missing affine elt_1_1', () => {
+    const broken = FIXTURE_8x8.replace('"elt_1_1", -0.25', '"elt_X_X", -0.25');
+    expect(() => parseWcsTextGrid(broken)).toThrow(/elt_1_1/);
+  });
+
+  // Zero and non-finite steps take different branches of the guard
+  // (`<= 0` vs `isFinite`), so both are pinned per axis.
+  it.each([
+    ['axis 0 step of zero', '"elt_0_0", 0.25', '"elt_0_0", 0', /invalid axis 0 step 0/],
+    ['axis 0 step overflowing to Infinity', '"elt_0_0", 0.25', '"elt_0_0", 1e999', /invalid axis 0 step 1e999/],
+    ['axis 1 step of zero', '"elt_1_1", -0.25', '"elt_1_1", -0', /invalid axis 1 step -0/],
+    ['axis 1 step overflowing to Infinity', '"elt_1_1", -0.25', '"elt_1_1", -1e999', /invalid axis 1 step -1e999/],
+  ])('rejects an unusable affine step: %s', (_name, from, to, pattern) => {
+    expect(() => parseWcsTextGrid(FIXTURE_8x8.replace(from, to))).toThrow(pattern);
+  });
+
+  it.each([
+    ['zero columns', '(10.0, 50.0), (10.0, 50.25)', /degenerate grid 1×0/],
+    ['zero rows', '(10.0, 50.0), (10.25, 50.0)', /degenerate grid 0×1/],
+  ])('rejects a degenerate grid: %s', (_name, bounds, pattern) => {
+    const body = TINY_1x1.replace('(10.0, 50.0), (10.25, 50.25)', bounds);
+    expect(() => parseWcsTextGrid(body)).toThrow(pattern);
+  });
+
+  it('tolerates a header with no optional whitespace', () => {
+    const body = 'Grid bounds:GeneralBounds[(10.0,50.0),(10.25,50.25)]\n'
+      + 'PARAMETER["elt_0_0",0.25]\nPARAMETER["elt_1_1",-0.25]\n'
+      + 'Band 0:\n3.5\nBand 1:\n-1.25\n';
+    const g = parseWcsTextGrid(body);
+    expect(g.latMin).toBe(50);
+    expect(g.lonMin).toBe(10);
+    expect(g.step).toBe(0.25);
+    expect(g.cells[0][0]).toEqual({ u: 3.5, v: -1.25 });
+  });
+
+  it('throws when the Band 1 header is missing', () => {
+    const broken = TINY_1x1.replace('Band 1:', 'Band X:');
+    expect(() => parseWcsTextGrid(broken)).toThrow(/missing Band 1:/);
+  });
+
+  it('throws when a band is empty (header directly followed by the next band)', () => {
+    const broken = TINY_1x1.replace('Band 0:\n3.5\n', 'Band 0:\n');
+    expect(() => parseWcsTextGrid(broken)).toThrow(/Band 0: has 0 rows, expected 1/);
+  });
+
+  it('keeps the last value intact when the final band has no trailing newline', () => {
+    // The last band has no following "Band N:" header to cut at, so it must
+    // not be sliced short.
+    const g = parseWcsTextGrid(TINY_1x1.trimEnd());
+    expect(g.cells[0][0]).toEqual({ u: 3.5, v: -1.25 });
+  });
+
+  it('skips blank lines and indentation inside a band', () => {
+    const g = parseWcsTextGrid(TINY_1x1.replace('Band 0:\n3.5\n', 'Band 0:\n   \n  3.5\n'));
+    expect(g.cells[0][0]).toEqual({ u: 3.5, v: -1.25 });
+  });
+
+  it('splits values on runs of whitespace, not single spaces', () => {
+    const body = TINY_1x1
+      .replace('(10.25, 50.25)', '(10.75, 50.25)')
+      .replace('Band 0:\n3.5\n', 'Band 0:\n1.5   2.5\t3.5\n')
+      .replace('Band 1:\n-1.25\n', 'Band 1:\n4.5  5.5    6.5\n');
+    const g = parseWcsTextGrid(body);
+    expect(g.cells[0]).toEqual([{ u: 1.5, v: 4.5 }, { u: 2.5, v: 5.5 }, { u: 3.5, v: 6.5 }]);
+  });
 });
 
 // ── sampleWindGridNearest ─────────────────────────────────────────────────
 
 describe('sampleWindGridNearest', () => {
-  const grid: WindGrid = parseWcsTextGrid(FIXTURE_8x8);
+  // Parsed per-test, not at collection time: a parser throw during collection
+  // fails the whole file without per-test results, which Stryker reads as a
+  // survivor.
+  let grid: WindGrid;
+  beforeEach(() => { grid = parseWcsTextGrid(FIXTURE_8x8); });
 
   it('returns the south-west corner cell for a point inside the first cell', () => {
     // South row, west col: cells[0][0] = (-8.0, 8.0). Cell extent
@@ -199,6 +282,22 @@ describe('sampleWindGridNearest', () => {
     // (50.0, 11.2) → row 0, col 4 (lon 11.2 ∈ [11.125, 11.375)).
     // cells[0][4] = -8.0 - 0.4 = -8.4, 8.0 + 0.4 = 8.4
     expect(sampleWindGridNearest(grid, 50.0, 11.2)).toEqual({ u: -8.4, v: 8.4 });
+  });
+
+  it('returns (0, 0) south of the grid', () => {
+    expect(sampleWindGridNearest(grid, 49.0, 10.2)).toEqual({ u: 0, v: 0 });
+  });
+
+  it('treats the far north and east edges as outside (cells are half-open)', () => {
+    // latMin + rows*step = 51.875 and lonMin + cols*step = 12.125 index one
+    // past the last cell, so they must not read cells[rows] / cells[r][cols].
+    expect(sampleWindGridNearest(grid, 51.875, 10.2)).toEqual({ u: 0, v: 0 });
+    expect(sampleWindGridNearest(grid, 50.0, 12.125)).toEqual({ u: 0, v: 0 });
+  });
+
+  it('returns the north-east corner cell for a point just inside the far edges', () => {
+    // cells[7][7] = file row 0, col 7 = "-1.7" / "1.7".
+    expect(sampleWindGridNearest(grid, 51.8, 12.0)).toEqual({ u: -1.7, v: 1.7 });
   });
 });
 
@@ -265,6 +364,69 @@ describe('sampleWindGridBilinear', () => {
   it('returns (0, 0) on an empty grid', () => {
     const empty: WindGrid = { rows: 0, cols: 0, latMin: 0, lonMin: 0, step: 0.25, cells: [] };
     expect(sampleWindGridBilinear(empty, 0, 0)).toEqual({ u: 0, v: 0 });
+  });
+
+  it('returns (0, 0) when only one dimension is empty', () => {
+    // Sampled exactly on the SW corner (fr = fc = -0.5) the range check does
+    // not reject, so only the emptiness guard stands between this and a
+    // read of cells[0][0] on an empty axis.
+    const noRows: WindGrid = { rows: 0, cols: 2, latMin: 50, lonMin: 10, step: 0.25, cells: [] };
+    const noCols: WindGrid = { rows: 2, cols: 0, latMin: 50, lonMin: 10, step: 0.25, cells: [[], []] };
+    expect(sampleWindGridBilinear(noRows, 50, 10.125)).toEqual({ u: 0, v: 0 });
+    expect(sampleWindGridBilinear(noCols, 50.125, 10)).toEqual({ u: 0, v: 0 });
+  });
+
+  it('clamps to the edge cell exactly at the far bbox edges', () => {
+    // lat 50.5 / lon 10.5 are the north / east bbox edges: fr or fc lands on
+    // rows - 0.5 / cols - 0.5, the last position that is still in range.
+    const ne = sampleWindGridBilinear(grid, 50.5, 10.5);
+    expect(ne).toEqual({ u: 20, v: 4 });
+    const northEdge = sampleWindGridBilinear(grid, 50.5, 10.25);
+    expect(northEdge.u).toBeCloseTo(15, 6);
+    expect(northEdge.v).toBeCloseTo(4, 6);
+    const eastEdge = sampleWindGridBilinear(grid, 50.25, 10.5);
+    expect(eastEdge.u).toBeCloseTo(20, 6);
+    expect(eastEdge.v).toBeCloseTo(2, 6);
+  });
+
+  it('returns (0, 0) just past and well past the far bbox edges', () => {
+    expect(sampleWindGridBilinear(grid, 50.55, 10.25)).toEqual({ u: 0, v: 0 });
+    expect(sampleWindGridBilinear(grid, 50.25, 10.55)).toEqual({ u: 0, v: 0 });
+    expect(sampleWindGridBilinear(grid, 51, 10.25)).toEqual({ u: 0, v: 0 });
+    expect(sampleWindGridBilinear(grid, 50.25, 11)).toEqual({ u: 0, v: 0 });
+  });
+
+  it('interpolates within the right cell pair on grids larger than 2×2', () => {
+    // u = 10 × col, v = 4 × row: bilinear reproduces a linear field exactly,
+    // but only if the fractional part is taken relative to the chosen cell pair.
+    const g: WindGrid = {
+      rows: 3, cols: 3, latMin: 0, lonMin: 0, step: 1,
+      cells: [
+        [{ u: 0, v: 0 }, { u: 10, v: 0 }, { u: 20, v: 0 }],
+        [{ u: 0, v: 4 }, { u: 10, v: 4 }, { u: 20, v: 4 }],
+        [{ u: 0, v: 8 }, { u: 10, v: 8 }, { u: 20, v: 8 }],
+      ],
+    };
+    // Centres sit at 0.5, 1.5, 2.5; 2.25 is 0.75 of the way from 1.5 to 2.5.
+    const got = sampleWindGridBilinear(g, 2.25, 2.25);
+    expect(got.u).toBeCloseTo(17.5, 6);
+    expect(got.v).toBeCloseTo(7, 6);
+  });
+
+  it('weights all four neighbours when u and v both vary along both axes', () => {
+    // Hand-computed for dr = 0.25 (south→north), dc = 0.75 (west→east):
+    //   u = 0.75×(0.25×1 + 0.75×3) + 0.25×(0.25×5 + 0.75×7) = 3.5
+    //   v = 0.75×(0.25×2 + 0.75×8) + 0.25×(0.25×4 + 0.75×16) = 8.125
+    const g: WindGrid = {
+      rows: 2, cols: 2, latMin: 0, lonMin: 0, step: 1,
+      cells: [
+        [{ u: 1, v: 2 }, { u: 3, v: 8 }],
+        [{ u: 5, v: 4 }, { u: 7, v: 16 }],
+      ],
+    };
+    const got = sampleWindGridBilinear(g, 0.75, 1.25);
+    expect(got.u).toBeCloseTo(3.5, 6);
+    expect(got.v).toBeCloseTo(8.125, 6);
   });
 
   it('wraps lon outside [-180, 180] to the equivalent in-range cell (dateline crossing)', () => {
@@ -464,6 +626,84 @@ describe('fetchWindGrid', () => {
     });
     expect(g.rows).toBe(8);
     expect(g.cols).toBe(8);
+    // U/V pass through untouched for the 'uv' band sources.
+    expect(g.cells[0][0]).toEqual({ u: -8.0, v: 8.0 });
+    expect(g.latMin).toBeCloseTo(49.875, 6);
+  });
+
+  it('runs speed/direction sources through the NDFD converter', async () => {
+    const fakeFetch = vi.fn(async () => new Response(NDFD_FIXTURE_3x3, { status: 200 })) as any;
+    const g = await fetchWindGrid({
+      south: 38, west: -98, north: 39, east: -97, source: 'ndfd_wind', fetchImpl: fakeFetch,
+    });
+    // Mercator metres → degrees, and file row 0 (10 m/s from 0°) → cells[2]
+    // with v = -10; the DWD parser would leave lonMin at -10800000.
+    expect(g.lonMin).toBeCloseTo(-97.0, 1);
+    expect(g.cells[2][0].v).toBeCloseTo(-10, 5);
+  });
+
+  it('reports "see response body" for an XML body with no ExceptionText', async () => {
+    const fakeFetch = vi.fn(async () => new Response('<?xml version="1.0"?><html>Bad gateway</html>', { status: 200 })) as any;
+    await expect(
+      fetchWindGrid({ south: 50, west: 10, north: 51, east: 11, fetchImpl: fakeFetch }),
+    ).rejects.toThrow(/WCS returned exception — see response body/);
+  });
+
+  it('detects an ExceptionReport that has no XML prolog', async () => {
+    const body = '<ows:ExceptionReport><ows:ExceptionText>Bad subset</ows:ExceptionText></ows:ExceptionReport>';
+    const fakeFetch = vi.fn(async () => new Response(body, { status: 200 })) as any;
+    await expect(
+      fetchWindGrid({ south: 50, west: 10, north: 51, east: 11, fetchImpl: fakeFetch }),
+    ).rejects.toThrow(/WCS returned exception — Bad subset/);
+  });
+
+  it('trims whitespace around the exception text', async () => {
+    const body = '<?xml version="1.0"?><ows:ExceptionText>\n  Bad subset \n</ows:ExceptionText>';
+    const fakeFetch = vi.fn(async () => new Response(body, { status: 200 })) as any;
+    await expect(
+      fetchWindGrid({ south: 50, west: 10, north: 51, east: 11, fetchImpl: fakeFetch }),
+    ).rejects.toThrow(/^fetchWindGrid: WCS returned exception — Bad subset$/);
+  });
+});
+
+// ── NDFD → global fallback log ─────────────────────────────────────────────
+// The one-shot "already logged" flag is module state, so each test loads a
+// fresh copy of the module.
+
+describe('fetchWindGrid fallback diagnostic', () => {
+  const europe = { south: 50, west: 9, north: 52, east: 11 };
+  const kansas = { south: 38, west: -100, north: 40, east: -98 };
+  let info: MockInstance;
+  beforeEach(() => { info = vi.spyOn(console, 'info').mockImplementation(() => {}); });
+  afterEach(() => { info.mockRestore(); });
+
+  async function freshFetch(): Promise<typeof fetchWindGrid> {
+    vi.resetModules();
+    return (await import('../src/wind-grid-fetcher')).fetchWindGrid;
+  }
+  const respond = (body: string) => vi.fn(async () => new Response(body, { status: 200 })) as any;
+
+  it('stays silent when the configured source is used as-is', async () => {
+    const fetchFresh = await freshFetch();
+    await fetchFresh({ ...europe, source: 'dwd_icon', fetchImpl: respond(FIXTURE_8x8) });
+    await fetchFresh({ ...europe, fetchImpl: respond(FIXTURE_8x8) });
+    await fetchFresh({ ...kansas, source: 'ndfd_wind', fetchImpl: respond(NDFD_FIXTURE_3x3) });
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('logs the NDFD → global fallback once per page session, not on every fetch', async () => {
+    const fetchFresh = await freshFetch();
+    // A non-fallback fetch first: it must neither log nor use up the one-shot.
+    await fetchFresh({ ...kansas, source: 'ndfd_wind', fetchImpl: respond(NDFD_FIXTURE_3x3) });
+    expect(info).not.toHaveBeenCalled();
+
+    await fetchFresh({ ...europe, source: 'ndfd_wind', fetchImpl: respond(FIXTURE_8x8) });
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0][0]).toContain('auto-falling back to dwd_aicon');
+    expect(info.mock.calls[0][0]).toContain("wind_source 'ndfd_wind'");
+
+    await fetchFresh({ ...europe, source: 'ndfd_wind', fetchImpl: respond(FIXTURE_8x8) });
+    expect(info).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -648,6 +888,61 @@ describe('buildWindGridUrl', () => {
     });
     expect(url).toContain('Long%28-180%2C180%29');
   });
+
+  describe('lon wrap boundaries', () => {
+    const subsetFor = (west: number, east: number): string =>
+      decodeURIComponent(buildWindGridUrl({ south: 0, west, north: 10, east, source: 'dwd_icon' }));
+
+    it('keeps a bbox that touches ±180 exactly', () => {
+      expect(subsetFor(-180, 10)).toContain('subset=Long(-180,10)');
+      expect(subsetFor(100, 180)).toContain('subset=Long(100,180)');
+    });
+
+    it('expands to the full world when only the east edge passes +180', () => {
+      expect(subsetFor(170, 190)).toContain('subset=Long(-180,180)');
+    });
+  });
+
+  it('DEFAULT_WIND_COVERAGE is the dwd_icon coverage id', () => {
+    expect(DEFAULT_WIND_COVERAGE).toBe(getWindSourceCaps('dwd_icon').coverageId);
+  });
+
+  it('NDFD: subset X/Y carry the exact Web Mercator metres of the bbox', () => {
+    // Reference EPSG:3857 values for 100°W / 98°W and 38°N / 40°N. Negative
+    // west also proves the world-bounds clamp does not collapse the extent.
+    const url = decodeURIComponent(buildWindGridUrl({
+      south: 38, west: -100, north: 40, east: -98, source: 'ndfd_wind',
+    }));
+    const m = url.match(/subset=X\(([^,]+),([^)]+)\)&subset=Y\(([^,]+),([^)]+)\)/);
+    expect(m).not.toBeNull();
+    const [xMin, xMax, yMin, yMax] = m!.slice(1).map(Number);
+    expect(xMin).toBeCloseTo(-11131949.08, 1);
+    expect(xMax).toBeCloseTo(-10909310.10, 1);
+    expect(yMin).toBeCloseTo(4579425.81, 1);
+    expect(yMax).toBeCloseTo(4865942.28, 1);
+  });
+
+  it('NDFD: downsamples with scaleSize based on Mercator-metre native cell counts', () => {
+    // CONUS-wide bbox is ≈4597 × 2500 native cells at ~1428.6 m — far over
+    // the 50 000 cap. Counting degrees against a metre step would see ~1 cell.
+    const url = decodeURIComponent(buildWindGridUrl({
+      south: 25, west: -125, north: 50, east: -66, source: 'ndfd_wind',
+    }));
+    const m = url.match(/i\((\d+)\),http[^)]+j\((\d+)\)/);
+    expect(m).not.toBeNull();
+    const i = Number(m![1]);
+    const j = Number(m![2]);
+    expect(i / j).toBeCloseTo(1.84, 1); // Mercator x:y span ratio
+    expect(i * j).toBeLessThanOrEqual(50_000);
+    expect(i * j).toBeGreaterThan(40_000);
+  });
+
+  it('adds scaleSize only when native cells strictly exceed maxCells', () => {
+    // 4° × 4° at nativeStep 1 = exactly 16 native cells.
+    const base = { south: 0, west: 0, north: 4, east: 4, source: 'dwd_icon' as const, nativeStep: 1 };
+    expect(buildWindGridUrl({ ...base, maxCells: 16 })).not.toContain('scaleSize');
+    expect(buildWindGridUrl({ ...base, maxCells: 15 })).toContain('scaleSize');
+  });
 });
 
 // ── parseNdfdWcsGrid ───────────────────────────────────────────────────────
@@ -680,8 +975,54 @@ Band 1:
 180.0 180.0 180.0
 `;
 
+// Header of the NDFD fixture, reused to build grids with chosen band values.
+const NDFD_HEADER = NDFD_FIXTURE_3x3.split('Band 0:')[0];
+
+// 3×3 NDFD grid where every cell carries the same (speed, direction) strings.
+function uniformNdfdGrid(speed: string, direction: string): WindGrid {
+  const rows = (v: string): string => [v, v, v].map(x => `${x} ${x} ${x}`).join('\n');
+  return parseNdfdWcsGrid(`${NDFD_HEADER}Band 0:\n${rows(speed)}\nBand 1:\n${rows(direction)}\n`);
+}
+
 describe('parseNdfdWcsGrid', () => {
-  const grid = parseNdfdWcsGrid(NDFD_FIXTURE_3x3);
+  // Per-test parse (see sampleWindGridNearest) so parser regressions fail tests.
+  let grid: WindGrid;
+  beforeEach(() => { grid = parseNdfdWcsGrid(NDFD_FIXTURE_3x3); });
+
+  it('reports the lon step in degrees (Mercator cell width ÷ 111 319.49 m per degree)', () => {
+    // 1428.667 m cells: 4286 m of bounds over 3 columns.
+    expect(grid.step).toBeCloseTo(0.0128339, 6);
+  });
+
+  it('emits exactly rows × cols cells', () => {
+    expect(grid.rows).toBe(3);
+    expect(grid.cols).toBe(3);
+    expect(grid.cells).toHaveLength(3);
+    for (const row of grid.cells) expect(row).toHaveLength(3);
+  });
+
+  it.each([
+    ['from the west (270°) blows east', '10', '270', 10, 0],
+    ['from the east (90°) blows west', '10', '90', -10, 0],
+    ['from the north-east (45°) blows south-west', '10', '45', -7.0710678, -7.0710678],
+    ['from the south-west (225°) blows north-east', '10', '225', 7.0710678, 7.0710678],
+    ['direction 360° is valid and equals north', '10', '360', 0, -10],
+    ['speed just under the 200 m/s sentinel is real wind', '199', '90', -199, 0],
+  ])('converts meteorological "from" wind: %s', (_name, speed, direction, u, v) => {
+    const cell = uniformNdfdGrid(speed, direction).cells[0][0];
+    expect(cell.u).toBeCloseTo(u, 5);
+    expect(cell.v).toBeCloseTo(v, 5);
+  });
+
+  it.each([
+    ['negative direction', '10', '-1'],
+    ['direction just above 360', '10', '361'],
+    ['speed at the 200 m/s sentinel threshold', '200', '90'],
+    ['negative speed at the threshold', '-200', '90'],
+    ['9999 fill speed with a valid direction', '9999', '90'],
+  ])('treats %s as calm', (_name, speed, direction) => {
+    expect(uniformNdfdGrid(speed, direction).cells[0][0]).toEqual({ u: 0, v: 0 });
+  });
 
   it('decodes Mercator metres → lat/lon degrees', () => {
     // X = -10800000m → lon ≈ -97° (US Plains region; Wichita-ish)
@@ -888,6 +1229,102 @@ describe('WindGridFetcher cache eviction', () => {
     t += 1_000;
     await fetcher.fetch({ south: 40, west: 40, north: 41, east: 41, source: 'dwd_icon' });
     expect((fetcher as any)._cache.size).toBe(1);
+  });
+});
+
+// ── Cache lifecycle and key boundaries ─────────────────────────────────────
+
+describe('WindGridFetcher cache lifecycle', () => {
+  const stub = (u = 0): WindGrid => ({
+    latMin: 0, lonMin: 0, step: 1, rows: 1, cols: 1, cells: [[{ u, v: 0 }]],
+  });
+  const bbox = { south: 50, west: 10, north: 51, east: 11, source: 'dwd_icon' as const };
+
+  it('treats an entry as expired exactly at its TTL', async () => {
+    let t = 1_000_000;
+    const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream, ttlMs: 100, now: () => t });
+    await fetcher.fetch(bbox);
+    t += 99;
+    await fetcher.fetch(bbox);
+    expect(upstream).toHaveBeenCalledTimes(1);
+    t += 1; // now === expiresAt
+    await fetcher.fetch(bbox);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('sweeps entries that expire exactly now, not only strictly older ones', async () => {
+    let t = 1_000_000;
+    const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream, ttlMs: 100, now: () => t });
+    await fetcher.fetch({ ...bbox, south: 10, north: 11 });
+    await fetcher.fetch({ ...bbox, south: 20, north: 21 });
+    t += 100;
+    await fetcher.fetch({ ...bbox, south: 30, north: 31 });
+    expect((fetcher as any)._cache.size).toBe(1);
+  });
+
+  it('a late rejection does not evict the newer entry that replaced it', async () => {
+    // The first request is still in flight when its entry expires, so a
+    // second call replaces it. Its eventual failure must not delete the
+    // replacement (which would force a needless refetch).
+    let t = 1_000_000;
+    let rejectFirst!: (e: Error) => void;
+    const upstream = vi.fn<(o: FetchWindGridOptions) => Promise<WindGrid>>()
+      .mockImplementationOnce(() => new Promise<WindGrid>((_, rej) => { rejectFirst = rej; }))
+      .mockImplementation(async () => stub(2));
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream, ttlMs: 100, now: () => t });
+
+    const first = fetcher.fetch(bbox);
+    t += 200;
+    await fetcher.fetch(bbox); // replaces the expired, still-pending entry
+    rejectFirst(new Error('late'));
+    await expect(first).rejects.toThrow('late');
+
+    await fetcher.fetch(bbox);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('clear() drops cached entries so the next fetch goes upstream', async () => {
+    const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream });
+    await fetcher.fetch(bbox);
+    fetcher.clear();
+    await fetcher.fetch(bbox);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('keys coverageId overrides separately', async () => {
+    const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream });
+    await fetcher.fetch({ ...bbox, coverageId: 'cov_a' });
+    await fetcher.fetch({ ...bbox, coverageId: 'cov_b' });
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not collide bboxes whose numbers concatenate to the same digits', async () => {
+    // S=1,W=11 and S=11,W=1 both flatten to "111…" without a field separator.
+    const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+    const fetcher = new WindGridFetcher({ fetchImpl: upstream });
+    await fetcher.fetch({ source: 'dwd_icon', south: 1, west: 11, north: 12, east: 13 });
+    await fetcher.fetch({ source: 'dwd_icon', south: 11, west: 1, north: 12, east: 13 });
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('snaps DWD keys to 0.25° but NDFD keys to the finer 0.025°', async () => {
+    const callsFor = async (source: 'dwd_icon' | 'ndfd_wind', south: [number, number]): Promise<number> => {
+      const upstream = vi.fn(async (_o: FetchWindGridOptions) => stub());
+      const fetcher = new WindGridFetcher({ fetchImpl: upstream });
+      // Both bboxes sit in CONUS so NDFD is not swapped for the global source.
+      const box = { source, west: -100, north: 42, east: -98 };
+      await fetcher.fetch({ ...box, south: south[0] });
+      await fetcher.fetch({ ...box, south: south[1] });
+      return upstream.mock.calls.length;
+    };
+    // 38.00 and 38.02 share a 0.25° bucket but straddle a 0.025° one
+    // (round(38.00×40) = 1520, round(38.02×40) = 1521).
+    expect(await callsFor('dwd_icon', [38.0, 38.02])).toBe(1);
+    expect(await callsFor('ndfd_wind', [38.0, 38.02])).toBe(2);
   });
 });
 

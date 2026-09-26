@@ -4,8 +4,11 @@
 // refused browsers) — frame times now come from the server's own
 // listing, so every frame is real and unique by construction.
 
-import { describe, it, expect } from 'vitest';
-import { parseTimeDimension, pickFrameTimes } from '../src/noaa-frame-list';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+  parseTimeDimension, pickFrameTimes, fetchNoaaFrameTimes,
+  NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
+} from '../src/noaa-frame-list';
 import { getEffectiveTimeRange } from '../src/source-caps';
 
 const dim = (content: string, tag = 'Dimension'): string =>
@@ -36,6 +39,91 @@ describe('parseTimeDimension', () => {
   it('returns [] when no time dimension is present or values are garbage', () => {
     expect(parseTimeDimension('<WMS_Capabilities></WMS_Capabilities>')).toEqual([]);
     expect(parseTimeDimension(dim('not-a-date,also-not'))).toEqual([]);
+  });
+
+  it('finds the time dimension when name is not the first attribute, past a non-time Dimension', () => {
+    // Real GeoServer capabilities list several dimensions per layer and
+    // attribute order isn't fixed; a scanner that only tolerates one
+    // char before name="time" would miss this.
+    const xml = '<WMS_Capabilities><Layer>'
+      + '<Dimension name="elevation" units="EPSG:5030">0</Dimension>'
+      + '<Dimension units="ISO8601" default="2026-06-12T14:00:10.000Z" name="time" nearestValue="0">'
+      + '2026-06-12T13:58:05.000Z,2026-06-12T14:00:10.000Z</Dimension>'
+      + '</Layer></WMS_Capabilities>';
+    expect(parseTimeDimension(xml)).toEqual([
+      Date.parse('2026-06-12T13:58:05Z') / 1000,
+      Date.parse('2026-06-12T14:00:10Z') / 1000,
+    ]);
+  });
+
+  it('tolerates whitespace and newlines around each CSV entry', () => {
+    // Date.parse rejects a value with surrounding whitespace, so each
+    // entry must be trimmed or a pretty-printed listing parses to [].
+    const xml = dim('\n      2026-06-12T13:58:05.000Z,\n      2026-06-12T14:00:10.000Z\n    ');
+    expect(parseTimeDimension(xml)).toEqual([
+      Date.parse('2026-06-12T13:58:05Z') / 1000,
+      Date.parse('2026-06-12T14:00:10Z') / 1000,
+    ]);
+  });
+
+  it('returns [] for a mixed list+interval rather than a partial listing', () => {
+    // WMS-T allows `t1,start/end/period`. Expanding only the discrete
+    // part would hand the caller an incomplete listing that looks valid.
+    const xml = dim('2026-06-12T12:00:00Z,2026-06-12T13:00:00Z/2026-06-12T14:00:00Z/PT2M');
+    expect(parseTimeDimension(xml)).toEqual([]);
+  });
+});
+
+describe('fetchNoaaFrameTimes', () => {
+  const realFetch = global.fetch;
+  afterEach(() => { global.fetch = realFetch; });
+
+  const stubFetch = (res: Partial<Response>) => {
+    const fn = vi.fn(async (_url: string, _init?: RequestInit) => res as Response);
+    global.fetch = fn as unknown as typeof fetch;
+    return fn;
+  };
+
+  it('requests the opengeo WMS 1.3.0 GetCapabilities URL, forwarding the abort signal', async () => {
+    const fn = stubFetch({ ok: true, text: async () => dim('2026-06-12T14:00:10.000Z') });
+    const ctrl = new AbortController();
+    await fetchNoaaFrameTimes(ctrl.signal);
+    expect(fn).toHaveBeenCalledTimes(1);
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe(
+      'https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?service=WMS&version=1.3.0&request=GetCapabilities',
+    );
+    // Without the signal a superseded refresh can't cancel this request.
+    expect(init?.signal).toBe(ctrl.signal);
+  });
+
+  it('resolves the parsed, sorted frame times on a 200', async () => {
+    stubFetch({
+      ok: true,
+      text: async () => dim('2026-06-12T14:00:10.000Z,2026-06-12T13:58:05.000Z'),
+    });
+    expect(await fetchNoaaFrameTimes()).toEqual([
+      Date.parse('2026-06-12T13:58:05Z') / 1000,
+      Date.parse('2026-06-12T14:00:10Z') / 1000,
+    ]);
+  });
+
+  it('resolves [] on a 200 with an unparseable body', async () => {
+    stubFetch({ ok: true, text: async () => '<html>maintenance</html>' });
+    expect(await fetchNoaaFrameTimes()).toEqual([]);
+  });
+
+  it('throws with the HTTP status on a non-2xx response', async () => {
+    stubFetch({ ok: false, status: 503, text: async () => dim('2026-06-12T14:00:10.000Z') });
+    await expect(fetchNoaaFrameTimes()).rejects.toThrow('NOAA capabilities HTTP 503');
+  });
+});
+
+describe('opengeo endpoint constants', () => {
+  // A typo here would only show up as blank radar in production.
+  it('pin the WMS endpoint and layer the radar tiles are requested from', () => {
+    expect(NOAA_OPENGEO_WMS_URL).toBe('https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows');
+    expect(NOAA_OPENGEO_LAYER).toBe('conus_bref_qcd');
   });
 });
 
@@ -74,6 +162,25 @@ describe('pickFrameTimes', () => {
 
   it('returns [] for an empty listing', () => {
     expect(pickFrameTimes([], 60, 5)).toEqual([]);
+  });
+
+  // Hand-computed snapping (epoch seconds, 1-min stride => 60 s slots).
+  it('snaps each ideal slot to the nearest listed time, on either side', () => {
+    // Newest 1300, 2 min back => ideals 1180, 1240, 1300.
+    // 1180 -> 1100 (80 below vs 120 above), 1240 -> 1300 (60 above vs 140 below).
+    expect(pickFrameTimes([1000, 1100, 1300], 2, 1)).toEqual([1100, 1300]);
+  });
+
+  it('ties snap to the newer listed time', () => {
+    // Newest 1120, ideals 1060 and 1120; 1060 is exactly 60 from both
+    // 1000 and 1120.
+    expect(pickFrameTimes([1000, 1120], 1, 1)).toEqual([1120]);
+  });
+
+  it('clamps to the oldest entry when the window reaches back past the listing', () => {
+    // Newest 1360, 5 min back => ideals 1060..1360; those before 1300
+    // (the oldest listed time) all snap to it.
+    expect(pickFrameTimes([1300, 1360], 5, 1)).toEqual([1300, 1360]);
   });
 });
 

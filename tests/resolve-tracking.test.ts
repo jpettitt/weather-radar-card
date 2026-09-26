@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { resolveTracking } from '../src/marker-utils';
 import { mockHass, entityState } from './helpers/mock-hass';
 import { Marker } from '../src/types';
@@ -187,5 +187,60 @@ describe('resolveTracking', () => {
     const markers: Marker[] = [{ entity: 'device_tracker.van', track: true }];
     const result = resolveTracking(markers, hass, FB_LAT, FB_LON);
     expect(result?.markerIndex).toBe(0);
+  });
+});
+
+// ── Partial hass objects and priority edge cases ─────────────────────────────
+
+describe('resolveTracking — partial hass and priority edges', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('does not throw when hass has no user object', () => {
+    const hass = { states: { 'device_tracker.van': entityState(-34, 152) } } as any;
+    const markers: Marker[] = [{ entity: 'device_tracker.van', track: 'entity' }];
+    expect(resolveTracking(markers, hass, FB_LAT, FB_LON)).toMatchObject({ lat: -34, lon: 152 });
+  });
+
+  it('does not rank a non-person entity as the current user even if it carries a matching user_id', () => {
+    const hass = mockHass({
+      userId: 'user-abc',
+      states: {
+        'device_tracker.bike': entityState(-35, 151),
+        'device_tracker.van': entityState(-34, 152, { user_id: 'user-abc' }),
+      },
+    });
+    const markers: Marker[] = [
+      { entity: 'device_tracker.bike', track: 'entity' },
+      { entity: 'device_tracker.van', track: 'entity' },
+    ];
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Both are priority 2, so the first marker wins.
+    expect(resolveTracking(markers, hass, FB_LAT, FB_LON)).toMatchObject({ lat: -35, lon: 151, markerIndex: 0 });
+  });
+
+  it('treats a person entity without an attributes object as priority 2 and does not throw', () => {
+    const hass = mockHass({ states: { 'person.ghost': { state: 'unknown' } } });
+    const markers: Marker[] = [{ entity: 'person.ghost', latitude: -34, longitude: 151, track: 'entity' }];
+    expect(resolveTracking(markers, hass, FB_LAT, FB_LON)).toMatchObject({ lat: -34, lon: 151 });
+  });
+
+  it('does not warn when a lower-priority marker follows a higher-priority winner', () => {
+    const hass = mockHass({ states: {
+      'device_tracker.van': entityState(-34, 152),
+      'device_tracker.bike': entityState(-35, 151),
+    }});
+    const markers: Marker[] = [
+      { entity: 'device_tracker.van', track: 'entity' },
+      { entity: 'device_tracker.bike', track: true },
+    ];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(resolveTracking(markers, hass, FB_LAT, FB_LON)).toMatchObject({ lat: -34, lon: 152, markerIndex: 0 });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('does not warn about a priority tie for a track:entity marker that has no entity', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(resolveTracking([{ track: 'entity' }], mockHass(), FB_LAT, FB_LON)).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
   });
 });

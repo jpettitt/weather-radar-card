@@ -201,6 +201,7 @@ export class ViewerState {
     if (this._hydrated || !this.isActive) return;
     if (this._hydratePromise) return this._hydratePromise;
     this._hydratePromise = this._doHydrate();
+    // Stryker disable BlockStatement: the finally cleanup is unobservable — _doHydrate always sets _hydrated, so hydrate() returns before reading _hydratePromise again
     try {
       await this._hydratePromise;
     } finally {
@@ -208,6 +209,7 @@ export class ViewerState {
     }
   }
 
+  // Stryker restore BlockStatement
   private async _doHydrate(): Promise<void> {
     try {
       const result = await this._hass.callWS<{ value?: Record<string, unknown> } | null>({
@@ -305,6 +307,7 @@ export class ViewerState {
       } catch (err) {
         // Listener errors are isolated — one bad consumer shouldn't
         // poison the others.
+        // Stryker disable next-line StringLiteral: log text
         console.error('[weather-radar-card] viewer-state listener threw', err);
       }
     }
