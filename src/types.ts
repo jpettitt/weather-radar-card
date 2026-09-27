@@ -157,6 +157,24 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * none of which use CARTO tiles.
    */
   carto_api_key?: string;
+  /**
+   * `map_style: Custom` only: Leaflet tile template for the basemap, e.g.
+   * `https://tiles.example.com/{z}/{x}/{y}.png` (`{s}` expands to a/b/c).
+   * Labels must be baked into the tiles — no separate label layer is
+   * drawn. Unset/blank falls back to OSM.
+   */
+  custom_tile_url?: string;
+  /**
+   * `map_style: Custom` only: plain-text credit shown in the footer
+   * (HTML is escaped). Unset credits the tile host name.
+   */
+  custom_tile_attribution?: string;
+  /**
+   * `map_style: Custom` only: `light` (default) or `dark` tells the card
+   * which UI palette suits the tiles; `invert` shows light tiles as a
+   * dark map via a CSS filter and uses the dark palette.
+   */
+  custom_tile_theme?: string;
   data_source?: string;
   /** DWD-only: ISO timestamp to anchor frames at instead of "now" — for testing with historical rain. */
   dwd_time_override?: string;

@@ -30,6 +30,9 @@ All options can be configured using the GUI editor — there is no need to edit 
 | center_longitude              | number / string | **Optional**   | Initial map center longitude — number or entity ID                                                                                                                                                                                                                                                                                                                     | HA instance location                  |
 | map_style                     | string          | **Optional**   | Map style (see [Map Style](#map-style))                                                                                                                                                                                                                                                                                                                                | `'Auto'` (follows OS dark/light mode) |
 | carto_api_key                 | string          | **Optional**   | Free CARTO API key (no account needed — see [Map Style](#map-style)) appended to CARTO basemap tile requests. Removes the "API key required" watermark on Light/Voyager/Dark/Satellite tiles. No effect for OSM/Grey/GreyDark.                                                                                                                                         | unset (watermarked anonymous tiles)   |
+| custom_tile_url               | string          | **Optional**   | `map_style: Custom` only. Leaflet tile template for the basemap, e.g. `https://tiles.example.com/{z}/{x}/{y}.png` (`{s}` expands to a/b/c). Tiles must carry their own labels. Blank falls back to OSM — see [Custom tiles](#custom-tiles).                                                                                                                            | unset                                 |
+| custom_tile_attribution       | string          | **Optional**   | `map_style: Custom` only. Plain-text map credit for the footer (HTML is escaped).                                                                                                                                                                                                                                                                                      | `Map tiles: <host>`                   |
+| custom_tile_theme             | string          | **Optional**   | `map_style: Custom` only. `light`, `dark` (tiles are already dark), or `invert` (show light tiles as a dark map via a CSS filter). Picks the matching UI palette.                                                                                                                                                                                                      | `light`                               |
 | markers                       | list            | **Optional**   | List of map markers (see [Markers](markers.md))                                                                                                                                                                                                                                                                                                                        | none                                  |
 | cluster_markers               | boolean         | **Optional**   | Cluster nearby markers into a badge; tap/click the badge to spiderfy (fan out) individual markers. The tracked marker always renders outside the cluster. Clusters containing a home marker render the home icon with a small superscript count badge.                                                                                                                 | `true`                                |
 | show_snow                     | boolean         | **Optional**   | Include snow in the precipitation display (RainViewer only)                                                                                                                                                                                                                                                                                                            | `false`                               |
@@ -95,12 +98,26 @@ Specifies the base map style. All CARTO- and Esri-based styles render labels in 
 | `OSM`        | OpenStreetMap — labels rendered in local language                                                |
 | `Grey`       | Esri Light Grey Canvas — English only, no CARTO key needed, free without signup                  |
 | `GreyDark`   | Esri Dark Grey Canvas — English only, no CARTO key needed, free without signup                   |
+| `Custom`     | Your own tile URL (`custom_tile_url`) — e.g. a self-hosted tile server or caching proxy          |
 
 When `map_style` is not set or set to `Auto`, the card picks Dark when the OS is in dark mode, `Light` for English-language instances in light mode, and `OSM` for all other languages in light mode. The map updates automatically if the OS theme changes.
 
 ### CARTO API key
 
 CARTO's Light/Dark/Voyager tiles, and Satellite's label overlay, now stamp a visible "API key required" watermark on tiles fetched without a key — the tiles still load, just watermarked. A free key (no CARTO account needed — see [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/), 5 million tile requests/month free) removes it. Set it in the editor's Map section, or via `carto_api_key` in YAML. Leaving it unset keeps today's watermarked-but-working tiles — never a hard error. Has no effect for `OSM`, `Grey`, or `GreyDark`, none of which use CARTO tiles.
+
+### Custom tiles
+
+`map_style: Custom` loads the basemap from any `{z}/{x}/{y}` raster tile URL — a self-hosted tile server, a caching proxy in front of OpenStreetMap, or a provider whose API key goes in the URL. Tiles must include their own labels (no separate label layer is drawn).
+
+```yaml
+map_style: Custom
+custom_tile_url: https://tiles.example.com/{z}/{x}/{y}.png
+custom_tile_attribution: © OpenStreetMap contributors
+custom_tile_theme: invert
+```
+
+The card can't tell whether your tiles are light or dark, so set `custom_tile_theme`: `light` (default) or `dark` picks the matching marker, progress-bar and wind-flow colours; `invert` renders light tiles as a dark map with a CSS filter (`invert` + `hue-rotate`, so water stays blue) and uses the dark palette. Without `custom_tile_attribution` the footer credits the tile host name. Leaving `custom_tile_url` blank shows OpenStreetMap.
 
 > **OpenStreetMap note:** OSM tiles are provided by the OpenStreetMap community. For high-traffic deployments please consider the [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
 

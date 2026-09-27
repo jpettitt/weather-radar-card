@@ -86,9 +86,17 @@
       "style_dark": "CARTO Dark (alleen Engels)",
       "style_satellite": "Satelliet (alleen Engels)",
       "style_osm": "OpenStreetMap (gelokaliseerd)",
+      "style_custom": "Eigen tile-URL",
       "zoom_level": "Zoomniveau",
       "zoom_default": "Standaard (5)",
-      "source_dwd": "DWD (Duitsland — 5-min resolutie)"
+      "source_dwd": "DWD (Duitsland — 5-min resolutie)",
+      "custom_tile_url": "Tile-URL",
+      "custom_tile_url_helper": "Leaflet-template, bv. https://tiles.example.com/{z}/{x}/{y}.png ({s} wordt a/b/c). Tiles moeten labels bevatten. Leeg laten voor OpenStreetMap.",
+      "custom_tile_attribution": "Kaartbronvermelding (optioneel)",
+      "custom_tile_theme": "Tilekleuren",
+      "custom_tile_theme_light": "Licht",
+      "custom_tile_theme_dark": "Donker",
+      "custom_tile_theme_invert": "Lichte tiles donker tonen (geïnverteerd)"
     },
     "time_range": {
       "past": "Historiekduur",

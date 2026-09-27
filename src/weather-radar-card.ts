@@ -16,7 +16,14 @@ import { getEffectiveTimeRange, shouldShowPlayback } from './source-caps';
 import { localize } from './localize/localize';
 import { rainviewerLimiter, noaaLimiter, dwdLimiter } from './rate-limiters';
 import { FetchTileLayer } from './fetch-tile-layer';
-import { getBasemapTiles, getBasemapTone, isDarkBasemapStyle } from './basemap-styles';
+import {
+  CUSTOM_INVERT_CLASS,
+  getBasemapTiles,
+  getBasemapTone,
+  getCustomAttribution,
+  isDarkBasemapStyle,
+  isInvertedCustomBasemap,
+} from './basemap-styles';
 import { isWheelZoomEnabled } from './map-interaction';
 import { WindOverlay } from './wind-overlay';
 import { defaultWindSourceForLocation, DEFAULT_WIND_SOURCE } from './wind-source-caps';
@@ -582,7 +589,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       `;
     }
     const mapStyle = this._effectiveMapStyle();
-    const isMapDark = isDarkBasemapStyle(mapStyle);
+    const isMapDark = isDarkBasemapStyle(mapStyle, this._config.custom_tile_theme);
     const dataSource = this._config.data_source ?? 'RainViewer';
     const showColourBar = this._config.show_color_bar !== false;
     const progressBarTouchHeight = resolveProgressBarTouchHeight(this._config.progress_bar_touch_height);
@@ -826,9 +833,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const cfg = this._config;
     const tileSize = cfg.extra_labels ? 128 : 256;
     const zoomOffset = cfg.extra_labels ? 1 : 0;
-    const { url, subdomains, labelUrl, labelsBakedIn } = getBasemapTiles(mapStyle, cfg.carto_api_key);
+    const { url, subdomains, labelUrl, labelsBakedIn } = getBasemapTiles(
+      mapStyle, cfg.carto_api_key, cfg.custom_tile_url,
+    );
+    const className = isInvertedCustomBasemap(mapStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
 
-    new FetchTileLayer(url, { subdomains, detectRetina: false, tileSize, zoomOffset } as any)
+    new FetchTileLayer(url, { subdomains, detectRetina: false, tileSize, zoomOffset, className } as any)
       .addTo(this._map).setZIndex(Z_BASEMAP);
 
     if (!labelsBakedIn && labelUrl) {
@@ -880,7 +890,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       // theming or custom basemap palettes.
       let defaultColor: string;
       let customColor: string | undefined;
-      const tone = getBasemapTone(this._currentMapStyle ?? undefined);
+      const tone = getBasemapTone(this._currentMapStyle ?? undefined, cfg.custom_tile_theme);
       if (tone === 'satellite') {
         defaultColor = 'rgba(255,255,255,1)';
         customColor = cfg.dwd_wind_flow_color_sat;
@@ -912,7 +922,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       : ds === 'DWD'
         ? 'Radar: <a href="https://www.dwd.de" target="_blank">DWD</a>'
         : 'Radar: <a href="https://rainviewer.com" target="_blank">RainViewer</a>';
-    const mapCredit = mapStyle === 'osm'
+    const mapCredit = mapStyle === 'custom' && this._config.custom_tile_url?.trim()
+      ? getCustomAttribution(this._config.custom_tile_url, this._config.custom_tile_attribution)
+      : mapStyle === 'osm' || mapStyle === 'custom'
       ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
       : mapStyle === 'satellite'
         ? '&copy; <a href="http://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank">ESRI</a>'
@@ -993,7 +1005,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._trackedMarkerIdx = initialWinner?.markerIndex ?? -1;
 
     if (useClustering) {
-      const isDark = isDarkBasemapStyle(mapStyle);
+      const isDark = isDarkBasemapStyle(mapStyle, cfg.custom_tile_theme);
       this._clusterGroup = L.markerClusterGroup({
         iconCreateFunction: (c) => this._createClusterIcon(c, isDark),
         maxClusterRadius: 60,
@@ -1027,7 +1039,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       if (markerCfg.mobile_only && !isMobile) continue;
 
       const { lat, lon } = resolveMarkerPosition(markerCfg, this.hass, haLat, haLon);
-      const icon = createMarkerIconForMarker(markerCfg, this.hass, mapStyle);
+      const icon = createMarkerIconForMarker(markerCfg, this.hass, mapStyle, cfg.custom_tile_theme);
       const lMarker = L.marker([lat, lon], { icon, interactive: false });
       (lMarker as any)._wrcCfg = markerCfg;
       this._markers.set(i, lMarker);
@@ -1510,6 +1522,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
          has to close the popup to interact with the controls again,
          which is the expected modal-ish UX for these popups. */
       .leaflet-popup-pane { z-index: 1100; }
+      /* custom_tile_theme: invert — light custom tiles shown as a dark map.
+         hue-rotate undoes the hue flip of invert() so water stays blue. */
+      .${unsafeCSS(CUSTOM_INVERT_CLASS)} {
+        filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
+      }
       .loading-spinner {
         position: absolute; top: 50%; left: 50%;
         transform: translate(-50%, -50%);

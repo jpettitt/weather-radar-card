@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`map_style: Custom` — use your own basemap tile URL** — `custom_tile_url` takes any `{z}/{x}/{y}` raster template (self-hosted tile server, caching proxy, keyed provider), with an optional plain-text `custom_tile_attribution`. `custom_tile_theme: dark` tells the card the tiles are dark so markers, progress bar and wind flow use the dark palette; `custom_tile_theme: invert` shows light tiles (e.g. OSM) as a dark map via a CSS filter. Available in the visual editor.
+
 ### Fixed
 
 - **Wind overlays could throw on a one-cell-wide grid** — the bilinear sampler indexed past the end of a 1-row or 1-column grid (e.g. a bbox narrower than one native cell), which would abort the overlay render. ([#267](https://github.com/jpettitt/weather-radar-card/issues/267))
