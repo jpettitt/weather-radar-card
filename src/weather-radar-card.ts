@@ -1523,9 +1523,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
          which is the expected modal-ish UX for these popups. */
       .leaflet-popup-pane { z-index: 1100; }
       /* custom_tile_theme: invert — light custom tiles shown as a dark map.
-         hue-rotate undoes the hue flip of invert() so water stays blue. */
+         Same filter as ha-map-card's theme_mode: dark, so both cards match
+         on one dashboard. hue-rotate undoes most of invert()'s hue flip;
+         saturate(0.3) mutes the basemap so the radar colours stand out. */
       .${unsafeCSS(CUSTOM_INVERT_CLASS)} {
-        filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
+        filter: invert(0.9) hue-rotate(170deg) brightness(1.5) contrast(1.2) saturate(0.3);
       }
       .loading-spinner {
         position: absolute; top: 50%; left: 50%;
