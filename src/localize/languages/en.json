@@ -100,9 +100,9 @@
       "custom_tile_url_helper": "Leaflet template, e.g. https://tiles.example.com/{z}/{x}/{y}.png ({s} expands to a/b/c). Tiles must include labels. Leave blank to use OpenStreetMap.",
       "custom_tile_attribution": "Map attribution (optional)",
       "custom_tile_theme": "Tile colours",
-      "custom_tile_theme_light": "Light",
-      "custom_tile_theme_dark": "Dark",
-      "custom_tile_theme_invert": "Light tiles shown dark (inverted)"
+      "custom_tile_theme_light": "Light tiles (e.g. OSM)",
+      "custom_tile_theme_dark": "Tiles are already dark (only adapts UI colours)",
+      "custom_tile_theme_invert": "Light tiles, shown dark (inverted)"
     },
     "time_range": {
       "past": "History Duration",

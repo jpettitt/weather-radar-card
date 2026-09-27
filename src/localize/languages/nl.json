@@ -94,9 +94,9 @@
       "custom_tile_url_helper": "Leaflet-template, bv. https://tiles.example.com/{z}/{x}/{y}.png ({s} wordt a/b/c). Tiles moeten labels bevatten. Leeg laten voor OpenStreetMap.",
       "custom_tile_attribution": "Kaartbronvermelding (optioneel)",
       "custom_tile_theme": "Tilekleuren",
-      "custom_tile_theme_light": "Licht",
-      "custom_tile_theme_dark": "Donker",
-      "custom_tile_theme_invert": "Lichte tiles donker tonen (geïnverteerd)"
+      "custom_tile_theme_light": "Lichte tiles (bv. OSM)",
+      "custom_tile_theme_dark": "Tiles zijn al donker (past alleen UI-kleuren aan)",
+      "custom_tile_theme_invert": "Lichte tiles, donker getoond (geïnverteerd)"
     },
     "time_range": {
       "past": "Historiekduur",

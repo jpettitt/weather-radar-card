@@ -117,7 +117,7 @@ custom_tile_attribution: © OpenStreetMap contributors
 custom_tile_theme: invert
 ```
 
-The card can't tell whether your tiles are light or dark, so set `custom_tile_theme`: `light` (default) or `dark` picks the matching marker, progress-bar and wind-flow colours; `invert` renders light tiles as a dark map with a CSS filter (`invert` + `hue-rotate`, so water stays blue) and uses the dark palette. Without `custom_tile_attribution` the footer credits the tile host name. Leaving `custom_tile_url` blank shows OpenStreetMap.
+The card can't tell whether your tiles are light or dark, so set `custom_tile_theme`: `light` (default) for light tiles such as OSM, `dark` only when the tiles themselves are already dark — it switches marker, progress-bar and wind-flow colours but does not change the tiles; `invert` renders light tiles as a dark map with a CSS filter (`invert` + `hue-rotate`, so water stays blue) and uses the dark palette. Without `custom_tile_attribution` the footer credits the tile host name. Leaving `custom_tile_url` blank shows OpenStreetMap.
 
 > **OpenStreetMap note:** OSM tiles are provided by the OpenStreetMap community. For high-traffic deployments please consider the [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
 
