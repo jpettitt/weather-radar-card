@@ -90,11 +90,19 @@
       "style_osm": "OpenStreetMap (Localized)",
       "style_grey": "Esri Grey Canvas (English only, no API key needed)",
       "style_grey_dark": "Esri Grey Canvas Dark (English only, no API key needed)",
+      "style_custom": "Custom tile URL",
       "carto_api_key": "CARTO API Key",
       "carto_api_key_helper": "Optional. Removes CARTO's \"API key required\" watermark on Light/Voyager/Dark/Satellite tiles. Free, no CARTO account needed. Leave blank to keep today's (watermarked) tiles.",
       "carto_api_key_link": "Get a free key",
       "zoom_level": "Zoom Level",
-      "zoom_default": "Default (5)"
+      "zoom_default": "Default (5)",
+      "custom_tile_url": "Tile URL",
+      "custom_tile_url_helper": "Leaflet template, e.g. https://tiles.example.com/{z}/{x}/{y}.png ({s} expands to a/b/c). Tiles must include labels. Leave blank to use OpenStreetMap.",
+      "custom_tile_attribution": "Map attribution (optional)",
+      "custom_tile_theme": "Tile colours",
+      "custom_tile_theme_light": "Light tiles (e.g. OSM)",
+      "custom_tile_theme_dark": "Tiles are already dark (only adapts UI colours)",
+      "custom_tile_theme_invert": "Light tiles, shown dark (inverted)"
     },
     "time_range": {
       "past": "History Duration",

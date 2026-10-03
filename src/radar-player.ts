@@ -1640,7 +1640,7 @@ export class RadarPlayer {
       const override = isCurrent ? cfg.progress_bar_active_color : cfg.progress_bar_background_color;
       if (override) return override;
     }
-    const dark = isDarkBasemapStyle(cfg.map_style);
+    const dark = isDarkBasemapStyle(cfg.map_style, cfg.custom_tile_theme);
     const map = dark
       ? { empty: '#444', loading: '#aa7700', loaded: 'steelblue', failed: '#aa1111',
           cur_empty: '#666', cur_loading: '#cc9900', cur_loaded: '#6baed6', cur_failed: '#cc3333' }

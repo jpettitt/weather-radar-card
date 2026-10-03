@@ -44,6 +44,13 @@ describe('createMarkerIconForMarker', () => {
     expect(grey.iconUrl).toContain('home-circle-dark.svg');
   });
 
+  it('custom map style picks the SVG from custom_tile_theme', () => {
+    const light = createMarkerIconForMarker({ icon: 'default' }, mockHass(), 'custom') as any;
+    expect(light.iconUrl).toContain('home-circle-dark.svg');
+    const inverted = createMarkerIconForMarker({ icon: 'default' }, mockHass(), 'custom', 'invert') as any;
+    expect(inverted.iconUrl).toContain('home-circle-light.svg');
+  });
+
   it('returns entity_picture icon when entity has a picture URL', () => {
     const hass = mockHass({
       states: {
