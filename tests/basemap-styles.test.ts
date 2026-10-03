@@ -74,6 +74,15 @@ describe('getBasemapTiles', () => {
     expect(getBasemapTiles('custom')).toEqual(osm);
     expect(getBasemapTiles('custom', undefined, '   ')).toEqual(osm);
   });
+
+  it('maptiles: proxied OSM raster via HA core, token placeholder, never affected by a CARTO key', () => {
+    const t = getBasemapTiles('maptiles', 'abc123');
+    expect(t.url).toBe('/api/map_tiles/raster/{z}/{x}/{y}.png?token={token}');
+    expect(t.subdomains).toBe('');
+    expect(t.labelUrl).toBe('');
+    expect(t.labelsBakedIn).toBe(true);
+    expect(t.url).not.toContain('key=');
+  });
 });
 
 describe('getCustomAttribution', () => {
@@ -111,6 +120,7 @@ describe('getBasemapTone / isDarkBasemapStyle', () => {
     expect(getBasemapTone('voyager')).toBe('light');
     expect(getBasemapTone('osm')).toBe('light');
     expect(getBasemapTone('grey')).toBe('light');
+    expect(getBasemapTone('maptiles')).toBe('light');
     expect(getBasemapTone(undefined)).toBe('light');
   });
 

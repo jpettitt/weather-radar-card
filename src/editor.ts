@@ -7,6 +7,7 @@ import { migrateConfig } from './marker-utils';
 import { localize } from './localize/localize';
 import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-categories';
 import { isBlitzortungLoaded } from './lightning-helpers';
+import { isMapTilesLoaded } from './map-tiles-token';
 import { isSectionHeightPinned } from './card-layout';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
 import { WIND_SOURCE_CAPS, getWindSourceCaps, DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
@@ -188,6 +189,11 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
                   { value: 'Grey', label: localize('editor.map.style_grey') },
                   { value: 'GreyDark', label: localize('editor.map.style_grey_dark') },
                   { value: 'Custom', label: localize('editor.map.style_custom') },
+                  {
+                    value: 'MapTiles',
+                    label: localize('editor.map.style_maptiles'),
+                    disabled: !isMapTilesLoaded(this.hass),
+                  },
                 ],
               },
             }}
@@ -258,7 +264,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
               ></ha-selector>
             `;
           }
-          const cartoApplies = !['osm', 'grey', 'greydark'].includes(style);
+          const cartoApplies = !['osm', 'grey', 'greydark', 'maptiles'].includes(style);
           return cartoApplies ? html`
             <ha-input
               label=${localize('editor.map.carto_api_key')}

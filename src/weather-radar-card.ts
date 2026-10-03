@@ -24,6 +24,7 @@ import {
   isDarkBasemapStyle,
   isInvertedCustomBasemap,
 } from './basemap-styles';
+import { isMapTilesLoaded, startMapTilesToken } from './map-tiles-token';
 import { isWheelZoomEnabled } from './map-interaction';
 import { WindOverlay } from './wind-overlay';
 import { defaultWindSourceForLocation, DEFAULT_WIND_SOURCE } from './wind-source-caps';
@@ -193,6 +194,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _map: L.Map | null = null;
   private _currentMapStyle: string | null = null;
   private _townLayer: FetchTileLayer | null = null;
+  private _basemapTileLayer?: FetchTileLayer;
+  private _stopMapTilesToken?: () => void;
   private _windOverlay: WindOverlay | null = null;
   private _windFlow: WindFlowOverlay | null = null;
   private _toolbar: RadarToolbar | null = null;
@@ -815,6 +818,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (this._map) { this._map.remove(); this._map = null; }
     this._currentMapStyle = null;
     this._townLayer = null;
+    this._stopMapTilesToken?.();
+    this._stopMapTilesToken = undefined;
+    this._basemapTileLayer = undefined;
     this._windOverlay?.destroy();
     this._windOverlay = null;
     this._windFlow?.destroy();
@@ -833,13 +839,33 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const cfg = this._config;
     const tileSize = cfg.extra_labels ? 128 : 256;
     const zoomOffset = cfg.extra_labels ? 1 : 0;
+    // 'maptiles' needs HA core's map_tiles integration (2026.10+) actually
+    // loaded on the connected instance; fall back to 'light' otherwise —
+    // same silent-fallback behaviour any other unresolvable style string
+    // already gets. This also means we never fire the access_token WS call
+    // against a core that doesn't recognise it.
+    const useMapTiles = mapStyle === 'maptiles' && isMapTilesLoaded(this.hass);
+    const effectiveStyle = mapStyle === 'maptiles' && !useMapTiles ? 'light' : mapStyle;
     const { url, subdomains, labelUrl, labelsBakedIn } = getBasemapTiles(
-      mapStyle, cfg.carto_api_key, cfg.custom_tile_url,
+      effectiveStyle, cfg.carto_api_key, cfg.custom_tile_url,
     );
-    const className = isInvertedCustomBasemap(mapStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
+    const className = isInvertedCustomBasemap(effectiveStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
 
-    new FetchTileLayer(url, { subdomains, detectRetina: false, tileSize, zoomOffset, className } as any)
-      .addTo(this._map).setZIndex(Z_BASEMAP);
+    // token is a no-op for every other style's URL template; only
+    // 'maptiles' references {token}. Created empty and patched in once the
+    // async fetch below resolves — see map-tiles-token.ts's doc comment on
+    // why this stays synchronous rather than awaiting the token first.
+    this._basemapTileLayer = new FetchTileLayer(url, {
+      subdomains, detectRetina: false, tileSize, zoomOffset, className, token: '',
+    } as any).addTo(this._map).setZIndex(Z_BASEMAP);
+
+    if (useMapTiles) {
+      this._stopMapTilesToken = startMapTilesToken(this.hass, (token) => {
+        if (!this._basemapTileLayer) return;
+        (this._basemapTileLayer.options as any).token = token;
+        this._basemapTileLayer.redraw();
+      });
+    }
 
     if (!labelsBakedIn && labelUrl) {
       this._townLayer = new FetchTileLayer(labelUrl, {
@@ -924,7 +950,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         : 'Radar: <a href="https://rainviewer.com" target="_blank">RainViewer</a>';
     const mapCredit = mapStyle === 'custom' && this._config.custom_tile_url?.trim()
       ? getCustomAttribution(this._config.custom_tile_url, this._config.custom_tile_attribution)
-      : mapStyle === 'osm' || mapStyle === 'custom'
+      : mapStyle === 'osm' || mapStyle === 'custom' || mapStyle === 'maptiles'
       ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
       : mapStyle === 'satellite'
         ? '&copy; <a href="http://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank">ESRI</a>'

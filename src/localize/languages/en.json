@@ -91,6 +91,7 @@
       "style_grey": "Esri Grey Canvas (English only, no API key needed)",
       "style_grey_dark": "Esri Grey Canvas Dark (English only, no API key needed)",
       "style_custom": "Custom tile URL",
+      "style_maptiles": "HA Map Tiles (Localized, requires Home Assistant 2026.10+)",
       "carto_api_key": "CARTO API Key",
       "carto_api_key_helper": "Optional. Removes CARTO's \"API key required\" watermark on Light/Voyager/Dark/Satellite tiles. Free, no CARTO account needed. Leave blank to keep today's (watermarked) tiles.",
       "carto_api_key_link": "Get a free key",
