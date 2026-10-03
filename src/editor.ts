@@ -187,6 +187,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
                   { value: 'OSM', label: localize('editor.map.style_osm') },
                   { value: 'Grey', label: localize('editor.map.style_grey') },
                   { value: 'GreyDark', label: localize('editor.map.style_grey_dark') },
+                  { value: 'Custom', label: localize('editor.map.style_custom') },
                 ],
               },
             }}
@@ -224,6 +225,39 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           // "show it": Auto usually resolves to a CARTO-backed style, so
           // hiding the field there would be wrong more often than not.
           const style = (config.map_style || 'Auto').toLowerCase();
+          if (style === 'custom') {
+            return html`
+              <ha-input
+                label=${localize('editor.map.custom_tile_url')}
+                .value=${config.custom_tile_url || ''}
+                .configValue=${'custom_tile_url'}
+                @input=${this._valueChangedString}
+              ></ha-input>
+              <div class="section-description">${localize('editor.map.custom_tile_url_helper')}</div>
+              <ha-input
+                label=${localize('editor.map.custom_tile_attribution')}
+                .value=${config.custom_tile_attribution || ''}
+                .configValue=${'custom_tile_attribution'}
+                @input=${this._valueChangedString}
+              ></ha-input>
+              <ha-selector
+                .hass=${this.hass}
+                .selector=${{
+                  select: {
+                    options: [
+                      { value: 'light', label: localize('editor.map.custom_tile_theme_light') },
+                      { value: 'dark', label: localize('editor.map.custom_tile_theme_dark') },
+                      { value: 'invert', label: localize('editor.map.custom_tile_theme_invert') },
+                    ],
+                  },
+                }}
+                .value=${config.custom_tile_theme || 'light'}
+                .label=${localize('editor.map.custom_tile_theme')}
+                .configValue=${'custom_tile_theme'}
+                @value-changed=${this._handleSelectorChanged}
+              ></ha-selector>
+            `;
+          }
           const cartoApplies = !['osm', 'grey', 'greydark'].includes(style);
           return cartoApplies ? html`
             <ha-input

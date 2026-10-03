@@ -69,9 +69,10 @@ export function createMarkerIconForMarker(
   markerCfg: Marker,
   hass: HomeAssistant,
   mapStyle: string,
+  customTileTheme?: string,
 ): L.Icon | L.DivIcon {
   const iconType = markerCfg.icon || 'default';
-  const isDarkMap = isDarkBasemapStyle(mapStyle);
+  const isDarkMap = isDarkBasemapStyle(mapStyle, customTileTheme);
   const svgFile = isDarkMap ? 'home-circle-light.svg' : 'home-circle-dark.svg';
   const defaultColour = isDarkMap ? '#EEEEEE' : '#333333';
   const colour = markerCfg.color ?? defaultColour;
