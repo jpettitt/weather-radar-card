@@ -518,15 +518,22 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._editorOpen = true;
     }
     // HA detaches and re-attaches the card when re-organising the DOM
-    // (entering edit mode, sections-grid layout changes). disconnectedCallback
+    // (entering/exiting edit mode, sections-grid layout changes). disconnectedCallback
     // calls _teardown() which removes the Leaflet map; connectedCallback
-    // doesn't re-init on its own. Without nudging the lifecycle here, no
-    // property changes after re-attach so updated() never fires and the
-    // radar stays blank. requestUpdate forces an update cycle whose
-    // updated() handler already has the `if (!this._map && this._config)`
-    // → re-init path.
+    // doesn't re-init on its own. Call _initMap() directly rather than
+    // nudging via requestUpdate(): a bare requestUpdate() registers no
+    // changed property, and shouldUpdate() only lets updated() run when
+    // `_config`/`hass`/`editMode` are in the changed-props set — on a
+    // reconnect where none of those happen to change at the same moment
+    // (confirmed via instrumented repro: a second card instance's reconnect
+    // nudge was silently swallowed, map stuck blank until an unrelated hass
+    // tick arrived, 10-45s later), that update is silently dropped and the
+    // radar stays blank indefinitely. _initMap() already no-ops safely via
+    // its own `if (!mapEl || this._map) return;` guard, so it's safe to
+    // call unconditionally here too — the outer check just avoids the call
+    // entirely when there's nothing to do yet.
     if (this._config && !this._map) {
-      this.requestUpdate();
+      this._initMap();
     }
     // Hydrate the per-card preference cache from HA frontend storage so
     // get() returns the persisted override on the first setupToolbar.
