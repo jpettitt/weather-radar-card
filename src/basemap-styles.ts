@@ -88,6 +88,18 @@ export function getBasemapTiles(
         labelUrl: '',
         labelsBakedIn: true,
       };
+    case 'maptiles':
+      // HA core's map_tiles integration (2026.10+) — proxies the same OSM
+      // raster tiles through the HA instance itself, behind a rotating
+      // access token substituted into {token} (see map-tiles-token.ts).
+      // Single host, no {s} subdomains. Caller falls this case back to
+      // 'light' when the integration isn't loaded on the connected core.
+      return {
+        url: '/api/map_tiles/raster/{z}/{x}/{y}.png?token={token}',
+        subdomains: '',
+        labelUrl: '',
+        labelsBakedIn: true,
+      };
     case 'grey':
       return {
         url: `${ESRI_HOST}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,

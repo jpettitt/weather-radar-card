@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`map_style: Custom` — use your own basemap tile URL** — `custom_tile_url` takes any `{z}/{x}/{y}` raster template (self-hosted tile server, caching proxy, keyed provider), with an optional plain-text `custom_tile_attribution`. `custom_tile_theme: dark` tells the card the tiles are dark so markers, progress bar and wind flow use the dark palette; `custom_tile_theme: invert` shows light tiles (e.g. OSM) as a dark map via a CSS filter. Available in the visual editor.
+- **`MapTiles` map style** — proxies OpenStreetMap raster tiles through Home Assistant's own `map_tiles` integration instead of fetching them directly. Localized labels, no CARTO watermark, no API key. Requires Home Assistant 2026.10+; the editor greys out the option on older cores, and YAML falls back to `Light` if set anyway.
 
 ### Fixed
 
