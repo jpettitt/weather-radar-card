@@ -88,6 +88,8 @@ All options can be configured using the GUI editor — there is no need to edit 
 
 Specifies the base map style. All CARTO- and Esri-based styles render labels in English only. Use OpenStreetMap for localized labels.
 
+> **Beta:** `Custom` and `MapTiles` ship in 3.11.0, currently in beta. Enable HACS's **Show beta versions** (or install [the 3.11.0-beta1 release](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta1) manually) to use them before the stable release.
+
 | Value        | Description                                                                                      |
 |--------------|--------------------------------------------------------------------------------------------------|
 | `Auto`       | Follows OS dark/light mode — Dark when system is dark, Light (English) or OSM (other) when light |
