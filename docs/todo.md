@@ -88,6 +88,12 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
+- **Remove the 3.11.0 beta callout from `docs/configuration.md`'s Map
+  Style section once 3.11.0 goes stable.** Added alongside `Custom`
+  ([#273](https://github.com/jpettitt/weather-radar-card/pull/273)) and
+  `MapTiles` (#276) landing only in 3.11.0-beta1 — docs on `main`
+  shouldn't claim a not-yet-stable feature as generally available.
+
 - **Open-Meteo as an alternate wind source for global coverage.**
   The wind overlay landing in 3.6 (PR #133) is DWD-only — Germany +
   immediate neighbours via the ICON-D2 model. To extend the feature

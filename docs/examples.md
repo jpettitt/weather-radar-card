@@ -153,6 +153,23 @@ alerts_categories:
   - flood
 ```
 
+## FAA VFR Sectional chart with live radar overlay
+
+A custom tile source doesn't have to be a conventional basemap — aeronautical charts work too. Lowering `radar_opacity` keeps the sectional's airspace rings, MOAs, VOR roses and elevations legible under the radar composite.
+
+```yaml
+type: 'custom:weather-radar-card'
+map_style: Custom
+custom_tile_url: https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/{z}/{y}/{x}
+custom_tile_attribution: FAA Aeronautical Information Services
+custom_tile_theme: light
+radar_opacity: 0.5
+data_source: RainViewer
+center_latitude: 39.3152
+center_longitude: -102.2662
+zoom_level: 9
+```
+
 ## Smooth animation with sequential overlap (no brightness dip)
 
 Lighter basemaps benefit from `smooth_overlap: 0` so the previous frame holds at full opacity until the new one is fully in.
