@@ -152,6 +152,8 @@ export function isInvertedCustomBasemap(
 export function getCustomAttribution(customTileUrl?: string, attribution?: string): string {
   const text = attribution?.trim();
   if (text) return escapeHtml(text);
-  const host = customTileUrl?.trim().match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i)?.[1];
+  // The optional (?:[^@/?#]*@)? skips embedded userinfo (user:pass@host) so
+  // credentials in a custom tile URL never reach the map footer.
+  const host = customTileUrl?.trim().match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?([^/?#]+)/i)?.[1];
   return host ? `Map tiles: ${escapeHtml(host)}` : '';
 }

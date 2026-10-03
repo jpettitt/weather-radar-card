@@ -93,6 +93,13 @@ describe('getCustomAttribution', () => {
     expect(getCustomAttribution('/local/tiles/{z}/{x}/{y}.png')).toBe('');
     expect(getCustomAttribution(undefined)).toBe('');
   });
+
+  it('strips embedded userinfo credentials before they reach the map footer', () => {
+    expect(getCustomAttribution('https://user:pass@tiles.example.com/{z}/{x}/{y}.png'))
+      .toBe('Map tiles: tiles.example.com');
+    expect(getCustomAttribution('https://apikey@tiles.example.com:8443/{z}/{x}/{y}.png'))
+      .toBe('Map tiles: tiles.example.com:8443');
+  });
 });
 
 describe('getBasemapTone / isDarkBasemapStyle', () => {
