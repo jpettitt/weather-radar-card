@@ -17,6 +17,7 @@ import { localize } from './localize/localize';
 import { rainviewerLimiter, noaaLimiter, dwdLimiter } from './rate-limiters';
 import { FetchTileLayer } from './fetch-tile-layer';
 import { getBasemapTiles, getBasemapTone, isDarkBasemapStyle } from './basemap-styles';
+import { isMapTilesLoaded, startMapTilesToken } from './map-tiles-token';
 import { isWheelZoomEnabled } from './map-interaction';
 import { WindOverlay } from './wind-overlay';
 import { defaultWindSourceForLocation, DEFAULT_WIND_SOURCE } from './wind-source-caps';
@@ -186,6 +187,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _map: L.Map | null = null;
   private _currentMapStyle: string | null = null;
   private _townLayer: FetchTileLayer | null = null;
+  private _basemapTileLayer?: FetchTileLayer;
+  private _stopMapTilesToken?: () => void;
   private _windOverlay: WindOverlay | null = null;
   private _windFlow: WindFlowOverlay | null = null;
   private _toolbar: RadarToolbar | null = null;
@@ -515,15 +518,22 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._editorOpen = true;
     }
     // HA detaches and re-attaches the card when re-organising the DOM
-    // (entering edit mode, sections-grid layout changes). disconnectedCallback
+    // (entering/exiting edit mode, sections-grid layout changes). disconnectedCallback
     // calls _teardown() which removes the Leaflet map; connectedCallback
-    // doesn't re-init on its own. Without nudging the lifecycle here, no
-    // property changes after re-attach so updated() never fires and the
-    // radar stays blank. requestUpdate forces an update cycle whose
-    // updated() handler already has the `if (!this._map && this._config)`
-    // → re-init path.
+    // doesn't re-init on its own. Call _initMap() directly rather than
+    // nudging via requestUpdate(): a bare requestUpdate() registers no
+    // changed property, and shouldUpdate() only lets updated() run when
+    // `_config`/`hass`/`editMode` are in the changed-props set — on a
+    // reconnect where none of those happen to change at the same moment
+    // (confirmed via instrumented repro: a second card instance's reconnect
+    // nudge was silently swallowed, map stuck blank until an unrelated hass
+    // tick arrived, 10-45s later), that update is silently dropped and the
+    // radar stays blank indefinitely. _initMap() already no-ops safely via
+    // its own `if (!mapEl || this._map) return;` guard, so it's safe to
+    // call unconditionally here too — the outer check just avoids the call
+    // entirely when there's nothing to do yet.
     if (this._config && !this._map) {
-      this.requestUpdate();
+      this._initMap();
     }
     // Hydrate the per-card preference cache from HA frontend storage so
     // get() returns the persisted override on the first setupToolbar.
@@ -808,6 +818,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (this._map) { this._map.remove(); this._map = null; }
     this._currentMapStyle = null;
     this._townLayer = null;
+    this._stopMapTilesToken?.();
+    this._stopMapTilesToken = undefined;
+    this._basemapTileLayer = undefined;
     this._windOverlay?.destroy();
     this._windOverlay = null;
     this._windFlow?.destroy();
@@ -826,10 +839,31 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const cfg = this._config;
     const tileSize = cfg.extra_labels ? 128 : 256;
     const zoomOffset = cfg.extra_labels ? 1 : 0;
-    const { url, subdomains, labelUrl, labelsBakedIn } = getBasemapTiles(mapStyle, cfg.carto_api_key);
 
-    new FetchTileLayer(url, { subdomains, detectRetina: false, tileSize, zoomOffset } as any)
-      .addTo(this._map).setZIndex(Z_BASEMAP);
+    // 'maptiles' needs HA core's map_tiles integration (2026.10+) actually
+    // loaded on the connected instance; fall back to 'light' otherwise —
+    // same silent-fallback behaviour any other unresolvable style string
+    // already gets. This also means we never fire the access_token WS call
+    // against a core that doesn't recognise it.
+    const useMapTiles = mapStyle === 'maptiles' && isMapTilesLoaded(this.hass);
+    const effectiveStyle = mapStyle === 'maptiles' && !useMapTiles ? 'light' : mapStyle;
+    const { url, subdomains, labelUrl, labelsBakedIn } = getBasemapTiles(effectiveStyle, cfg.carto_api_key);
+
+    // token is a no-op for every other style's URL template; only
+    // 'maptiles' references {token}. Created empty and patched in once the
+    // async fetch below resolves — see map-tiles-token.ts's doc comment on
+    // why this stays synchronous rather than awaiting the token first.
+    this._basemapTileLayer = new FetchTileLayer(url, {
+      subdomains, detectRetina: false, tileSize, zoomOffset, token: '',
+    } as any).addTo(this._map).setZIndex(Z_BASEMAP);
+
+    if (useMapTiles) {
+      this._stopMapTilesToken = startMapTilesToken(this.hass, (token) => {
+        if (!this._basemapTileLayer) return;
+        (this._basemapTileLayer.options as any).token = token;
+        this._basemapTileLayer.redraw();
+      });
+    }
 
     if (!labelsBakedIn && labelUrl) {
       this._townLayer = new FetchTileLayer(labelUrl, {
@@ -912,7 +946,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       : ds === 'DWD'
         ? 'Radar: <a href="https://www.dwd.de" target="_blank">DWD</a>'
         : 'Radar: <a href="https://rainviewer.com" target="_blank">RainViewer</a>';
-    const mapCredit = mapStyle === 'osm'
+    const mapCredit = (mapStyle === 'osm' || mapStyle === 'maptiles')
       ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
       : mapStyle === 'satellite'
         ? '&copy; <a href="http://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank">ESRI</a>'

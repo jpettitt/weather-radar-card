@@ -95,8 +95,11 @@ Specifies the base map style. All CARTO- and Esri-based styles render labels in 
 | `OSM`        | OpenStreetMap — labels rendered in local language                                                |
 | `Grey`       | Esri Light Grey Canvas — English only, no CARTO key needed, free without signup                  |
 | `GreyDark`   | Esri Dark Grey Canvas — English only, no CARTO key needed, free without signup                   |
+| `MapTiles`   | OpenStreetMap via HA's `map_tiles` integration — localized, no API key, requires HA 2026.10+     |
 
 When `map_style` is not set or set to `Auto`, the card picks Dark when the OS is in dark mode, `Light` for English-language instances in light mode, and `OSM` for all other languages in light mode. The map updates automatically if the OS theme changes.
+
+`MapTiles` needs Home Assistant's `map_tiles` integration (2026.10+), which proxies OpenStreetMap tiles through your HA instance. The editor greys out this option when the connected core doesn't have it; if `map_style: MapTiles` is set anyway (e.g. hand-typed YAML, or a core downgrade), the card falls back to `Light` rather than showing a broken map.
 
 ### CARTO API key
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`MapTiles` map style** — proxies OpenStreetMap raster tiles through Home Assistant's own `map_tiles` integration instead of fetching them directly. Localized labels, no CARTO watermark, no API key. Requires Home Assistant 2026.10+; the editor greys out the option on older cores, and YAML falls back to `Light` if set anyway.
+
 ### Fixed
 
 - **Wind overlays could throw on a one-cell-wide grid** — the bilinear sampler indexed past the end of a 1-row or 1-column grid (e.g. a bbox narrower than one native cell), which would abort the overlay render. ([#267](https://github.com/jpettitt/weather-radar-card/issues/267))
