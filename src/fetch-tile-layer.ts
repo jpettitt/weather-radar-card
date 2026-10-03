@@ -41,6 +41,56 @@ export interface FetchTileOptions extends L.TileLayerOptions {
   pixelFilter?: (data: Uint8ClampedArray) => void;
 }
 
+// FetchTileOptions' own fields (everything beyond L.TileLayerOptions) — real
+// Leaflet WMS tile layers append ANY option they don't recognise to the
+// GetMap URL as a query param, so these must be stripped before reaching
+// L.TileLayer.WMS and restored onto this.options afterward (see
+// splitInternalOptions / FetchWmsTileLayer.initialize below).
+//
+// This list has drifted out of sync with the interface before (#275): 5
+// fields were added to FetchTileOptions without being added to the
+// hand-written strip list, leaking into every DWD/NOAA WMS request. Keeping
+// it as a Record<InternalOptionKey, true> rather than a plain array makes
+// that impossible to repeat — TypeScript errors on this object if a field
+// is ever added to or removed from FetchTileOptions without updating it
+// here, since both a missing and an excess property are type errors against
+// an exhaustive Record.
+type InternalOptionKey = Exclude<keyof FetchTileOptions, keyof L.TileLayerOptions>;
+const INTERNAL_OPTION_FIELDS: Record<InternalOptionKey, true> = {
+  rateLimiter: true,
+  maxRetries: true,
+  retryDelay: true,
+  maxServerErrorRetries: true,
+  on429: true,
+  on5xx: true,
+  onTileRecovered: true,
+  animationOwnsOpacity: true,
+  pixelFilter: true,
+};
+export const INTERNAL_OPTION_KEYS = Object.keys(INTERNAL_OPTION_FIELDS) as InternalOptionKey[];
+
+/**
+ * Splits FetchTileOptions-only fields off an options bag, for callers (like
+ * FetchWmsTileLayer) that must hand Leaflet only the fields it recognises.
+ * Exported so tests can exercise the split directly instead of mocking
+ * Leaflet and reading its merge behaviour back out.
+ */
+export function splitInternalOptions<T extends FetchTileOptions>(
+  options: T,
+): { internal: Partial<FetchTileOptions>; rest: Omit<T, InternalOptionKey> } {
+  const rest = { ...options } as Record<string, unknown>;
+  const internal: Partial<FetchTileOptions> = {};
+  for (const key of INTERNAL_OPTION_KEYS) {
+    // Only copy keys the caller actually set — an omitted field stays
+    // omitted from `internal` rather than becoming an explicit `undefined`,
+    // so Object.assign(this.options, internal) at the call site can't shadow
+    // a default a later caller relies on being genuinely absent.
+    if (key in options) internal[key] = options[key] as any;
+    delete rest[key];
+  }
+  return { internal, rest: rest as Omit<T, InternalOptionKey> };
+}
+
 // Decode `blob` to a canvas, run `filter` over its RGBA bytes in place,
 // re-encode back to a PNG blob. Returns a fresh blob; the caller owns
 // it. Falls back to the original blob on any failure (a tile is more
@@ -313,16 +363,16 @@ export class FetchWmsTileLayer extends L.TileLayer.WMS {
     this._tileFailed = 0;
     this._tileLoaded = 0;
     // Leaflet's L.TileLayer.WMS appends ANY option that isn't a recognised
-    // Leaflet/WMS field to the GetMap URL as a query parameter — that
-    // would leak our internal options (rateLimiter, on429,
-    // animationOwnsOpacity, pixelFilter) into the request, producing URL
-    // fragments like `&rateLimiter=[object%20Object]`. Split them off,
-    // hand only the WMS-relevant subset to the parent initialize, then
-    // put ours back onto this.options so createTile / _updateOpacity can
-    // read them.
-    const { rateLimiter, on429, animationOwnsOpacity, pixelFilter, ...wmsOptions } = options;
-    (L.TileLayer.WMS.prototype as any).initialize.call(this, url, wmsOptions);
-    Object.assign(this.options, { rateLimiter, on429, animationOwnsOpacity, pixelFilter });
+    // Leaflet/WMS field to the GetMap URL as a query parameter — that would
+    // leak our internal options into the request, producing URL fragments
+    // like `&on5xx=()%3D%3Ethis._onServerError()`. splitInternalOptions
+    // strips every FetchTileOptions-only field (INTERNAL_OPTION_KEYS, kept
+    // exhaustive against the type — see its definition above) before
+    // handing options to the parent initialize, then they're restored onto
+    // this.options so createTile / _updateOpacity can read them.
+    const { internal, rest } = splitInternalOptions(options);
+    (L.TileLayer.WMS.prototype as any).initialize.call(this, url, rest);
+    Object.assign(this.options, internal);
     wireAbortLifecycle(this);
   }
 
