@@ -100,7 +100,10 @@
       "past_off": "Av (statisk bild, ingen animation)",
       "helper_static": "Statisk bild — ingen animation, uppdateras var 5:e min",
       "stride": "Bildintervall",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Prognosuppdatering",
+      "forecast_refresh_off": "Av",
+      "forecast_refresh_option": "Var {n}:e min"
     },
     "location": {
       "centre_latitude": "Centrums latitud",

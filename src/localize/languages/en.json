@@ -115,7 +115,10 @@
       "past_off": "Off (static frame, no animation)",
       "helper_static": "Static frame — no animation, refreshes every 5 min",
       "stride": "Frame interval",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Forecast Refresh",
+      "forecast_refresh_off": "Off",
+      "forecast_refresh_option": "Every {n} min"
     },
     "location": {
       "centre_latitude": "Centre Latitude",

@@ -100,7 +100,10 @@
       "past_off": "Vyp. (statický snímok, bez animácie)",
       "helper_static": "Statický snímok — bez animácie, obnovuje sa každých 5 min",
       "stride": "Interval snímok",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Obnovovanie predpovede",
+      "forecast_refresh_off": "Vypnuté",
+      "forecast_refresh_option": "Každých {n} min"
     },
     "location": {
       "centre_latitude": "Zemepisná šírka stredu",

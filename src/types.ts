@@ -48,6 +48,14 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    */
   forecast_minutes?: number;
   /**
+   * Refetch forecast frames from the source's newest forecast run at most
+   * this often (minutes; 0 or unset = off, the pre-3.11 behaviour). Only a
+   * run newer than the one on screen triggers a refetch. Also re-shows a
+   * forecast frame as observed radar once the newest run covers it.
+   * DWD only — the one source with a forecast.
+   */
+  forecast_refresh_minutes?: number;
+  /**
    * Custom frame interval (minutes). For NOAA this is surfaced in the
    * editor as the "Frame interval" dropdown (2/5/10) and snaps to the
    * nearest offered step. For the grid sources (RainViewer/DWD) it's a

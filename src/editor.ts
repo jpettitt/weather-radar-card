@@ -10,6 +10,7 @@ import { isBlitzortungLoaded } from './lightning-helpers';
 import { isMapTilesLoaded } from './map-tiles-token';
 import { isSectionHeightPinned } from './card-layout';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
+import { FORECAST_REFRESH_CHOICES } from './forecast-refresh';
 import { WIND_SOURCE_CAPS, getWindSourceCaps, DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
 import { customElement, property, state } from 'lit/decorators.js';
 
@@ -1141,6 +1142,11 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       ? String(config.forecast_minutes ?? caps.defaultForecastMin)
       : '';
 
+    // Refresh only means something with a forecast window to refresh.
+    const refreshOptions = forecastOptions && range.forecastMin > 0
+      ? this._buildForecastRefreshOptions(config.forecast_refresh_minutes)
+      : null;
+
     // Frame-interval dropdown for frame-listing sources (NOAA): the
     // stride is a first-class editor knob there, not a YAML-only
     // override — the server lists real scan times and the card snaps
@@ -1201,9 +1207,33 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             @value-changed=${this._handleSelectorNumberChanged}
           ></ha-selector>
         ` : ''}
+        ${refreshOptions ? html`
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ select: { options: refreshOptions } }}
+            .value=${String(config.forecast_refresh_minutes ?? 0)}
+            .label=${localize('editor.time_range.forecast_refresh')}
+            .configValue=${'forecast_refresh_minutes'}
+            @value-changed=${this._handleSelectorNumberChanged}
+          ></ha-selector>
+        ` : ''}
       </div>
       <div class="time-range-helper">${helper}</div>
     `;
+  }
+
+  // Off + FORECAST_REFRESH_CHOICES; an off-list YAML value is appended with
+  // the "(YAML)" suffix so the dropdown shows what's actually configured.
+  private _buildForecastRefreshOptions(current: number | undefined): { value: string; label: string }[] {
+    const option = (n: number): string => localize('editor.time_range.forecast_refresh_option').replace('{n}', String(n));
+    const options = [
+      { value: '0', label: localize('editor.time_range.forecast_refresh_off') },
+      ...FORECAST_REFRESH_CHOICES.map((n) => ({ value: String(n), label: option(n) })),
+    ];
+    if (current && current > 0 && !FORECAST_REFRESH_CHOICES.includes(current)) {
+      options.push({ value: String(current), label: `${option(current)} ${localize('editor.time_range.yaml_suffix')}` });
+    }
+    return options;
   }
 
   // Builds the past-time dropdown options from PAST_PRESETS_MIN,

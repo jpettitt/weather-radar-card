@@ -212,17 +212,14 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   UX, composition semantics (subset of YAML-authorised layers), storage
   key shape, edge cases.
 
-- **Refresh DWD forecast frames when a new nowcast run lands**
+- ✅ **Refresh DWD forecast frames when a new nowcast run lands** —
+  shipped in 3.11.0-beta2 as `forecast_refresh_minutes`
   ([#279](https://github.com/jpettitt/weather-radar-card/issues/279),
-  the issue's second ask). A forecast frame is fetched once and never
-  updated, so a +2 h frame is still on screen hours later. DWD's
-  radar layers have a second time dimension, `REFERENCE_TIME` (one run
-  every 5 min, each covering +2 h); the card never sends it, so it gets
-  the newest run. Sending `DIM_REFERENCE_TIME=<run>` (the plain
-  `REFERENCE_TIME` name is ignored) pins each forecast tile to a run,
-  which makes it cacheable and turns refresh into "new run listed in
-  GetCapabilities → recreate the forecast layers". Moderate: touches
-  the refresh cycle and the crossfade's frame swap.
+  the issue's second ask). Forecast frames are pinned to a run with
+  `DIM_REFERENCE_TIME` (the plain `REFERENCE_TIME` name is ignored);
+  each 5-min update checks the layer's GetCapabilities and refetches
+  only when a newer run exists. Design notes in `forecast-refresh.ts`
+  and `docs/animation.md`.
 
 - **Create the first radar layers only once the map has its laid-out
   size.** Tile size is fixed when a layer is created, and the first

@@ -100,7 +100,10 @@
       "past_off": "Desligado (quadro estático, sem animação)",
       "helper_static": "Quadro estático — sem animação, atualiza a cada 5 min",
       "stride": "Intervalo de quadros",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Atualização da previsão",
+      "forecast_refresh_off": "Desligado",
+      "forecast_refresh_option": "A cada {n} min"
     },
     "location": {
       "centre_latitude": "Latitude do centro",
