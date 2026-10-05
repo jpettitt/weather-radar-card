@@ -2,6 +2,9 @@
 /* eslint-disable @typescript-eslint/no-this-alias */
 import * as L from 'leaflet';
 import { RateLimiter } from './rate-limiter';
+import {
+  TileCachePolicy, hasInflight, memoGet, persistedGet, sharedFetch, storeTile,
+} from './tile-cache';
 
 const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
@@ -39,6 +42,13 @@ export interface FetchTileOptions extends L.TileLayerOptions {
    * compound the dim.
    */
   pixelFilter?: (data: Uint8ClampedArray) => void;
+  /**
+   * Opt in to tile reuse (see tile-cache.ts): identical requests share one
+   * download and recent tiles are served from memory; with `persistUntil`
+   * the tile is also kept in IndexedDB. Radar frame layers only — basemap
+   * URLs (MapTiles' rotating token) must not be cached here.
+   */
+  tileCache?: TileCachePolicy;
 }
 
 // FetchTileOptions' own fields (everything beyond L.TileLayerOptions) — real
@@ -66,6 +76,7 @@ const INTERNAL_OPTION_FIELDS: Record<InternalOptionKey, true> = {
   onTileRecovered: true,
   animationOwnsOpacity: true,
   pixelFilter: true,
+  tileCache: true,
 };
 export const INTERNAL_OPTION_KEYS = Object.keys(INTERNAL_OPTION_FIELDS) as InternalOptionKey[];
 
@@ -143,6 +154,39 @@ export interface TileWithAbort extends HTMLImageElement {
   __wrcAbort?: AbortController | null;
 }
 
+// One network attempt, resolving to the raw tile bytes. Rejections carry
+// `status` for createFetchTile's retry branches.
+function fetchTileBlob(url: string, signal: AbortSignal): Promise<Blob> {
+  return fetch(url, {
+    referrer: window.location.href,
+    referrerPolicy: 'no-referrer-when-downgrade',
+    signal,
+  }).then((r) => {
+    if (r.status === 404) { const e: any = new Error('404'); e.status = 404; throw e; }
+    if (r.status === 429) { const e: any = new Error('429'); e.status = 429; throw e; }
+    if (!r.ok) { const e: any = new Error(`HTTP ${r.status}`); e.status = r.status; throw e; }
+    // Soft-error tiles: NOAA's WMS sometimes answers 200 OK with a
+    // small text/xml error document instead of a PNG (observed
+    // ~240 bytes; likely a rate-limit the server doesn't surface
+    // as 429). Assigning that blob to the <img> just fails decode
+    // silently — the tile rendered blank, done() reported success,
+    // and nothing ever retried. Detect by content-type and route
+    // through the bounded retry path: `e.status = 200` is honest
+    // (it WAS a 200) and deliberately keeps the error out of both
+    // the 404-fail branch and the statusless-rate-limit branch in
+    // createFetchTile's catch, landing it on the attempt-capped retry. A
+    // missing content-type header is left alone (assumed image) so
+    // sources that omit the header keep working.
+    const ctype = r.headers.get('content-type') ?? '';
+    if (ctype.includes('xml') || ctype.includes('html') || ctype.startsWith('text/')) {
+      const e: any = new Error(`non-image tile response (${ctype})`);
+      e.status = 200;
+      throw e;
+    }
+    return r.blob();
+  });
+}
+
 /** @internal — exported for tests/fetch-abort.test.ts integration coverage. */
 export function createFetchTile(
   this: FetchTileLayer | FetchWmsTileLayer,
@@ -162,6 +206,7 @@ export function createFetchTile(
   const on429 = opts.on429;
   const on5xx = opts.on5xx;
   const onTileRecovered = opts.onTileRecovered;
+  const cache = opts.tileCache;
   let attempt = 0;
 
   layer._tilePending++;
@@ -174,65 +219,56 @@ export function createFetchTile(
     done(undefined, tile);
   };
 
+  // Shared tail for network downloads and cache hits. The cache holds the
+  // raw tile, so the pixel filter runs on every delivery (and a theme change
+  // that alters the filter still applies to cached tiles).
+  const deliver = (raw: Blob, fromNetwork: boolean): Promise<void> => {
+    const filter = (layer.options as FetchTileOptions).pixelFilter;
+    return (filter ? applyPixelFilter(raw, filter) : Promise.resolve(raw)).then((blob) => {
+      const objUrl = URL.createObjectURL(blob);
+      tile.onload = () => URL.revokeObjectURL(objUrl);
+      // Decode failures never fire onload — without this, the blob
+      // URL (and its buffer) lived until document unload.
+      tile.onerror = () => URL.revokeObjectURL(objUrl);
+      tile.src = objUrl;
+      if (fromNetwork) {
+        limiter?.recordSuccess(url);
+        // Only a real response says a 429/5xx condition has cleared.
+        onTileRecovered?.();
+      }
+      layer._tilePending--;
+      layer._tileLoaded++;
+      tile.__wrcAbort = null;
+      done(undefined, tile);
+    });
+  };
+
   const tryFetch = (): void => {
-    if (limiter && !limiter.canFetch(url)) {
-      setTimeout(tryFetch, limiter.msUntilSlot());
-      return;
+    // Joining a download that is already in flight costs no request, so it
+    // skips the rate limiter.
+    const joining = !!cache && hasInflight(url);
+    if (!joining) {
+      if (limiter && !limiter.canFetch(url)) {
+        setTimeout(tryFetch, limiter.msUntilSlot());
+        return;
+      }
+      limiter?.record(url);
     }
-    limiter?.record(url);
 
     // Fresh controller for each attempt — retries get their own so
     // aborting one in-flight retry doesn't poison the next.
     const ctrl = new AbortController();
     tile.__wrcAbort = ctrl;
 
-    fetch(url, {
-      referrer: window.location.href,
-      referrerPolicy: 'no-referrer-when-downgrade',
-      signal: ctrl.signal,
-    })
-      .then((r) => {
-        if (r.status === 404) { const e: any = new Error('404'); e.status = 404; throw e; }
-        if (r.status === 429) { const e: any = new Error('429'); e.status = 429; throw e; }
-        if (!r.ok) { const e: any = new Error(`HTTP ${r.status}`); e.status = r.status; throw e; }
-        // Soft-error tiles: NOAA's WMS sometimes answers 200 OK with a
-        // small text/xml error document instead of a PNG (observed
-        // ~240 bytes; likely a rate-limit the server doesn't surface
-        // as 429). Assigning that blob to the <img> just fails decode
-        // silently — the tile rendered blank, done() reported success,
-        // and nothing ever retried. Detect by content-type and route
-        // through the bounded retry path: `e.status = 200` is honest
-        // (it WAS a 200) and deliberately keeps the error out of both
-        // the 404-fail branch and the statusless-rate-limit branch in
-        // the catch below, landing it on the attempt-capped retry. A
-        // missing content-type header is left alone (assumed image) so
-        // sources that omit the header keep working.
-        const ctype = r.headers.get('content-type') ?? '';
-        if (ctype.includes('xml') || ctype.includes('html') || ctype.startsWith('text/')) {
-          const e: any = new Error(`non-image tile response (${ctype})`);
-          e.status = 200;
-          throw e;
-        }
-        return r.blob();
-      })
-      .then((blob) => {
-        const filter = (layer.options as FetchTileOptions).pixelFilter;
-        return filter ? applyPixelFilter(blob, filter) : blob;
-      })
-      .then((blob) => {
-        const objUrl = URL.createObjectURL(blob);
-        tile.onload = () => URL.revokeObjectURL(objUrl);
-        // Decode failures never fire onload — without this, the blob
-        // URL (and its buffer) lived until document unload.
-        tile.onerror = () => URL.revokeObjectURL(objUrl);
-        tile.src = objUrl;
-        limiter?.recordSuccess(url);
-        onTileRecovered?.();
-        layer._tilePending--;
-        layer._tileLoaded++;
-        tile.__wrcAbort = null;
-        done(undefined, tile);
-      })
+    const raw = cache
+      ? sharedFetch(url, ctrl.signal, (signal) => fetchTileBlob(url, signal).then((b) => {
+        storeTile(url, b, cache);
+        return b;
+      }))
+      : fetchTileBlob(url, ctrl.signal);
+
+    raw
+      .then((b) => deliver(b, true))
       .catch((err: any) => {
         // Deliberately-cancelled fetch (tile unloaded / layer removed).
         // Decrement pending so the loading-spinner / segment counter
@@ -272,7 +308,35 @@ export function createFetchTile(
       });
   };
 
-  tryFetch();
+  // A cached copy that somehow fails to deliver falls back to the network.
+  const deliverCached = (raw: Blob): void => {
+    deliver(raw, false).catch(() => tryFetch());
+  };
+
+  const start = (): void => {
+    if (!cache) { tryFetch(); return; }
+    const hit = memoGet(url);
+    if (hit) { deliverCached(hit); return; }
+    // Only frames old enough to be final are ever persisted, so recent and
+    // forecast frames skip the IndexedDB round trip.
+    if (cache.persistUntil === undefined) { tryFetch(); return; }
+    const lookup = new AbortController();
+    tile.__wrcAbort = lookup;
+    void persistedGet(url).then((stored) => {
+      if (lookup.signal.aborted) {
+        // Unloaded during the lookup — same accounting as an aborted fetch.
+        layer._tilePending--;
+        tile.__wrcAbort = null;
+        return;
+      }
+      // Re-check memory: another layer may have finished downloading this
+      // tile while the lookup was pending.
+      const ready = stored ?? memoGet(url);
+      if (ready) deliverCached(ready); else tryFetch();
+    });
+  };
+
+  start();
   return tile;
 }
 

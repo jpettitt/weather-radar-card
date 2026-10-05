@@ -8,7 +8,8 @@ import { FetchTileLayer, FetchWmsTileLayer, layerSettled } from './fetch-tile-la
 import { isDarkBasemapStyle } from './basemap-styles';
 import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
-import { getEffectiveTimeRange } from './source-caps';
+import { getEffectiveTimeRange, getSourceCaps } from './source-caps';
+import { TileCachePolicy, persistUntilFor } from './tile-cache';
 import {
   fetchNoaaFrameTimes, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
 } from './noaa-frame-list';
@@ -70,6 +71,27 @@ export function insertSorted(arr: number[], v: number): number {
   }
   arr.splice(lo, 0, v);
   return lo;
+}
+
+export interface RadarTileSize { size: 512 | 1024 | 2048; zoomOffset: number }
+
+/**
+ * Radar tile size for a map whose larger dimension is `px`: aim for ~6 tiles
+ * across, so big panel/fullscreen maps make fewer requests. Powers of 2
+ * because all three sources speak { 512, 1024, 2048 } (RainViewer in the URL
+ * path, NOAA/DWD WMS render any width/height); zoomOffset keeps the
+ * on-screen scale constant.
+ *
+ * 512 is the floor, not 256 (#279): small cards fetch some pixels outside
+ * the view but make fewer requests, which is what DWD's per-request latency
+ * and rate limit care about. It also stops layers created before the map
+ * reaches its laid-out size (the first frame and the DWD coverage mask)
+ * getting a smaller grid than the rest of the loop on maps up to 1200 px.
+ */
+export function pickRadarTileSize(px: number): RadarTileSize {
+  if (px > 2400) return { size: 2048, zoomOffset: -3 };
+  if (px > 1200) return { size: 1024, zoomOffset: -2 };
+  return { size: 512, zoomOffset: -1 };
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -593,6 +615,8 @@ export class RadarPlayer {
       for (const layer of this._radarImage) {
         if (layer) (layer.options as any).minNativeZoom = newPin;
       }
+      // Keep the mask on the frames' grid so its tiles stay shared.
+      if (this._coverageMask) (this._coverageMask.options as any).minNativeZoom = newPin;
     }
     // Zoom changes pixel scale, so cached snapshots and the screen-
     // pixel motion vectors derived from them are stale. Drop them and
@@ -1910,6 +1934,9 @@ export class RadarPlayer {
     this._ensureDwdMaskPane();
     const isoTime = new Date(frame.time * 1000).toISOString().split('.')[0] + 'Z';
     const { size: tileSize, zoomOffset } = this._radarTileSize();
+    // Same TIME, tile grid and zoom pin as the anchor frame's own layer, so
+    // the URLs are identical and tile-cache shares one download between the
+    // two (#279) — the mask only needs a different pixel filter.
     return new FetchWmsTileLayer(DWD_WMS_URL, {
       layers: layerName,
       format: 'image/png',
@@ -1918,12 +1945,14 @@ export class RadarPlayer {
       TIME: isoTime,
       tileSize,
       zoomOffset,
+      minNativeZoom: this._pinnedNativeZoom,
       maxNativeZoom: 8 + Math.max(0, -zoomOffset),
       rateLimiter: this._dwdLimiter,
       on429: () => this._onRateLimited(),
       on5xx: () => this._onServerError(),
       onTileRecovered: () => this._onTileRecovered(),
       animationOwnsOpacity: true,
+      tileCache: this._tileCachePolicy(frame),
       pane: 'dwd-coverage-mask',
       pixelFilter: makeDwdMaskOnlyFilter(layerName, dim, outline),
     } as any);
@@ -2170,19 +2199,15 @@ export class RadarPlayer {
     return stridedFrames.slice(-Math.min(frameCount, 13));
   }
 
-  // Pick the tile size that fits the map best. Aim for ~6 tiles across
-  // the larger map dimension — fewer requests when the map is large
-  // (panel view, fullscreen), regular 512 for typical card-sized maps.
-  // Quantised to powers of 2 because all three radar sources speak the
-  // size as { 256, 512, 1024, 2048 }: RainViewer encodes it in the URL
-  // path, NOAA/DWD WMS render server-side to whatever width/height we
-  // pass. zoomOffset compensates so the on-screen scale stays constant.
-  private _radarTileSize(): { size: 256 | 512 | 1024 | 2048; zoomOffset: number } {
-    const px = this._map ? Math.max(this._map.getSize().x, this._map.getSize().y) : 600;
-    if (px > 2400) return { size: 2048, zoomOffset: -3 };
-    if (px > 1200) return { size: 1024, zoomOffset: -2 };
-    if (px > 600)  return { size: 512,  zoomOffset: -1 };
-    return                { size: 256,  zoomOffset:  0 };
+  private _radarTileSize(): RadarTileSize {
+    return pickRadarTileSize(this._map ? Math.max(this._map.getSize().x, this._map.getSize().y) : 600);
+  }
+
+  // Tile reuse policy for one frame's tiles: always shared/memoised, and
+  // persisted only once the frame is old enough that its content is final.
+  private _tileCachePolicy(frame: RadarFrame): TileCachePolicy {
+    const { maxPastMin } = getSourceCaps(this._cfg.data_source);
+    return { persistUntil: persistUntilFor(frame.time * 1000, Date.now(), maxPastMin) };
   }
 
   private _createLayer(frame: RadarFrame): FetchTileLayer | FetchWmsTileLayer {
@@ -2231,6 +2256,10 @@ export class RadarPlayer {
         on5xx: () => this._onServerError(),
         onTileRecovered: () => this._onTileRecovered(),
         animationOwnsOpacity: true,
+        // Legacy slots are snapped server-side to the nearest published
+        // frame, so a later frame can change what an old URL returns:
+        // memory only, never persisted.
+        tileCache: this._noaaLegacyMode ? {} : this._tileCachePolicy(frame),
         pane: RADAR_PANE_NAME,
       } as any));
     }
@@ -2256,6 +2285,7 @@ export class RadarPlayer {
         onTileRecovered: () => this._onTileRecovered(),
         animationOwnsOpacity: true,
         pixelFilter: makeDwdMaskFilter(layerName),
+        tileCache: this._tileCachePolicy(frame),
         pane: RADAR_PANE_NAME,
       } as any));
     }
@@ -2276,6 +2306,7 @@ export class RadarPlayer {
       on5xx: () => this._onServerError(),
       onTileRecovered: () => this._onTileRecovered(),
       animationOwnsOpacity: true,
+      tileCache: this._tileCachePolicy(frame),
       pane: RADAR_PANE_NAME,
     } as any));
   }
