@@ -24,7 +24,7 @@ import {
   isDarkBasemapStyle,
   isInvertedCustomBasemap,
 } from './basemap-styles';
-import { isMapTilesLoaded, startMapTilesToken } from './map-tiles-token';
+import { attachMapTilesLayer, isMapTilesLoaded } from './map-tiles-token';
 import { isWheelZoomEnabled } from './map-interaction';
 import { WindOverlay } from './wind-overlay';
 import { defaultWindSourceForLocation, DEFAULT_WIND_SOURCE } from './wind-source-caps';
@@ -859,19 +859,18 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const className = isInvertedCustomBasemap(effectiveStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
 
     // token is a no-op for every other style's URL template; only
-    // 'maptiles' references {token}. Created empty and patched in once the
-    // async fetch below resolves — see map-tiles-token.ts's doc comment on
-    // why this stays synchronous rather than awaiting the token first.
+    // 'maptiles' references {token}. The layer is created synchronously
+    // either way; a MapTiles layer goes on the map once its first token
+    // arrives (attachMapTilesLayer) — see map-tiles-token.ts on why setup
+    // stays synchronous rather than awaiting the token first.
     this._basemapTileLayer = new FetchTileLayer(url, {
       subdomains, detectRetina: false, tileSize, zoomOffset, className, token: '',
-    } as any).addTo(this._map).setZIndex(Z_BASEMAP);
+    } as any).setZIndex(Z_BASEMAP);
 
     if (useMapTiles) {
-      this._stopMapTilesToken = startMapTilesToken(this.hass, (token) => {
-        if (!this._basemapTileLayer) return;
-        (this._basemapTileLayer.options as any).token = token;
-        this._basemapTileLayer.redraw();
-      });
+      this._stopMapTilesToken = attachMapTilesLayer(this.hass, this._basemapTileLayer as any, () => this._map);
+    } else {
+      this._basemapTileLayer.addTo(this._map);
     }
 
     if (!labelsBakedIn && labelUrl) {

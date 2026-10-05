@@ -64,3 +64,34 @@ export function startMapTilesToken(
     clearInterval(interval);
   };
 }
+
+/** The slice of a Leaflet tile layer / map that attachMapTilesLayer touches. */
+export interface TokenTileLayer {
+  options: { token?: string };
+  redraw(): unknown;
+  addTo(map: any): unknown;
+}
+
+/**
+ * Keeps a MapTiles basemap layer's token current, adding the layer to the
+ * map only once the first token arrives. Added with an empty token, every
+ * visible tile is requested as `?token=` and rejected 403 (then retried)
+ * before the token lands. The layer itself is still created synchronously
+ * by the caller — only the addTo waits, the same patch-an-async-result-in
+ * pattern as the redraw (see startMapTilesToken).
+ *
+ * Returns startMapTilesToken's stop() function.
+ */
+export function attachMapTilesLayer(
+  hass: HomeAssistant,
+  layer: TokenTileLayer,
+  getMap: () => { hasLayer(layer: any): boolean } | null | undefined,
+): () => void {
+  return startMapTilesToken(hass, (token) => {
+    const map = getMap();
+    if (!map) return;
+    layer.options.token = token;
+    if (map.hasLayer(layer)) layer.redraw();
+    else layer.addTo(map);
+  });
+}
