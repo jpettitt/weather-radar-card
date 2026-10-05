@@ -28,10 +28,11 @@ NOAA's opengeo frame listing holds ~60 frames ≈ 2 h of history, hence the 120-
 
 > **Beta:** tile caching ships in 3.11.0, currently in beta. Enable HACS's **Show beta versions** (or install [the 3.11.0-beta2 release](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta2) manually) to use it before the stable release.
 
-The servers' own cache headers differ a lot: RainViewer allows 48 hours (its tile URLs are content-hashed), NOAA 2 minutes, and DWD sends none. So the card keeps its own copy of radar tiles, the same way for every source:
+The servers' own cache headers differ a lot: RainViewer allows 48 hours (its tile URLs are content-hashed), NOAA 2 minutes, and DWD sends none. So the card keeps its own copy of radar tiles once their content is final:
 
-- Tiles of frames at least 15 minutes old are stored in the browser (IndexedDB) until the frame falls outside the source's longest history window above, plus an hour.
-- Recent and forecast frames are kept in memory for 5 minutes only. DWD answers every request against its newest nowcast run, so the same forecast frame changes every 5 minutes.
+- RainViewer and NOAA frames older than one frame interval are stored in the browser (IndexedDB) — their frames only exist once published.
+- DWD frames are stored once DWD's newest nowcast run covers them. Until then the same URL returns the run's forecast, which changes every 5 minutes. The card reads DWD's run list (~13 KB) on each 5-minute update to know this; if it can't, it waits until a frame is 15 minutes old.
+- Stored tiles are kept until the frame falls outside the source's longest history window above, plus an hour. Newer and forecast frames are kept in memory for 5 minutes only.
 - If the browser blocks storage (some private modes), tiles are simply fetched from the network as before.
 
 ## NOAA note
@@ -60,7 +61,7 @@ Outside the German radar coverage you'll see a faint grey wash from the no-data 
 
 `forecast_minutes` (set in the editor as **Forecast Duration**, or in YAML directly) includes that many minutes of nowcast forecast in the playback range as future-timestamped frames; DWD's WarnWetter app default is 2 hours. When `forecast_minutes > 0`, the layer auto-switches to `Radar_wn-product_1x1km_ger` (which carries the +2h nowcast frames) unless you've explicitly set `dwd_layer`.
 
-DWD publishes a new nowcast run every 5 minutes (each listed 3–8 minutes after its run time). Without `forecast_refresh_minutes`, a forecast frame keeps the run that was newest when it loaded, and keeps showing that forecast even after its time has passed. With it set (editor: **Forecast Refresh**), the card checks DWD's run list on each 5-minute update and, when a newer run exists and the interval has passed, refetches the forecast frames from it; a frame the newest run covers switches to the observed radar. A check that finds no newer run costs one small request and reloads nothing. Ships in 3.11.0-beta2.
+DWD publishes a new nowcast run every 5 minutes (each listed 3–8 minutes after its run time). Without `forecast_refresh_minutes`, a forecast frame keeps the run that was newest when it loaded, and keeps showing that forecast even after its time has passed. With it set (editor: **Forecast Refresh**), the card uses the run list it already reads on each 5-minute update (see Tile caching): when a newer run exists and the interval has passed, it refetches the forecast frames from it, and a frame the newest run covers switches to the observed radar. An update that finds no newer run reloads nothing. Ships in 3.11.0-beta2.
 
 The colour-bar uses DWD's `Niederschlagsradar` palette sampled from DWD's official legend; units are mm/h. The same gradient is reused for the dBZ layer since the relative colours stay close enough for a quick visual cue.
 
