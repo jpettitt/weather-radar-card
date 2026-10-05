@@ -100,7 +100,10 @@
       "past_off": "Disattivato (fotogramma statico, nessuna animazione)",
       "helper_static": "Fotogramma statico — nessuna animazione, aggiornato ogni 5 min",
       "stride": "Intervallo fotogrammi",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Aggiornamento della previsione",
+      "forecast_refresh_off": "Disattivato",
+      "forecast_refresh_option": "Ogni {n} min"
     },
     "location": {
       "centre_latitude": "Latitudine del centro",

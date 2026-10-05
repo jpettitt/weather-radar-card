@@ -100,7 +100,10 @@
       "past_off": "Désactivé (image fixe, sans animation)",
       "helper_static": "Image fixe — pas d'animation, actualisée toutes les 5 min",
       "stride": "Intervalle entre images",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Actualisation de la prévision",
+      "forecast_refresh_off": "Désactivé",
+      "forecast_refresh_option": "Toutes les {n} min"
     },
     "location": {
       "centre_latitude": "Latitude du centre",

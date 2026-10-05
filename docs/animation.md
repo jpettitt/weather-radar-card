@@ -405,6 +405,31 @@ As each frame settles (`layerSettled`):
    this walks the remaining load-order entries rather than counting
    down from the failed index.
 
+## Forecast refresh — swapping a frame's layer mid-loop
+
+With `forecast_refresh_minutes` set (DWD only), `_updateRadar` also
+checks DWD's newest run and `_refreshForecast` refetches the frames
+`planForecastRefresh` picks ([src/forecast-refresh.ts](../src/forecast-refresh.ts)).
+Unlike the newest-frame shift above, this replaces layers of frames
+that may be on screen, so the loop is never stopped for it:
+
+1. Replacement layers load hidden (`opacity: 0`) and outside
+   `_radarImage`, so the spinner and motion compensation ignore them.
+   A replacement that doesn't load cleanly is dropped and the old frame
+   stays.
+2. Loaded replacements wait in `_stagedForecast`, keyed by frame time
+   (a shift can move indices meanwhile). `_swapStagedFrames` puts each
+   in place of its frame's layer, copying the old container's
+   `z-index`, `opacity`, `transform` with `transition: none`, so the
+   swap is invisible.
+3. While the loop runs, the frame on screen and the two before it (the
+   fading cushion, and an older overlapping fade in smooth mode) are
+   held back — swapping one mid-fade would cut its transition short.
+   `_showSlot` retries every tick; `_stopLoop` swaps everything once
+   `_settleVisibility` has left nothing mid-fade.
+4. A swapped frame's snapshot and the motion vectors into and out of
+   it are dropped and rebuilt from the new tiles.
+
 ---
 
 ## Time-range model

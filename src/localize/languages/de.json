@@ -100,7 +100,10 @@
       "past_off": "Aus (statisches Bild, keine Animation)",
       "helper_static": "Statisches Bild — keine Animation, Aktualisierung alle 5 Min",
       "stride": "Frame-Intervall",
-      "stride_option": "{n} Min."
+      "stride_option": "{n} Min.",
+      "forecast_refresh": "Vorhersage-Aktualisierung",
+      "forecast_refresh_off": "Aus",
+      "forecast_refresh_option": "Alle {n} Min."
     },
     "location": {
       "centre_latitude": "Breitengrad des Mittelpunkts",

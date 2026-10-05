@@ -100,7 +100,10 @@
       "past_off": "Wył. (statyczna klatka, bez animacji)",
       "helper_static": "Statyczna klatka — bez animacji, odświeżana co 5 min",
       "stride": "Odstęp między klatkami",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Odświeżanie prognozy",
+      "forecast_refresh_off": "Wyłącz",
+      "forecast_refresh_option": "Co {n} min"
     },
     "location": {
       "centre_latitude": "Szerokość geograficzna środka",

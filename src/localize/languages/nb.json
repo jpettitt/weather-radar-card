@@ -100,7 +100,10 @@
       "past_off": "Av (statisk bilde, ingen animasjon)",
       "helper_static": "Statisk bilde — ingen animasjon, oppdateres hvert 5. min",
       "stride": "Bildeintervall",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Varseloppdatering",
+      "forecast_refresh_off": "Av",
+      "forecast_refresh_option": "Hvert {n}. min"
     },
     "location": {
       "centre_latitude": "Sentrumsbreddegrad",

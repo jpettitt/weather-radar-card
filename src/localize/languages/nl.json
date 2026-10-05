@@ -108,7 +108,10 @@
       "past_off": "Uit (statisch beeld, geen animatie)",
       "helper_static": "Statisch beeld — geen animatie, vernieuwt elke 5 min",
       "stride": "Frame-interval",
-      "stride_option": "{n} min"
+      "stride_option": "{n} min",
+      "forecast_refresh": "Voorspelling verversen",
+      "forecast_refresh_off": "Uit",
+      "forecast_refresh_option": "Elke {n} min"
     },
     "location": {
       "centre_latitude": "Middenbreedtegraad",
