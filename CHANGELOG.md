@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`MapTiles` basemap logged 403 errors on every load** — the basemap was added to the map before its access token arrived, so the first tiles were requested with an empty token, rejected, and retried. It now goes on the map once the token is in. No visible change: those tiles never loaded anyway.
 - **DWD downloaded one frame's tiles twice** — the coverage outline is drawn from the same tiles as the newest past frame, but fetched them separately. It now shares that frame's download. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
 
 - **Wind overlays could throw on a one-cell-wide grid** — the bilinear sampler indexed past the end of a 1-row or 1-column grid (e.g. a bbox narrower than one native cell), which would abort the overlay render. ([#267](https://github.com/jpettitt/weather-radar-card/issues/267))

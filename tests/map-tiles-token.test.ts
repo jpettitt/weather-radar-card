@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { HomeAssistant } from 'custom-card-helpers';
-import { isMapTilesLoaded, startMapTilesToken } from '../src/map-tiles-token';
+import { attachMapTilesLayer, isMapTilesLoaded, startMapTilesToken } from '../src/map-tiles-token';
 
 // Minimal hass mock — mirrors tests/lightning-helpers.test.ts's shape for
 // isMapTilesLoaded, and tests/viewer-state.test.ts's callWS-mocking
@@ -115,5 +115,80 @@ describe('startMapTilesToken', () => {
 
     await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
     expect(callWS).toHaveBeenCalledOnce();
+  });
+});
+
+// The card used to add the MapTiles basemap with an empty token, so every
+// visible tile went out as `?token=` and came back 403 before the token
+// landed. A stub map that tracks which layers are on it stands in for Leaflet.
+describe('attachMapTilesLayer', () => {
+  interface StubMap { layers: Set<unknown>; hasLayer: (l: unknown) => boolean }
+
+  function makeMapAndLayer(): {
+    map: StubMap;
+    layer: { options: { token?: string }; redraw: Mock<() => void>; addTo: Mock<(m: StubMap) => unknown> };
+  } {
+    const layers = new Set<unknown>();
+    const map: StubMap = { layers, hasLayer: (l) => layers.has(l) };
+    const layer = {
+      options: { token: '' } as { token?: string },
+      redraw: vi.fn<() => void>(),
+      addTo: vi.fn<(m: StubMap) => unknown>((m) => { m.layers.add(layer); return layer; }),
+    };
+    return { map, layer };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not put the layer on the map before a token exists', () => {
+    const hass = { callWS: vi.fn(() => new Promise(() => {})) } as unknown as HomeAssistant;
+    const { map, layer } = makeMapAndLayer();
+    const stop = attachMapTilesLayer(hass, layer, () => map);
+    expect(layer.addTo).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('adds the layer once, with the token, when the first token arrives', async () => {
+    const hass = { callWS: vi.fn().mockResolvedValue({ token: 'tok-1' }) } as unknown as HomeAssistant;
+    const { map, layer } = makeMapAndLayer();
+    const stop = attachMapTilesLayer(hass, layer, () => map);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(layer.options.token).toBe('tok-1');
+    expect(layer.addTo).toHaveBeenCalledTimes(1);
+    expect(layer.addTo).toHaveBeenCalledWith(map);
+    expect(layer.redraw).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('redraws with each refreshed token instead of adding the layer again', async () => {
+    const callWS = vi.fn().mockResolvedValueOnce({ token: 'tok-1' }).mockResolvedValue({ token: 'tok-2' });
+    const hass = { callWS } as unknown as HomeAssistant;
+    const { map, layer } = makeMapAndLayer();
+    const stop = attachMapTilesLayer(hass, layer, () => map);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+    expect(layer.options.token).toBe('tok-2');
+    expect(layer.addTo).toHaveBeenCalledTimes(1);
+    expect(layer.redraw).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('does nothing when the map is gone or attach was stopped before the token arrived', async () => {
+    const hass = { callWS: vi.fn().mockResolvedValue({ token: 'tok-1' }) } as unknown as HomeAssistant;
+    const torn = makeMapAndLayer();
+    const stopTorn = attachMapTilesLayer(hass, torn.layer, () => null);
+    const early = makeMapAndLayer();
+    const stopEarly = attachMapTilesLayer(hass, early.layer, () => early.map);
+    stopEarly();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(torn.layer.addTo).not.toHaveBeenCalled();
+    expect(early.layer.addTo).not.toHaveBeenCalled();
+    stopTorn();
   });
 });
