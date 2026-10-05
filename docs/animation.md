@@ -299,17 +299,21 @@ container's opacity and z-index are the only knobs the animation needs.
 
 ## Tile size — chosen at layer creation
 
-`_radarTileSize()` picks the radar tile size from `map.getSize()` so
-panel-view / fullscreen maps get bigger tiles and fewer requests.
-Quantised to powers of 2 because all three radar sources speak the
-same sizes:
+`_radarTileSize()` (via `pickRadarTileSize()`) picks the radar tile
+size from `map.getSize()` so panel-view / fullscreen maps get bigger
+tiles and fewer requests. Quantised to powers of 2 because all three
+radar sources speak the same sizes:
 
 | Map max dimension | Tile size | `zoomOffset` | `maxNativeZoom` adjust |
 |-------------------|-----------|--------------|------------------------|
-| ≤ 600 px          | 256       | 0            | base                   |
-| 600–1200          | 512       | -1           | +1                     |
+| ≤ 1200 px         | 512       | -1           | +1                     |
 | 1200–2400         | 1024      | -2           | +2                     |
 | > 2400            | 2048      | -3           | +3                     |
+
+512 is the floor (#279). It used to drop to 256 on maps ≤ 600 px, but
+the first frame and the DWD coverage mask are created before the map
+reaches its laid-out size, so they got 256 px tiles while the rest of
+the loop got 512 — about 3× the requests for those two layers.
 
 `zoomOffset` and `maxNativeZoom` are adjusted in lockstep so the
 on-screen scale of the radar matches the basemap regardless of tile
@@ -319,7 +323,26 @@ whatever `width`/`height` the request carries.
 
 The chosen size is fixed for that layer's lifetime — Leaflet doesn't
 support runtime `tileSize` changes. New layers (next refresh cycle)
-pick up a different size if the map has been resized.
+pick up a different size if the map has been resized. On maps over
+1200 px whose size crosses a bucket while the first layers are being
+created, those layers keep the smaller size.
+
+## Tile reuse (`tile-cache.ts`)
+
+Radar frame layers and the DWD coverage mask pass a `tileCache`
+option; basemap layers don't. With it:
+
+- identical requests in flight share one download, and a tile
+  downloaded in the last 5 minutes is served from memory — this is
+  what lets the coverage mask reuse the anchor frame's tiles instead of
+  downloading them a second time;
+- tiles of frames at least 15 minutes old are also stored in
+  IndexedDB, until the frame falls outside the source's longest
+  history window (`maxPastMin`) plus 60 minutes. Forecast and recent
+  frames are never stored: DWD answers every request against its newest
+  run, so their content changes every 5 minutes.
+
+Cache hits skip the rate limiter and don't fire `onTileRecovered`.
 
 ---
 

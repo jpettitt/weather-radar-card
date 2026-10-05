@@ -11,8 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`map_style: Custom` — use your own basemap tile URL** — `custom_tile_url` takes any `{z}/{x}/{y}` raster template (self-hosted tile server, caching proxy, keyed provider), with an optional plain-text `custom_tile_attribution`. `custom_tile_theme: dark` tells the card the tiles are dark so markers, progress bar and wind flow use the dark palette; `custom_tile_theme: invert` shows light tiles (e.g. OSM) as a dark map via a CSS filter. Available in the visual editor.
 - **`MapTiles` map style** — proxies OpenStreetMap raster tiles through Home Assistant's own `map_tiles` integration instead of fetching them directly. Localized labels, no CARTO watermark, no API key. Requires Home Assistant 2026.10+; the editor greys out the option on older cores, and YAML falls back to `Light` if set anyway.
+- **Radar tiles are reused instead of re-downloaded** — switching dashboards and back, or reloading, no longer refetches the whole loop. Tiles of frames at least 15 minutes old are kept in the browser (IndexedDB) until they fall outside the source's longest history window; recent and forecast frames are kept in memory for 5 minutes, since their content can still change. Matters most for DWD, which sends no cache headers, and NOAA, whose 2-minute cache header meant every switch refetched its history. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
+
+### Changed
+
+- **Radar tiles are never smaller than 512 px** — small cards used 256 px tiles, and so did the first frame and the DWD coverage mask on any map, because they're created before the map reaches its final size. That cost about 3× the requests for those layers. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
 
 ### Fixed
+
+- **DWD downloaded one frame's tiles twice** — the coverage outline is drawn from the same tiles as the newest past frame, but fetched them separately. It now shares that frame's download. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
 
 - **Wind overlays could throw on a one-cell-wide grid** — the bilinear sampler indexed past the end of a 1-row or 1-column grid (e.g. a bbox narrower than one native cell), which would abort the overlay render. ([#267](https://github.com/jpettitt/weather-radar-card/issues/267))
 - **Viewer layer state could lose saved settings after a failed read** — if a card's initial read of its saved state failed, the next change overwrote the whole saved record with only that session's keys, and a reset during that read could be undone by the late response. Writes now wait for a successful read and are kept in memory until one succeeds. ([#268](https://github.com/jpettitt/weather-radar-card/issues/268))

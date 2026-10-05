@@ -24,6 +24,14 @@ The card knows each source's capabilities (native frame interval, max past, max 
 
 NOAA's opengeo frame listing holds ~60 frames ≈ 2 h of history, hence the 120-min cap. DWD's editor cap is lower than the API cap because at 5-min intervals, 84 h × 12 frames/h = 1008 frames is impractical for tile fetching; YAML configs can still set `past_minutes` higher (and combine with `frame_stride_minutes` to keep the frame count sane).
 
+## Tile caching
+
+The servers' own cache headers differ a lot: RainViewer allows 48 hours (its tile URLs are content-hashed), NOAA 2 minutes, and DWD sends none. So the card keeps its own copy of radar tiles, the same way for every source:
+
+- Tiles of frames at least 15 minutes old are stored in the browser (IndexedDB) until the frame falls outside the source's longest history window above, plus an hour.
+- Recent and forecast frames are kept in memory for 5 minutes only. DWD answers every request against its newest nowcast run, so the same forecast frame changes every 5 minutes.
+- If the browser blocks storage (some private modes), tiles are simply fetched from the network as before.
+
 ## NOAA note
 
 US-only (CONUS mosaic). Radar tiles are fetched at a maximum of zoom 7 (the native ~1 km MRMS resolution) and upscaled for display.

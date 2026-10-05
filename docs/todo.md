@@ -211,6 +211,35 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   UX, composition semantics (subset of YAML-authorised layers), storage
   key shape, edge cases.
 
+- **Refresh DWD forecast frames when a new nowcast run lands**
+  ([#279](https://github.com/jpettitt/weather-radar-card/issues/279),
+  the issue's second ask). A forecast frame is fetched once and never
+  updated, so a +2 h frame is still on screen hours later. DWD's
+  radar layers have a second time dimension, `REFERENCE_TIME` (one run
+  every 5 min, each covering +2 h); the card never sends it, so it gets
+  the newest run. Sending `DIM_REFERENCE_TIME=<run>` (the plain
+  `REFERENCE_TIME` name is ignored) pins each forecast tile to a run,
+  which makes it cacheable and turns refresh into "new run listed in
+  GetCapabilities → recreate the forecast layers". Moderate: touches
+  the refresh cycle and the crossfade's frame swap.
+
+- **Create the first radar layers only once the map has its laid-out
+  size.** Tile size is fixed when a layer is created, and the first
+  frame and the DWD coverage mask are created before the map is sized.
+  The 512 px floor (#279) covers maps up to 1200 px; a bigger map that
+  crosses a size bucket during load still gives those two layers a
+  smaller grid than the rest, and the mask then can't share the anchor
+  frame's tiles. Small; needs care around the init/teardown races
+  (#110).
+
+- **`RateLimiter` assumes a repeated URL is a browser-cache hit.** It
+  doesn't count repeats against the per-minute budget. That's false
+  for DWD, which sends no cache headers: before the tile cache, a
+  dashboard switch refetched every DWD tile uncounted. The tile cache
+  makes repeats mostly free now, but a recent frame re-requested after
+  its 5-minute memory window still goes to the network uncounted.
+  Small; decide whether the limiter should trust `tile-cache` instead.
+
 ### Investigated, won't pursue
 
 - **Custom HACS icon** ([#126](https://github.com/jpettitt/weather-radar-card/issues/126)).
