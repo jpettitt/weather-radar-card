@@ -26,6 +26,8 @@ NOAA's opengeo frame listing holds ~60 frames ≈ 2 h of history, hence the 120-
 
 ## Tile caching
 
+> **Beta:** tile caching ships in 3.11.0, currently in beta. Enable HACS's **Show beta versions** (or install [the 3.11.0-beta2 release](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta2) manually) to use it before the stable release.
+
 The servers' own cache headers differ a lot: RainViewer allows 48 hours (its tile URLs are content-hashed), NOAA 2 minutes, and DWD sends none. So the card keeps its own copy of radar tiles, the same way for every source:
 
 - Tiles of frames at least 15 minutes old are stored in the browser (IndexedDB) until the frame falls outside the source's longest history window above, plus an hour.
