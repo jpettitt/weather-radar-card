@@ -344,10 +344,12 @@ option; basemap layers don't. With it:
   update; 15 minutes old if unknown). Forecast and newer frames are
   never stored: DWD answers every request against its newest run, so
   their content changes every 5 minutes.
-- the store-or-not decision (`persistUntil`) runs when a tile finishes
-  downloading, so the first frame — created before the run list
-  returns — still gets the run-based rule. Every cached layer checks
-  IndexedDB before the network; it only ever holds final tiles.
+- the store-or-not decision (`persistUntil`) is fixed when the layer
+  is built, before any of its tiles are requested, and DWD init waits
+  for the run list before building any layer. Deciding at download
+  time instead could judge a tile against a run published after the
+  server answered it, and store a forecast as final. Every cached layer
+  checks IndexedDB before the network; it only ever holds final tiles.
 
 Cache hits skip the rate limiter and don't fire `onTileRecovered`.
 

@@ -31,7 +31,7 @@ NOAA's opengeo frame listing holds ~60 frames ≈ 2 h of history, hence the 120-
 The servers' own cache headers differ a lot: RainViewer allows 48 hours (its tile URLs are content-hashed), NOAA 2 minutes, and DWD sends none. So the card keeps its own copy of radar tiles once their content is final:
 
 - RainViewer and NOAA frames older than one frame interval are stored in the browser (IndexedDB) — their frames only exist once published.
-- DWD frames are stored once DWD's newest nowcast run covers them. Until then the same URL returns the run's forecast, which changes every 5 minutes. The card reads DWD's run list (~13 KB) on each 5-minute update to know this; if it can't, it waits until a frame is 15 minutes old.
+- DWD frames are stored once DWD's newest nowcast run covers them. Until then the same URL returns the run's forecast, which changes every 5 minutes. The card reads DWD's run list (~13 KB) before loading frames and on each 5-minute update to know this; if it can't, it waits until a frame is 15 minutes old.
 - Stored tiles are kept until the frame falls outside the source's longest history window above, plus an hour. Newer and forecast frames are kept in memory for 5 minutes only.
 - If the browser blocks storage (some private modes), tiles are simply fetched from the network as before.
 

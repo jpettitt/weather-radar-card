@@ -135,8 +135,8 @@ describe('storeTile + memoGet', () => {
   it('persists only when persistUntil is in the future', () => {
     const now = Date.now();
     storeTile('none', new Blob(['a']), {});
-    storeTile('past', new Blob(['b']), { persistUntil: () => now - 1 });
-    storeTile('future', new Blob(['c']), { persistUntil: () => now + 60 * MIN });
+    storeTile('past', new Blob(['b']), { persistUntil: now - 1 });
+    storeTile('future', new Blob(['c']), { persistUntil: now + 60 * MIN });
     expect(store.puts.map((p) => p.url)).toEqual(['future']);
     expect(store.puts[0].expiresAt).toBe(now + 60 * MIN);
   });
@@ -145,11 +145,11 @@ describe('storeTile + memoGet', () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.UTC(2026, 9, 4, 12, 0));
     const until = Date.now() + 600 * MIN;
-    storeTile('a', new Blob(['a']), { persistUntil: () => until });
-    storeTile('b', new Blob(['b']), { persistUntil: () => until });
+    storeTile('a', new Blob(['a']), { persistUntil: until });
+    storeTile('b', new Blob(['b']), { persistUntil: until });
     expect(store.prunes).toBe(1);
     vi.setSystemTime(Date.UTC(2026, 9, 4, 12, 31));
-    storeTile('c', new Blob(['c']), { persistUntil: () => until });
+    storeTile('c', new Blob(['c']), { persistUntil: until });
     expect(store.prunes).toBe(2);
   });
 });

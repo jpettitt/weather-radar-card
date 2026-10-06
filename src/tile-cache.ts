@@ -45,10 +45,11 @@ const PRUNE_INTERVAL_MS = 30 * 60_000;
 export interface TileCachePolicy {
   /**
    * Epoch ms to keep the tile in IndexedDB until, or undefined for memory
-   * only. Called when the tile has downloaded, not when the layer is built,
-   * so it can use what arrived meanwhile (DWD's newest run).
+   * only. Fixed when the layer is built, before any of its tiles are
+   * requested: deciding later could judge a tile against a DWD run published
+   * after the server answered it, and store a forecast as final.
    */
-  persistUntil?: () => number | undefined;
+  persistUntil?: number;
 }
 
 /**
@@ -226,7 +227,7 @@ export function persistedGet(url: string): Promise<Blob | null> {
 export function storeTile(url: string, blob: Blob, policy: TileCachePolicy): void {
   memoSet(url, blob);
   const now = Date.now();
-  const until = policy.persistUntil?.();
+  const until = policy.persistUntil;
   if (until === undefined || until <= now) return;
   void store.put(url, blob, until);
   if (now - lastPruneAt > PRUNE_INTERVAL_MS) {

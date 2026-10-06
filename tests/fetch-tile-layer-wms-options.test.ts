@@ -48,7 +48,7 @@ function sampleInternalValues(): Record<string, unknown> {
     onTileRecovered: vi.fn(),
     animationOwnsOpacity: true,
     pixelFilter: vi.fn(),
-    tileCache: { persistUntil: () => 123 },
+    tileCache: { persistUntil: 123 },
   };
 }
 

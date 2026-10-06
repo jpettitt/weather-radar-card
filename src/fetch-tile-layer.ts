@@ -45,7 +45,7 @@ export interface FetchTileOptions extends L.TileLayerOptions {
   /**
    * Opt in to tile reuse (see tile-cache.ts): identical requests share one
    * download, recent tiles are served from memory, tiles already in
-   * IndexedDB are served from there, and `persistUntil` decides whether a
+   * IndexedDB are served from there, and `persistUntil` says whether a
    * downloaded tile is kept there too. Radar frame layers only — basemap
    * URLs (MapTiles' rotating token) must not be cached here.
    */
@@ -319,8 +319,8 @@ export function createFetchTile(
     const hit = memoGet(url);
     if (hit) { deliverCached(hit); return; }
     // IndexedDB only ever holds tiles that were final when stored, so a hit
-    // is safe for any frame — including one whose layer was built before its
-    // persist policy could say so (DWD's run not known yet).
+    // is safe for any frame — even one this layer wouldn't persist (e.g.
+    // DWD's run list unavailable this time, so the 15-min fallback applies).
     const lookup = new AbortController();
     tile.__wrcAbort = lookup;
     void persistedGet(url).then((stored) => {

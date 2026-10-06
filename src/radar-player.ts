@@ -2257,19 +2257,15 @@ export class RadarPlayer {
   }
 
   // Tile reuse policy for one frame's tiles: always shared/memoised, and
-  // persisted only once the frame's content is final (finalUpToMs). Decided
-  // when each tile finishes downloading — DWD's run is usually known by then
-  // even for the first frame, which is created before the run list returns.
+  // persisted only if the frame's content is already final (finalUpToMs)
+  // when the layer is built — before any of its tiles are requested, so a
+  // DWD run read from the run list was published before the server
+  // answered them (see TileCachePolicy).
   private _tileCachePolicy(frame: RadarFrame): TileCachePolicy {
     const source = this._cfg.data_source ?? 'RainViewer';
     const { maxPastMin } = getSourceCaps(source);
-    return {
-      persistUntil: () => persistUntilFor(
-        frame.time * 1000,
-        finalUpToMs(source, Date.now(), getEffectiveTimeRange(this._cfg).strideMin, this._dwdLatestRun),
-        maxPastMin,
-      ),
-    };
+    const finalUpTo = finalUpToMs(source, Date.now(), getEffectiveTimeRange(this._cfg).strideMin, this._dwdLatestRun);
+    return { persistUntil: persistUntilFor(frame.time * 1000, finalUpTo, maxPastMin) };
   }
 
   private _isDwd(): boolean {
@@ -2447,25 +2443,21 @@ export class RadarPlayer {
     }
     if (myGen !== this._frameGeneration) return;
     if (pastFrames.length === 0) return; // API returned no frames
-    if (this._forecastRefreshMin() > 0) {
-      // Pin forecast frames to one run from the start, so every tile of a
-      // frame comes from the same run and the first refresh tick can tell
-      // whether anything newer exists. On failure frames load unpinned and
-      // the first refresh pins them.
-      const run = await runPromise;
-      if (myGen !== this._frameGeneration) return;
-      if (run !== null) {
-        this._dwdLatestRun = run;
+    // Awaited before any layer exists, so every tile is requested after the
+    // run it's judged against was published (_tileCachePolicy). Costs one
+    // small round trip on DWD load; null on failure (15-min fallback).
+    const run = await runPromise;
+    if (myGen !== this._frameGeneration) return;
+    if (run !== null) {
+      this._dwdLatestRun = run;
+      if (this._forecastRefreshMin() > 0) {
+        // Pin forecast frames to one run from the start, so every tile of a
+        // frame comes from the same run and the first refresh tick can tell
+        // whether anything newer exists. Without a run they load unpinned
+        // and the first refresh pins them.
         pastFrames = pinToRun(pastFrames, run);
         this._lastForecastRefreshAt = Date.now();
       }
-    } else {
-      // Not awaited, so the first frame isn't delayed: the persist decision
-      // is made as each tile finishes downloading (_tileCachePolicy), by
-      // which point the run is usually known; if not, a 15-min margin applies.
-      void runPromise.then((run) => {
-        if (myGen === this._frameGeneration && run !== null) this._dwdLatestRun = run;
-      });
     }
     this._radarPaths = pastFrames;
     this._lastFrameRefreshAt = Date.now();

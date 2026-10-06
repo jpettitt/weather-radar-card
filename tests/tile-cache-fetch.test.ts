@@ -154,7 +154,7 @@ describe('createFetchTile with tileCache', () => {
   it('a persisted tile loads without a network request', async () => {
     store.entries.set(URL_A, new Blob(['cached']));
     const onTileRecovered = vi.fn();
-    const layer = makeLayer({ tileCache: { persistUntil: () => Date.now() + 60_000 }, onTileRecovered });
+    const layer = makeLayer({ tileCache: { persistUntil: Date.now() + 60_000 }, onTileRecovered });
     const { done } = addTile(layer);
     await flush();
     expect(fetchCalls.length).toBe(0);
@@ -164,31 +164,20 @@ describe('createFetchTile with tileCache', () => {
     expect(onTileRecovered).not.toHaveBeenCalled();
   });
 
-  it('serves a stored tile even to a layer whose policy would not persist it yet', async () => {
-    // The store only ever holds tiles that were final when stored; a layer
-    // built before DWD's run was known can't tell yet, but may still reuse it.
+  it('serves a stored tile even to a layer that would not persist it', async () => {
+    // The store only ever holds tiles that were final when stored, so a layer
+    // that can't tell this time (DWD's run list unavailable) may still reuse it.
     store.entries.set(URL_A, new Blob(['final']));
-    const { done } = addTile(makeLayer({ tileCache: { persistUntil: () => undefined } }));
+    const { done } = addTile(makeLayer({ tileCache: {} }));
     await flush();
     expect(fetchCalls.length).toBe(0);
     expect(done).toHaveBeenCalledTimes(1);
   });
 
-  it('decides persistence when the tile finishes downloading, not when the layer is built', async () => {
-    // Stands in for DWD's run list arriving while the first frame downloads.
-    let runKnown = false;
-    const until = Date.now() + 60_000;
-    addTile(makeLayer({ tileCache: { persistUntil: () => (runKnown ? until : undefined) } }));
-    await flush();
-    runKnown = true;
-    fetchCalls[0].resolve(new Blob(['png']));
-    await flush();
-    expect(store.puts).toEqual([{ url: URL_A, expiresAt: until }]);
-  });
 
   it('persists a downloaded tile only when the layer allows it', async () => {
     const until = Date.now() + 60_000;
-    addTile(makeLayer({ tileCache: { persistUntil: () => until } }));
+    addTile(makeLayer({ tileCache: { persistUntil: until } }));
     await flush(); // persistent lookup misses, then the download starts
     fetchCalls[0].resolve(new Blob(['png']));
     await flush();
@@ -206,7 +195,7 @@ describe('createFetchTile with tileCache', () => {
   });
 
   it('a tile unloaded during the persistent lookup is not counted as loaded or failed', async () => {
-    const layer = makeLayer({ tileCache: { persistUntil: () => Date.now() + 60_000 } });
+    const layer = makeLayer({ tileCache: { persistUntil: Date.now() + 60_000 } });
     const { tile, done } = addTile(layer);
     tile.__wrcAbort!.abort();
     await flush();
