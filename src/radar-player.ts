@@ -9,7 +9,7 @@ import { isDarkBasemapStyle } from './basemap-styles';
 import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
 import { getEffectiveTimeRange, getSourceCaps } from './source-caps';
-import { TileCachePolicy, persistUntilFor } from './tile-cache';
+import { TileCachePolicy, finalUpToMs, persistUntilFor } from './tile-cache';
 import {
   dwdIsoTime, fetchLatestRun, pinToRun, planForecastRefresh, swappableFrames,
 } from './forecast-refresh';
@@ -481,6 +481,9 @@ export class RadarPlayer {
   // ones waiting for their frame to be off screen (keyed by frame time,
   // since a refresh tick can shift frame indices underneath them).
   private _lastForecastRefreshAt = 0;
+  // DWD's newest nowcast run (epoch s) as last seen in its run list, or null.
+  // Frames it covers are final, which is what lets them be persisted.
+  private _dwdLatestRun: number | null = null;
   private _forecastLoading: FetchWmsTileLayer[] = [];
   private _stagedForecast = new Map<number, { frame: RadarFrame; layer: FetchWmsTileLayer }>();
 
@@ -1895,6 +1898,7 @@ export class RadarPlayer {
     for (const { layer } of this._stagedForecast.values()) layer.remove();
     this._stagedForecast.clear();
     this._lastForecastRefreshAt = 0;
+    this._dwdLatestRun = null;
   }
 
   // Resolve the DWD WMS layer the player is currently using. Niederschlagsradar
@@ -2242,7 +2246,7 @@ export class RadarPlayer {
   // forecast_refresh_minutes in effect: 0 unless DWD with a forecast window.
   // Ticks run every 5 min, so that's the floor.
   private _forecastRefreshMin(): number {
-    if ((this._cfg.data_source ?? 'RainViewer') !== 'DWD') return 0;
+    if (!this._isDwd()) return 0;
     if (getEffectiveTimeRange(this._cfg).forecastMin <= 0) return 0;
     const m = this._cfg.forecast_refresh_minutes ?? 0;
     return m > 0 ? Math.max(5, m) : 0;
@@ -2253,10 +2257,19 @@ export class RadarPlayer {
   }
 
   // Tile reuse policy for one frame's tiles: always shared/memoised, and
-  // persisted only once the frame is old enough that its content is final.
+  // persisted only if the frame's content is already final (finalUpToMs)
+  // when the layer is built — before any of its tiles are requested, so a
+  // DWD run read from the run list was published before the server
+  // answered them (see TileCachePolicy).
   private _tileCachePolicy(frame: RadarFrame): TileCachePolicy {
-    const { maxPastMin } = getSourceCaps(this._cfg.data_source);
-    return { persistUntil: persistUntilFor(frame.time * 1000, Date.now(), maxPastMin) };
+    const source = this._cfg.data_source ?? 'RainViewer';
+    const { maxPastMin } = getSourceCaps(source);
+    const finalUpTo = finalUpToMs(source, Date.now(), getEffectiveTimeRange(this._cfg).strideMin, this._dwdLatestRun);
+    return { persistUntil: persistUntilFor(frame.time * 1000, finalUpTo, maxPastMin) };
+  }
+
+  private _isDwd(): boolean {
+    return (this._cfg.data_source ?? 'RainViewer') === 'DWD';
   }
 
   private _createLayer(frame: RadarFrame): FetchTileLayer | FetchWmsTileLayer {
@@ -2419,6 +2432,9 @@ export class RadarPlayer {
     // so each tile layer's container is appended into this pane.
     this._ensureRadarPane();
 
+    // DWD's newest run decides which frames are final enough to persist
+    // (_tileCachePolicy) and, with forecast refresh on, which to pin.
+    const runPromise = this._isDwd() ? fetchLatestRun(this._dwdLayerName()) : Promise.resolve(null);
     let pastFrames: RadarFrame[];
     try {
       pastFrames = await this._fetchPaths();
@@ -2427,15 +2443,18 @@ export class RadarPlayer {
     }
     if (myGen !== this._frameGeneration) return;
     if (pastFrames.length === 0) return; // API returned no frames
-    // Pin forecast frames to one run from the start, so every tile of a
-    // frame comes from the same run and the first refresh tick can tell
-    // whether anything newer exists. One small GetCapabilities request,
-    // only when refresh is on; on failure frames load unpinned and the
-    // first refresh pins them.
-    if (this._forecastRefreshMin() > 0) {
-      const run = await fetchLatestRun(this._dwdLayerName());
-      if (myGen !== this._frameGeneration) return;
-      if (run !== null) {
+    // Awaited before any layer exists, so every tile is requested after the
+    // run it's judged against was published (_tileCachePolicy). Costs one
+    // small round trip on DWD load; null on failure (15-min fallback).
+    const run = await runPromise;
+    if (myGen !== this._frameGeneration) return;
+    if (run !== null) {
+      this._dwdLatestRun = run;
+      if (this._forecastRefreshMin() > 0) {
+        // Pin forecast frames to one run from the start, so every tile of a
+        // frame comes from the same run and the first refresh tick can tell
+        // whether anything newer exists. Without a run they load unpinned
+        // and the first refresh pins them.
         pastFrames = pinToRun(pastFrames, run);
         this._lastForecastRefreshAt = Date.now();
       }
@@ -2697,9 +2716,7 @@ export class RadarPlayer {
   private async _updateRadar(): Promise<void> {
     if (!this._map) return;
     const myGen = this._frameGeneration;
-    const runPromise = this._forecastRefreshMin() > 0
-      ? fetchLatestRun(this._dwdLayerName())
-      : Promise.resolve(null);
+    const runPromise = this._isDwd() ? fetchLatestRun(this._dwdLayerName()) : Promise.resolve(null);
     let pastFrames: RadarFrame[];
     try {
       pastFrames = await this._fetchPaths();
@@ -2710,7 +2727,10 @@ export class RadarPlayer {
     const latestRun = await runPromise;
     if (myGen !== this._frameGeneration) return; // torn down while fetching
     if (pastFrames.length === 0) { this._scheduleUpdate(); return; } // no frames from API
-    if (latestRun !== null) pastFrames = pinToRun(pastFrames, latestRun);
+    // A failed fetch keeps the last known run: still a valid "final up to".
+    if (latestRun !== null) this._dwdLatestRun = latestRun;
+    const refreshRun = this._forecastRefreshMin() > 0 ? latestRun : null;
+    if (refreshRun !== null) pastFrames = pinToRun(pastFrames, refreshRun);
 
     // Newness guard: only shift the loop when the source actually
     // published a frame newer than what we hold. The refresh cycle
@@ -2734,7 +2754,7 @@ export class RadarPlayer {
       // re-init just because the source was slow to publish.
       this._lastFrameRefreshAt = Date.now();
       this._doRadarUpdate = false;
-      if (latestRun !== null) this._refreshForecast(latestRun);
+      if (refreshRun !== null) this._refreshForecast(refreshRun);
       this._scheduleUpdate();
       return;
     }
@@ -2840,7 +2860,7 @@ export class RadarPlayer {
     });
 
     // After the shift, so the plan sees this tick's frame indices.
-    if (latestRun !== null) this._refreshForecast(latestRun);
+    if (refreshRun !== null) this._refreshForecast(refreshRun);
     this._doRadarUpdate = false;
     this._scheduleUpdate();
   }

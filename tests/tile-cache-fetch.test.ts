@@ -92,6 +92,7 @@ describe('createFetchTile with tileCache', () => {
     const mask = makeLayer({ tileCache: {} });
     const a = addTile(frame);
     const b = addTile(mask);
+    await flush(); // store lookup (shared) misses, then one download starts
     expect(fetchCalls.length).toBe(1);
     fetchCalls[0].resolve(new Blob(['png']));
     await flush();
@@ -116,6 +117,7 @@ describe('createFetchTile with tileCache', () => {
     const second = makeLayer({ tileCache: {}, rateLimiter: limiter });
     addTile(first);
     const b = addTile(second);
+    await flush();
     fetchCalls[0].resolve(new Blob(['png']));
     await flush();
     expect(b.done).toHaveBeenCalledTimes(1);
@@ -124,6 +126,7 @@ describe('createFetchTile with tileCache', () => {
   it('a tile requested shortly after a download is served from memory', async () => {
     const layer = makeLayer({ tileCache: {} });
     addTile(layer);
+    await flush();
     fetchCalls[0].resolve(new Blob(['png']));
     await flush();
     const later = addTile(makeLayer({ tileCache: {} }));
@@ -136,6 +139,7 @@ describe('createFetchTile with tileCache', () => {
     const a = addTile(makeLayer({ tileCache: {} }));
     const bLayer = makeLayer({ tileCache: {} });
     const b = addTile(bLayer);
+    await flush(); // both past the store lookup and sharing the download
     const aLayerPending = (a.tile.__wrcAbort as AbortController);
     aLayerPending.abort();
     await flush();
@@ -160,13 +164,16 @@ describe('createFetchTile with tileCache', () => {
     expect(onTileRecovered).not.toHaveBeenCalled();
   });
 
-  it('recent and forecast frames skip the persistent store entirely', async () => {
-    store.entries.set(URL_A, new Blob(['stale forecast']));
-    addTile(makeLayer({ tileCache: {} }));
+  it('serves a stored tile even to a layer that would not persist it', async () => {
+    // The store only ever holds tiles that were final when stored, so a layer
+    // that can't tell this time (DWD's run list unavailable) may still reuse it.
+    store.entries.set(URL_A, new Blob(['final']));
+    const { done } = addTile(makeLayer({ tileCache: {} }));
     await flush();
-    expect(store.gets).toBe(0);
-    expect(fetchCalls.length).toBe(1);
+    expect(fetchCalls.length).toBe(0);
+    expect(done).toHaveBeenCalledTimes(1);
   });
+
 
   it('persists a downloaded tile only when the layer allows it', async () => {
     const until = Date.now() + 60_000;
@@ -181,6 +188,7 @@ describe('createFetchTile with tileCache', () => {
     _setTileStoreForTests(store);
     fetchCalls = [];
     addTile(makeLayer({ tileCache: {} }));
+    await flush();
     fetchCalls[0].resolve(new Blob(['png']));
     await flush();
     expect(store.puts).toEqual([]);

@@ -336,11 +336,20 @@ option; basemap layers don't. With it:
   downloaded in the last 5 minutes is served from memory — this is
   what lets the coverage mask reuse the anchor frame's tiles instead of
   downloading them a second time;
-- tiles of frames at least 15 minutes old are also stored in
+- tiles whose content is final (`finalUpToMs`) are also stored in
   IndexedDB, until the frame falls outside the source's longest
-  history window (`maxPastMin`) plus 60 minutes. Forecast and recent
-  frames are never stored: DWD answers every request against its newest
-  run, so their content changes every 5 minutes.
+  history window (`maxPastMin`) plus 60 minutes: RainViewer and NOAA
+  frames one frame interval old, DWD frames its newest run covers
+  (`_dwdLatestRun`, from the run list read on every DWD init and
+  update; 15 minutes old if unknown). Forecast and newer frames are
+  never stored: DWD answers every request against its newest run, so
+  their content changes every 5 minutes.
+- the store-or-not decision (`persistUntil`) is fixed when the layer
+  is built, before any of its tiles are requested, and DWD init waits
+  for the run list before building any layer. Deciding at download
+  time instead could judge a tile against a run published after the
+  server answered it, and store a forecast as final. Every cached layer
+  checks IndexedDB before the network; it only ever holds final tiles.
 
 Cache hits skip the rate limiter and don't fire `onTileRecovered`.
 

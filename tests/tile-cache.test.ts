@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   PERSIST_EXPIRY_MARGIN_MS,
-  PERSIST_MIN_AGE_MS,
+  UNKNOWN_RUN_MIN_AGE_MS,
   TileStore,
+  finalUpToMs,
   _resetTileCacheForTests,
   _setTileStoreForTests,
   hasInflight,
@@ -61,25 +62,45 @@ afterEach(() => {
 });
 
 describe('persistUntilFor', () => {
-  const now = Date.UTC(2026, 9, 4, 12, 0);
+  const finalUpTo = Date.UTC(2026, 9, 4, 12, 0);
 
-  it('does not persist frames younger than the minimum age (forecast or still settling)', () => {
-    expect(persistUntilFor(now + 30 * MIN, now, 120)).toBeUndefined();
-    expect(persistUntilFor(now, now, 120)).toBeUndefined();
-    expect(persistUntilFor(now - PERSIST_MIN_AGE_MS + 1, now, 120)).toBeUndefined();
+  it('does not persist frames newer than the final cutoff (forecast or still settling)', () => {
+    expect(persistUntilFor(finalUpTo + 30 * MIN, finalUpTo, 120)).toBeUndefined();
+    expect(persistUntilFor(finalUpTo + 1, finalUpTo, 120)).toBeUndefined();
   });
 
-  it('persists a frame exactly at the minimum age', () => {
-    expect(persistUntilFor(now - PERSIST_MIN_AGE_MS, now, 120)).toBeDefined();
+  it('persists a frame exactly at the cutoff', () => {
+    expect(persistUntilFor(finalUpTo, finalUpTo, 120)).toBeDefined();
   });
 
   it("expires when the frame leaves the source's longest history window, plus the margin", () => {
-    const frame = now - 60 * MIN;
+    const frame = finalUpTo - 60 * MIN;
     // RainViewer / NOAA: 2 h of history.
-    expect(persistUntilFor(frame, now, 120)).toBe(frame + 120 * MIN + PERSIST_EXPIRY_MARGIN_MS);
+    expect(persistUntilFor(frame, finalUpTo, 120)).toBe(frame + 120 * MIN + PERSIST_EXPIRY_MARGIN_MS);
     // DWD: 84 h of history.
-    expect(persistUntilFor(frame, now, 5040)).toBe(frame + 5040 * MIN + PERSIST_EXPIRY_MARGIN_MS);
+    expect(persistUntilFor(frame, finalUpTo, 5040)).toBe(frame + 5040 * MIN + PERSIST_EXPIRY_MARGIN_MS);
     expect(PERSIST_EXPIRY_MARGIN_MS).toBe(60 * MIN);
+  });
+});
+
+describe('finalUpToMs', () => {
+  const now = Date.UTC(2026, 10, 5, 17, 0);
+
+  it('treats RainViewer and NOAA frames as final one frame interval after their time', () => {
+    expect(finalUpToMs('RainViewer', now, 10, null)).toBe(now - 10 * MIN);
+    expect(finalUpToMs('NOAA', now, 5, null)).toBe(now - 5 * MIN);
+    // A DWD run is irrelevant to them.
+    expect(finalUpToMs('NOAA', now, 2, now / 1000)).toBe(now - 2 * MIN);
+  });
+
+  it("treats DWD frames as final up to the newest run, however recent", () => {
+    const run = (now - 3 * MIN) / 1000;
+    expect(finalUpToMs('DWD', now, 5, run)).toBe(now - 3 * MIN);
+  });
+
+  it('falls back to a 15-minute margin for DWD when the run is unknown', () => {
+    expect(finalUpToMs('DWD', now, 5, null)).toBe(now - UNKNOWN_RUN_MIN_AGE_MS);
+    expect(UNKNOWN_RUN_MIN_AGE_MS).toBe(15 * MIN);
   });
 });
 

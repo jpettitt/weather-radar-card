@@ -4,17 +4,37 @@
 //                 which asks for the same tiles as the anchor frame.
 //   2. inflight — concurrent requests for one URL share one download.
 //   3. store    — IndexedDB, only for tiles whose content can no longer
-//                 change (see persistUntilFor).
+//                 change (see finalUpToMs / persistUntilFor).
 // IndexedDB rather than Cache Storage: Cache Storage needs a secure
 // context, and many HA installs are served over plain http on the LAN.
 
-/** Frames younger than this are not persisted: DWD answers every request
- *  against its newest run, so frames past the newest run (forecast) change
- *  every 5 min. Measured 2026-10-04: frames 5 min older than the newest run
- *  were byte-stable across runs; 15 min leaves room for publication delay. */
-export const PERSIST_MIN_AGE_MS = 15 * 60_000;
+/** DWD frames younger than this are not persisted when its newest run is
+ *  unknown (run-list fetch failed) — see finalUpToMs. */
+export const UNKNOWN_RUN_MIN_AGE_MS = 15 * 60_000;
 /** Margin past the source's longest history window before a tile expires. */
 export const PERSIST_EXPIRY_MARGIN_MS = 60 * 60_000;
+
+/**
+ * Newest frame time (epoch ms) whose tiles can no longer change, so may be
+ * persisted. RainViewer frames are content-addressed and NOAA's come from
+ * opengeo's list of published scans, so anything one frame interval old is
+ * final. DWD answers every request against its newest nowcast run: a frame
+ * that run doesn't cover yet is still forecast and changes every 5 min.
+ * Measured 2026-10-04: frames the newest run covers were byte-stable across
+ * runs. Runs are listed 3–8 min late, so without a known run fall back to a
+ * 15-min margin.
+ */
+export function finalUpToMs(
+  source: string,
+  nowMs: number,
+  strideMin: number,
+  dwdLatestRunSec: number | null,
+): number {
+  if (source === 'DWD') {
+    return dwdLatestRunSec !== null ? dwdLatestRunSec * 1000 : nowMs - UNKNOWN_RUN_MIN_AGE_MS;
+  }
+  return nowMs - strideMin * 60_000;
+}
 
 const MEMO_TTL_MS = 5 * 60_000;
 // ~256 tiles of 10–30 KB each: a few MB at most, enough for one full loop
@@ -23,18 +43,23 @@ const MEMO_MAX = 256;
 const PRUNE_INTERVAL_MS = 30 * 60_000;
 
 export interface TileCachePolicy {
-  /** Epoch ms to keep the tile in IndexedDB until; omit to keep it in memory only. */
+  /**
+   * Epoch ms to keep the tile in IndexedDB until, or undefined for memory
+   * only. Fixed when the layer is built, before any of its tiles are
+   * requested: deciding later could judge a tile against a DWD run published
+   * after the server answered it, and store a forecast as final.
+   */
   persistUntil?: number;
 }
 
 /**
  * When a tile of a frame at `frameTimeMs` may be persisted until, or
- * undefined when it must not be persisted (frame too recent to be final).
+ * undefined when it must not be persisted (frame newer than `finalUpTo`).
  * Expiry is the moment the frame falls outside the source's longest
  * supported history, plus a margin.
  */
-export function persistUntilFor(frameTimeMs: number, now: number, maxPastMin: number): number | undefined {
-  if (frameTimeMs > now - PERSIST_MIN_AGE_MS) return undefined;
+export function persistUntilFor(frameTimeMs: number, finalUpTo: number, maxPastMin: number): number | undefined {
+  if (frameTimeMs > finalUpTo) return undefined;
   return frameTimeMs + maxPastMin * 60_000 + PERSIST_EXPIRY_MARGIN_MS;
 }
 
@@ -202,8 +227,9 @@ export function persistedGet(url: string): Promise<Blob | null> {
 export function storeTile(url: string, blob: Blob, policy: TileCachePolicy): void {
   memoSet(url, blob);
   const now = Date.now();
-  if (policy.persistUntil === undefined || policy.persistUntil <= now) return;
-  void store.put(url, blob, policy.persistUntil);
+  const until = policy.persistUntil;
+  if (until === undefined || until <= now) return;
+  void store.put(url, blob, until);
   if (now - lastPruneAt > PRUNE_INTERVAL_MS) {
     lastPruneAt = now;
     void store.prune(now);
