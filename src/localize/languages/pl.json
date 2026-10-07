@@ -191,7 +191,9 @@
       "viewer_layer_control": "Zapamiętywanie dla użytkownika (włączane przez administratora)",
       "viewer_layer_control_helper": "Po włączeniu wybór przycisku prędkości jest zapisywany dla każdego użytkownika i podąża za nim między przeglądarkami i urządzeniami poprzez magazyn frontendu Home Assistant. Po wyłączeniu przycisk nadal działa w bieżącej sesji, ale wybór nie jest zapisywany.",
       "motion_compensation": "Kompensacja ruchu (przesuwanie deszczu między klatkami)",
-      "motion_compensation_helper": "Przesuwa każdą klatkę w kierunku ruchu deszczu podczas przenikania, dzięki czemu deszcz płynnie dryfuje między klatkami zamiast przeskakiwać do nowej pozycji. Ruch jest wyznaczany z pary klatek za pomocą piramidalnego przepływu optycznego Lucas-Kanade — bez zewnętrznych danych o wietrze, działa ze wszystkimi źródłami radaru. Dobrze współgra z płynną animacją. Domyślnie wyłączone."
+      "motion_compensation_helper": "Przesuwa każdą klatkę w kierunku ruchu deszczu podczas przenikania, dzięki czemu deszcz płynnie dryfuje między klatkami zamiast przeskakiwać do nowej pozycji. Ruch jest wyznaczany z pary klatek za pomocą piramidalnego przepływu optycznego Lucas-Kanade — bez zewnętrznych danych o wietrze, działa ze wszystkimi źródłami radaru. Dobrze współgra z płynną animacją. Domyślnie wyłączone.",
+      "low_power_mode": "Tryb oszczędzania energii (wolne tablety)",
+      "low_power_mode_helper": "Dla starych lub wolnych tabletów ściennych: klatki zmieniają się bez przenikania, kompensacja ruchu jest wyłączona, a klatki DWD są wyświetlane dokładnie tak, jak rysuje je DWD — z jego własną szarą warstwą zasięgu i obrysem zamiast nakładki w kolorach motywu. Ładuje się kilka razy szybciej. Domyślnie wyłączone."
     },
     "appearance": {
       "height": "Wysokość",

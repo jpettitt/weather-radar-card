@@ -136,6 +136,13 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * fall back to the static crossfade automatically.
    */
   motion_compensation?: boolean;
+  /**
+   * For slow devices (old wall tablets): forces snap transitions and turns
+   * motion compensation off, and for DWD skips the per-tile canvas
+   * processing — frames show DWD's own grey coverage wash and outline, with
+   * no theme-coloured overlay or clip. Default off.
+   */
+  low_power_mode?: boolean;
   center_longitude?: CoordinateConfig;
   center_latitude?: CoordinateConfig;
   zoom_level?: number;

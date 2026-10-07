@@ -1140,7 +1140,21 @@ export class RadarPlayer {
 
   // ── Config helpers ───────────────────────────────────────────────────────
 
-  private get _cfg(): WeatherRadarCardConfig { return this._getConfig(); }
+  // low_power_mode (#279): snap transitions and no motion compensation, the
+  // heaviest per-frame paths after DWD's pixel filter (skipped separately).
+  // Derived once per config object — Lovelace replaces it on every edit.
+  private _cfgSource?: WeatherRadarCardConfig;
+  private _cfgEffective?: WeatherRadarCardConfig;
+  private get _cfg(): WeatherRadarCardConfig {
+    const c = this._getConfig();
+    if (c !== this._cfgSource) {
+      this._cfgSource = c;
+      this._cfgEffective = c.low_power_mode
+        ? { ...c, animated_transitions: false, motion_compensation: false }
+        : c;
+    }
+    return this._cfgEffective!;
+  }
   private get _hass(): HomeAssistant | undefined { return this._getHass?.(); }
   // Effective per-frame delay = configured frame_delay divided by the user's
   // playback-speed multiplier. Multiplier > 1 plays faster, < 1 plays slower.
@@ -2347,7 +2361,10 @@ export class RadarPlayer {
         on5xx: () => this._onServerError(),
         onTileRecovered: () => this._onTileRecovered(),
         animationOwnsOpacity: true,
-        pixelFilter: makeDwdMaskFilter(layerName),
+        // Low power: show DWD's tiles as drawn (its own grey wash and outline
+        // in every frame) — the filter's per-tile canvas work dominated load
+        // time on slow tablets. Snap transitions keep the wash from pulsing.
+        ...(this._cfg.low_power_mode ? {} : { pixelFilter: makeDwdMaskFilter(layerName) }),
         tileCache: this._tileCachePolicy(frame),
         pane: RADAR_PANE_NAME,
       } as any));
@@ -2468,15 +2485,14 @@ export class RadarPlayer {
     this._buildSegments();
     this._applyNowMarker();
 
-    const dwdActive = (this._cfg.data_source ?? 'RainViewer') === 'DWD';
-    const dwdLayerName = dwdActive ? this._dwdLayerName() : '';
-    if (dwdActive) {
+    // Low power has no coverage layer: the outline is already in DWD's tiles.
+    if (this._isDwd() && !this._cfg.low_power_mode) {
       this._refreshDwdMaskColors();
       // ONE shared coverage mask for the whole loop — the no-data
       // geometry is identical in every frame, so per-frame masks were
       // pure waste (at 12 h history: ~144 extra WMS layers ≈ ~900
       // redundant tile requests per init).
-      this._ensureCoverageMask(pastFrames, dwdLayerName);
+      this._ensureCoverageMask(pastFrames, this._dwdLayerName());
     }
 
     // Initialise motion-compensation state for the fresh set of

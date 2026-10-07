@@ -191,7 +191,9 @@
       "viewer_layer_control": "Ukladanie pre používateľa (zapína administrátor)",
       "viewer_layer_control_helper": "Ak je zapnuté, voľba tlačidla rýchlosti sa ukladá pre každého používateľa a nasleduje ho naprieč prehliadačmi a zariadeniami cez frontendové úložisko Home Assistant. Ak je vypnuté, tlačidlo stále funguje v aktuálnej relácii, ale voľba sa neuloží.",
       "motion_compensation": "Kompenzácia pohybu (posúvanie dažďa medzi snímkami)",
-      "motion_compensation_helper": "Počas prelínania posúva každú snímku v smere pohybu dažďa, takže dážď medzi snímkami plynulo drifuje namiesto skoku na novú pozíciu. Pohyb sa získava z dvojice snímok pyramídovým optickým tokom Lucas-Kanade — bez externých údajov o vetre, funguje so všetkými zdrojmi radaru. Dobre sa dopĺňa s plynulou animáciou. Predvolene vypnuté."
+      "motion_compensation_helper": "Počas prelínania posúva každú snímku v smere pohybu dažďa, takže dážď medzi snímkami plynulo drifuje namiesto skoku na novú pozíciu. Pohyb sa získava z dvojice snímok pyramídovým optickým tokom Lucas-Kanade — bez externých údajov o vetre, funguje so všetkými zdrojmi radaru. Dobre sa dopĺňa s plynulou animáciou. Predvolene vypnuté.",
+      "low_power_mode": "Úsporný režim (pomalé tablety)",
+      "low_power_mode_helper": "Pre staré alebo pomalé nástenné tablety: snímky sa menia bez prelínania, kompenzácia pohybu je vypnutá a snímky DWD sa zobrazujú presne tak, ako ich kreslí DWD — s jeho vlastným sivým závojom pokrytia a obrysom namiesto prekrytia vo farbách témy. Načítava sa niekoľkonásobne rýchlejšie. Predvolene vypnuté."
     },
     "appearance": {
       "height": "Výška",
