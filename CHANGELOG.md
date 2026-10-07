@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forecast_refresh_minutes: 15
   ```
 
+- **`low_power_mode` — for old or slow wall tablets** — frames switch without fades, motion compensation is off, and DWD frames are shown as DWD draws them: its own grey wash and outline outside coverage, instead of the theme-coloured overlay. Skipping the card's per-tile processing of DWD tiles made a DWD loop load 3–4× faster on a throttled CPU. Off by default; editor: **Low Power Mode**. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
+
 ### Changed
 
 - **Radar tiles are never smaller than 512 px** — small cards used 256 px tiles, and so did the first frame and the DWD coverage mask on any map, because they're created before the map reaches its final size. That cost about 3× the requests for those layers. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))

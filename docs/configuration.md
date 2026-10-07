@@ -25,6 +25,7 @@ All options can be configured using the GUI editor — there is no need to edit 
 | smooth_animation              | boolean         | **Optional**   | When `true`, the crossfade auto-calibrates so the full cycle equals `frame_delay` — the radar appears to flow continuously instead of stepping. Overrides `transition_time`.                                                                                                                                                                                           | `false`                               |
 | smooth_overlap                | number          | **Optional**   | Cross-fade overlap fraction when `smooth_animation: true`. `0` = sequential (no brightness dip; previous frame held at full opacity, then fades out). `1` = fully simultaneous (brief mid-transition brightness dip). Tune for your basemap.                                                                                                                           | `1`                                   |
 | motion_compensation           | boolean         | **Optional**   | Slide each radar layer in the estimated direction of rain motion during the crossfade, so rain drifts between frames instead of teleporting. See [Motion compensation](#motion-compensation).                                                                                                                                                                          | `false`                               |
+| low_power_mode                | boolean         | **Optional**   | For old or slow wall tablets. Forces `animated_transitions` and `motion_compensation` off, and shows DWD frames as DWD draws them (its own grey wash and outline) instead of processing every tile. See [Low power mode](#low-power-mode).                                                                                                                             | `false`                               |
 | radar_opacity                 | number          | **Optional**   | Opacity of the active radar frame (0.1–1.0). Lower values let more of the basemap show through                                                                                                                                                                                                                                                                         | `1.0`                                 |
 | zoom_level                    | number          | **Optional**   | Initial zoom level, 3–10                                                                                                                                                                                                                                                                                                                                               | `7`                                   |
 | center_latitude               | number / string | **Optional**   | Initial map center latitude — number or entity ID                                                                                                                                                                                                                                                                                                                      | HA instance location                  |
@@ -175,6 +176,21 @@ motion_compensation: true
 **Pause settles state** — when playback pauses (manual stop, navigation, off-screen, tab hidden), the layer stack is settled to a single visible layer at `radar_opacity`, all other slots forced to `0`. This prevents stale CSS transitions from leaving a "trail" if the user later changes animation settings.
 
 **Automatic pause** — animation pauses when the card is scrolled out of view or the browser tab is hidden, and resumes when visible again. During map navigation (pan / zoom), only the latest single frame is loaded to reduce tile requests; full frame history is restored 100 ms after the map settles.
+
+### Low power mode
+
+`low_power_mode: true` (editor: **Low Power Mode**) is for old or slow wall tablets. Ships in 3.11.0-beta4.
+
+- Frames switch with a hard cut: `animated_transitions` and `motion_compensation` are forced off, and the editor hides their settings.
+- DWD frames are shown as DWD draws them. Normally the card removes DWD's grey no-data wash and outline from every tile and draws one theme-coloured coverage overlay instead; on a slow CPU that per-tile work dominates load time. In low power mode DWD's own wash and magenta outline stay in each frame, and the radar isn't clipped to the coverage area. On a 20× CPU-throttled desktop with a warm cache, a 6-hour DWD loop loaded in 7 s instead of about 30 s.
+
+RainViewer and NOAA frames look the same either way.
+
+```yaml
+type: custom:weather-radar-card
+data_source: DWD
+low_power_mode: true
+```
 
 ## Double-tap action
 

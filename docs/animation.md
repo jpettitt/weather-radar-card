@@ -19,7 +19,9 @@ newest frame held longer (`restart_delay`) before the loop repeats. When
 `animated_transitions` is enabled (default), consecutive frames crossfade
 smoothly; when disabled, they cut instantly. Optional `smooth_animation`
 spans the fade across the inter-frame interval so motion looks
-continuous instead of stepped.
+continuous instead of stepped. `low_power_mode` forces the instant cut
+and turns `motion_compensation` off (`RadarPlayer._cfg` applies the
+override, so every reader sees it).
 
 The crossfade must:
 

@@ -92,7 +92,8 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   `docs/configuration.md`'s Map Style section (`Custom`,
   [#273](https://github.com/jpettitt/weather-radar-card/pull/273), and
   `MapTiles`, #276, from 3.11.0-beta1) and `docs/data-sources.md`'s Tile
-  caching section (#279, from 3.11.0-beta2). Docs on `main` shouldn't
+  caching section (#279, from 3.11.0-beta2), and the Low power mode section
+  in `docs/configuration.md` (#279, 3.11.0-beta4). Docs on `main` shouldn't
   claim a not-yet-stable feature as generally available.
 
 - **Open-Meteo as an alternate wind source for global coverage.**

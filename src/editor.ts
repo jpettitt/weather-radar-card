@@ -461,13 +461,24 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
         </div>
         <label>
           <ha-switch
+            .checked=${config.low_power_mode === true}
+            .configValue=${'low_power_mode'}
+            @change=${this._valueChangedSwitch}
+          ></ha-switch>
+          <span>${localize('editor.animation.low_power_mode')}</span>
+        </label>
+        <div class="section-description">${localize('editor.animation.low_power_mode_helper')}</div>
+        ${config.low_power_mode !== true ? html`
+        <label>
+          <ha-switch
             .checked=${config.animated_transitions !== false}
             .configValue=${'animated_transitions'}
             @change=${this._valueChangedSwitch}
           ></ha-switch>
           <span>${localize('editor.animation.animated_transitions')}</span>
         </label>
-        ${config.animated_transitions !== false ? html`
+        ` : ''}
+        ${config.low_power_mode !== true && config.animated_transitions !== false ? html`
           <ha-input
             label=${localize('editor.animation.transition_time')}
             .value=${config.transition_time !== undefined ? config.transition_time : ''}

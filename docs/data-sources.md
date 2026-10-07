@@ -57,6 +57,8 @@ The default layer is `Niederschlagsradar` (precipitation rate, mm/h). Override v
 
 Outside the German radar coverage you'll see a faint grey wash from the no-data mask; the card emits a one-time `console.warn` if HA's configured location falls outside the bounding box of Germany and its immediate neighbours.
 
+With `low_power_mode` the card skips its per-tile processing of DWD tiles, so frames show DWD's own grey wash and magenta outline instead of the theme-coloured coverage overlay. See [Low power mode](configuration.md#low-power-mode).
+
 `dwd_time_override` accepts an ISO timestamp to anchor frames at a fixed point in the past instead of "now", useful for verifying the overlay renders when current weather is dry.
 
 `forecast_minutes` (set in the editor as **Forecast Duration**, or in YAML directly) includes that many minutes of nowcast forecast in the playback range as future-timestamped frames; DWD's WarnWetter app default is 2 hours. When `forecast_minutes > 0`, the layer auto-switches to `Radar_wn-product_1x1km_ger` (which carries the +2h nowcast frames) unless you've explicitly set `dwd_layer`.

@@ -199,7 +199,9 @@
       "viewer_layer_control": "Opslag per gebruiker (admin-opt-in)",
       "viewer_layer_control_helper": "Indien ingeschakeld wordt de keuze van de snelheidsknop per gebruiker opgeslagen en volgt deze hen op alle browsers en apparaten via de frontend-opslag van Home Assistant. Indien uitgeschakeld werkt de knop nog steeds voor de huidige sessie, maar wordt de keuze niet bewaard.",
       "motion_compensation": "Bewegingscompensatie (regen laten driften tussen frames)",
-      "motion_compensation_helper": "Schuift elk frame in de richting van de regenbeweging tijdens de overgang, zodat de regen soepel tussen frames lijkt te driften in plaats van naar de nieuwe positie te springen. De beweging wordt uit het framepaar berekend met piramidale Lucas-Kanade optical flow — geen externe windgegevens, werkt met alle radarbronnen. Combineert goed met vloeiende animatie. Standaard uit."
+      "motion_compensation_helper": "Schuift elk frame in de richting van de regenbeweging tijdens de overgang, zodat de regen soepel tussen frames lijkt te driften in plaats van naar de nieuwe positie te springen. De beweging wordt uit het framepaar berekend met piramidale Lucas-Kanade optical flow — geen externe windgegevens, werkt met alle radarbronnen. Combineert goed met vloeiende animatie. Standaard uit.",
+      "low_power_mode": "Energiebesparende modus (trage tablets)",
+      "low_power_mode_helper": "Voor oude of trage wandtablets: frames wisselen zonder overgang, bewegingscompensatie staat uit en DWD-frames worden getoond zoals DWD ze tekent, met de eigen grijze dekkingswaas en omtrek in plaats van de overlay in themakleuren. Laadt meerdere keren sneller. Standaard uit."
     },
     "appearance": {
       "height": "Hoogte",

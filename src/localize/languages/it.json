@@ -191,7 +191,9 @@
       "viewer_layer_control": "Persistenza per utente (opt-in amministratore)",
       "viewer_layer_control_helper": "Se attivo, la scelta del pulsante velocità viene salvata per utente e lo segue su browser e dispositivi tramite l’archiviazione del frontend di Home Assistant. Se disattivato il pulsante funziona comunque per la sessione corrente ma la scelta non viene salvata.",
       "motion_compensation": "Compensazione del movimento (deriva della pioggia tra i fotogrammi)",
-      "motion_compensation_helper": "Fa scorrere ogni fotogramma nella direzione del movimento della pioggia durante la dissolvenza, così la pioggia sembra spostarsi fluidamente tra i fotogrammi invece di saltare nella nuova posizione. Il movimento è ricavato dalla coppia di fotogrammi tramite flusso ottico piramidale Lucas-Kanade — nessun dato di vento esterno, funziona con tutte le sorgenti radar. Si abbina bene all’animazione fluida. Disattivato per impostazione predefinita."
+      "motion_compensation_helper": "Fa scorrere ogni fotogramma nella direzione del movimento della pioggia durante la dissolvenza, così la pioggia sembra spostarsi fluidamente tra i fotogrammi invece di saltare nella nuova posizione. Il movimento è ricavato dalla coppia di fotogrammi tramite flusso ottico piramidale Lucas-Kanade — nessun dato di vento esterno, funziona con tutte le sorgenti radar. Si abbina bene all’animazione fluida. Disattivato per impostazione predefinita.",
+      "low_power_mode": "Modalità a basso consumo (tablet lenti)",
+      "low_power_mode_helper": "Per tablet da parete vecchi o lenti: i fotogrammi cambiano senza dissolvenza, la compensazione del movimento è disattivata e i fotogrammi DWD vengono mostrati esattamente come li disegna il DWD, con il suo velo grigio di copertura e il contorno invece della sovrapposizione con i colori del tema. Carica molte volte più velocemente. Disattivato per impostazione predefinita."
     },
     "appearance": {
       "height": "Altezza",

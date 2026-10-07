@@ -191,7 +191,9 @@
       "viewer_layer_control": "Sparas per användare (admin måste aktivera)",
       "viewer_layer_control_helper": "När aktiverat sparas hastighetsknappens val per användare och följer dem mellan webbläsare och enheter via Home Assistants frontend-lagring. När avstängt fungerar knappen fortfarande under pågående session men valet sparas inte.",
       "motion_compensation": "Rörelsekompensering (låt regnet driva mellan bildrutor)",
-      "motion_compensation_helper": "Skjuter varje bildruta i regnets rörelseriktning under övertoningen så att regnet verkar driva mjukt mellan bildrutorna i stället för att hoppa till sin nya position. Rörelsen beräknas ur bildrutsparet med pyramidalt Lucas-Kanade optiskt flöde — inga externa vinddata, fungerar med alla radarkällor. Passar bra ihop med mjuk animering. Av som standard."
+      "motion_compensation_helper": "Skjuter varje bildruta i regnets rörelseriktning under övertoningen så att regnet verkar driva mjukt mellan bildrutorna i stället för att hoppa till sin nya position. Rörelsen beräknas ur bildrutsparet med pyramidalt Lucas-Kanade optiskt flöde — inga externa vinddata, fungerar med alla radarkällor. Passar bra ihop med mjuk animering. Av som standard.",
+      "low_power_mode": "Energisparläge (långsamma surfplattor)",
+      "low_power_mode_helper": "För gamla eller långsamma väggsurfplattor: bilderna byts utan övertoning, rörelsekompensationen är av och DWD-bilder visas precis som DWD ritar dem, med DWD:s egen grå täckningsslöja och kontur i stället för överlägget i temafärger. Laddar flera gånger snabbare. Av som standard."
     },
     "appearance": {
       "height": "Höjd",

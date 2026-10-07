@@ -191,7 +191,9 @@
       "viewer_layer_control": "Persistance par utilisateur (activation par l'admin)",
       "viewer_layer_control_helper": "Si activé, le choix du bouton de vitesse est mémorisé par utilisateur et le suit sur tous les navigateurs et appareils via le stockage du frontend Home Assistant. Si désactivé, le bouton fonctionne toujours pour la session en cours mais le choix n'est pas enregistré.",
       "motion_compensation": "Compensation de mouvement (dérive de la pluie entre les images)",
-      "motion_compensation_helper": "Fait glisser chaque image dans la direction du mouvement de la pluie pendant le fondu, de sorte que la pluie semble dériver en douceur entre les images au lieu de sauter à sa nouvelle position. Le mouvement est calculé à partir de la paire d'images par flux optique pyramidal Lucas-Kanade — aucune donnée de vent externe, fonctionne avec toutes les sources radar. Se marie bien avec l'animation fluide. Désactivé par défaut."
+      "motion_compensation_helper": "Fait glisser chaque image dans la direction du mouvement de la pluie pendant le fondu, de sorte que la pluie semble dériver en douceur entre les images au lieu de sauter à sa nouvelle position. Le mouvement est calculé à partir de la paire d'images par flux optique pyramidal Lucas-Kanade — aucune donnée de vent externe, fonctionne avec toutes les sources radar. Se marie bien avec l'animation fluide. Désactivé par défaut.",
+      "low_power_mode": "Mode basse consommation (tablettes lentes)",
+      "low_power_mode_helper": "Pour les tablettes murales anciennes ou lentes : les images changent sans fondu, la compensation de mouvement est désactivée et les images DWD s'affichent telles que le DWD les dessine, avec son propre voile gris de couverture et son contour au lieu de la superposition aux couleurs du thème. Chargement plusieurs fois plus rapide. Désactivé par défaut."
     },
     "appearance": {
       "height": "Hauteur",
