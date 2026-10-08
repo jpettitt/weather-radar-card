@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import * as L from 'leaflet';
 import {
   getBasemapTiles,
   getBasemapTone,
   getCustomAttribution,
   isDarkBasemapStyle,
   isInvertedCustomBasemap,
+  resolveBasemapStyle,
+  unknownTilePlaceholders,
 } from '../src/basemap-styles';
 
 describe('getBasemapTiles', () => {
@@ -95,7 +98,15 @@ describe('getCustomAttribution', () => {
     expect(getCustomAttribution('https://tiles.example.com:8443/{z}/{x}/{y}.png'))
       .toBe('Map tiles: tiles.example.com:8443');
     expect(getCustomAttribution('https://{s}.tile.example.org/{z}/{x}/{y}.png', '  '))
-      .toBe('Map tiles: {s}.tile.example.org');
+      .toBe('Map tiles: tile.example.org');
+  });
+
+  it('resolves relative and protocol-relative URLs against the page', () => {
+    const page = 'http://homeassistant.local:8123/lovelace/0';
+    expect(getCustomAttribution('/local/tiles/{z}/{x}/{y}.png', undefined, page))
+      .toBe('Map tiles: homeassistant.local:8123');
+    expect(getCustomAttribution('//tiles.example.net/{z}/{x}/{y}.png', undefined, page))
+      .toBe('Map tiles: tiles.example.net');
   });
 
   it('returns empty for a URL it cannot parse a host from', () => {
@@ -159,5 +170,54 @@ describe('isInvertedCustomBasemap', () => {
     expect(isInvertedCustomBasemap('custom', 'dark')).toBe(false);
     expect(isInvertedCustomBasemap('custom')).toBe(false);
     expect(isInvertedCustomBasemap('osm', 'invert')).toBe(false);
+  });
+});
+
+describe('unknownTilePlaceholders', () => {
+  // The same data Leaflet's getTileUrl fills for a basemap layer.
+  const filled = { s: 'a', x: 1, y: 2, z: 3, r: '', '-y': 4 };
+  const leafletThrows = (url: string): boolean => {
+    try { L.Util.template(url, filled); return false; } catch { return true; }
+  };
+
+  it('flags exactly the templates Leaflet would throw on', () => {
+    const urls = [
+      'https://{s}.tile.example.com/{z}/{x}/{y}{r}.png',
+      'https://tiles.example.com/{z}/{x}/{-y}.png',
+      'https://tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey={apikey}',
+      'https://tiles.example.com/{ z }/{x}/{y}.png',
+      'https://tiles.example.com/{z}/{x}/{y}.png?style={"a":1}',
+      'https://tiles.example.com/{z}/{x}/{y}.png?key=abc123',
+    ];
+    for (const url of urls) {
+      expect(unknownTilePlaceholders(url).length > 0, url).toBe(leafletThrows(url));
+    }
+    expect(unknownTilePlaceholders(urls[2])).toEqual(['apikey']);
+  });
+});
+
+describe('resolveBasemapStyle', () => {
+  const custom = 'https://tiles.example.com/{z}/{x}/{y}.png';
+
+  it('falls back to Light for MapTiles without the map_tiles integration', () => {
+    expect(resolveBasemapStyle('maptiles', { mapTilesLoaded: false })).toBe('light');
+    expect(resolveBasemapStyle('maptiles', { mapTilesLoaded: true })).toBe('maptiles');
+  });
+
+  it('falls back to OSM for Custom without a usable URL', () => {
+    expect(resolveBasemapStyle('custom', { mapTilesLoaded: true })).toBe('osm');
+    expect(resolveBasemapStyle('custom', { mapTilesLoaded: true, customTileUrl: '  ' })).toBe('osm');
+    expect(resolveBasemapStyle('custom', { mapTilesLoaded: true, customTileUrl: `${custom}?k={apikey}` })).toBe('osm');
+    expect(resolveBasemapStyle('custom', { mapTilesLoaded: true, customTileUrl: custom })).toBe('custom');
+  });
+
+  it('leaves every other style alone', () => {
+    for (const style of ['light', 'dark', 'voyager', 'satellite', 'osm', 'grey', 'greydark']) {
+      expect(resolveBasemapStyle(style, { mapTilesLoaded: false })).toBe(style);
+    }
+  });
+
+  it('gives an unusable Custom URL OSM tiles', () => {
+    expect(getBasemapTiles('custom', undefined, `${custom}?k={apikey}`).url).toBe(getBasemapTiles('osm').url);
   });
 });

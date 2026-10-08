@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Förfrågningsgräns nådd — väntar på återställning av kvot",
+    "server_error": "Fel på radarservern — försöker igen",
     "region_warning": {
       "wildfires_us_only": "Skogsbrand-data är endast för USA. Din Home Assistant-plats är utanför USA – inga bränder kommer att visas.",
       "noaa_us_only": "NOAA-radar är endast för USA. Din Home Assistant-plats är utanför USA – radarn kanske inte laddas.",
@@ -86,8 +87,22 @@
       "style_dark": "CARTO Dark (endast engelska)",
       "style_satellite": "Satellit (endast engelska)",
       "style_osm": "OpenStreetMap (lokaliserad)",
+      "style_grey": "Esri Grey Canvas (endast engelska, ingen API-nyckel behövs)",
+      "style_grey_dark": "Esri Grey Canvas Dark (endast engelska, ingen API-nyckel behövs)",
+      "style_custom": "Egen URL för kartbrickor",
+      "style_maptiles": "HA-kartbrickor (lokaliserad, kräver Home Assistant 2026.10+)",
+      "carto_api_key": "CARTO API-nyckel",
+      "carto_api_key_helper": "Valfritt. Tar bort CARTO:s vattenstämpel ”API key required” på Light/Voyager/Dark/Satellite-brickor. Gratis, inget CARTO-konto behövs. Lämna tomt för att behålla dagens brickor (med vattenstämpel).",
+      "carto_api_key_link": "Skaffa en gratis nyckel",
       "zoom_level": "Zoomnivå",
-      "zoom_default": "Standard (5)",
+      "zoom_default": "Standard (7)",
+      "custom_tile_url": "URL för kartbrickor",
+      "custom_tile_url_helper": "Leaflet-mall, t.ex. https://tiles.example.com/{z}/{x}/{y}.png ({s} blir a/b/c). Lägg API-nycklar direkt i URL:en: andra {platshållare} fylls inte i och kartan faller tillbaka på OpenStreetMap. Brickorna måste innehålla etiketter. Lämna tomt för att använda OpenStreetMap.",
+      "custom_tile_attribution": "Kartattribution (valfritt)",
+      "custom_tile_theme": "Brickfärger",
+      "custom_tile_theme_light": "Ljusa brickor (t.ex. OSM)",
+      "custom_tile_theme_dark": "Brickorna är redan mörka (anpassar bara gränssnittets färger)",
+      "custom_tile_theme_invert": "Ljusa brickor, visade mörka (inverterade)",
       "source_dwd": "DWD (Tyskland — 5-min upplösning)"
     },
     "time_range": {
@@ -199,6 +214,7 @@
       "height": "Höjd",
       "width": "Bredd",
       "height_helper": "t.ex. 400px, 50vh",
+      "height_section_locked_helper": "Styrs av cellen i sektionsrutnätet — dra kortets storlekshandtag för att ändra höjden.",
       "width_helper": "t.ex. 100%, 500px",
       "radar_opacity": "Radaropacitet",
       "radar_opacity_helper": "1.0 = helt ogenomskinlig (standard), lägre = mer genomskinlig över bakgrundskartan"

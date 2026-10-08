@@ -11,8 +11,11 @@
 /** DWD frames younger than this are not persisted when its newest run is
  *  unknown (run-list fetch failed) — see finalUpToMs. */
 export const UNKNOWN_RUN_MIN_AGE_MS = 15 * 60_000;
-/** Margin past the source's longest history window before a tile expires. */
-export const PERSIST_EXPIRY_MARGIN_MS = 60 * 60_000;
+/** Margin past the card's history window before a stored tile expires. */
+export const PERSIST_EXPIRY_MARGIN_MS = 30 * 60_000;
+/** An IndexedDB read slower than this counts as a miss, so a stuck store
+ *  (seen as hung opens on some WebKit builds) can't hold back the network. */
+const LOOKUP_TIMEOUT_MS = 5_000;
 
 /**
  * Newest frame time (epoch ms) whose tiles can no longer change, so may be
@@ -55,12 +58,21 @@ export interface TileCachePolicy {
 /**
  * When a tile of a frame at `frameTimeMs` may be persisted until, or
  * undefined when it must not be persisted (frame newer than `finalUpTo`).
- * Expiry is the moment the frame falls outside the source's longest
- * supported history, plus a margin.
+ * Expiry is the moment the frame leaves the storing card's history window
+ * (`pastMin`), plus a margin. Keying it to the source's longest window kept
+ * DWD tiles 85 h — about 1,000 frames on an always-on wall tablet, of which
+ * only the last couple of hours were ever read. A card with a longer window
+ * re-stores the tiles it fetches with its own, later expiry.
  */
-export function persistUntilFor(frameTimeMs: number, finalUpTo: number, maxPastMin: number): number | undefined {
+export function persistUntilFor(frameTimeMs: number, finalUpTo: number, pastMin: number): number | undefined {
   if (frameTimeMs > finalUpTo) return undefined;
-  return frameTimeMs + maxPastMin * 60_000 + PERSIST_EXPIRY_MARGIN_MS;
+  return frameTimeMs + pastMin * 60_000 + PERSIST_EXPIRY_MARGIN_MS;
+}
+
+/** Only real image bytes are worth keeping: an empty or non-image 200 (a
+ *  JSON error, say) is still shown once, but never cached. */
+export function isCacheableTile(blob: Blob): boolean {
+  return blob.size > 0 && (blob.type === '' || blob.type.startsWith('image/'));
 }
 
 export interface TileStore {
@@ -175,7 +187,11 @@ class IdbTileStore implements TileStore {
 
 let store: TileStore = new IdbTileStore();
 let lastPruneAt = 0;
-const memo = new Map<string, { blob: Blob; at: number }>();
+// `final`: the tile's content could no longer change when it was fetched.
+// A layer that persists must not be handed a non-final copy — e.g. a DWD
+// forecast tile another card fetched under the same unpinned URL minutes
+// before the run covered it.
+const memo = new Map<string, { blob: Blob; at: number; final: boolean }>();
 const lookups = new Map<string, Promise<Blob | null>>();
 
 interface Inflight {
@@ -185,23 +201,25 @@ interface Inflight {
 }
 const inflight = new Map<string, Inflight>();
 
-function memoSet(url: string, blob: Blob): void {
+function memoSet(url: string, blob: Blob, final: boolean): void {
   memo.delete(url);
-  memo.set(url, { blob, at: Date.now() });
+  memo.set(url, { blob, at: Date.now(), final });
   if (memo.size > MEMO_MAX) {
     const oldest = memo.keys().next().value;
     if (oldest !== undefined) memo.delete(oldest);
   }
 }
 
-/** A tile downloaded within the last few minutes, or null. */
-export function memoGet(url: string): Blob | null {
+/** A tile downloaded within the last few minutes, or null. `requireFinal`
+ *  skips copies whose content could still have changed. */
+export function memoGet(url: string, requireFinal = false): Blob | null {
   const hit = memo.get(url);
   if (!hit) return null;
   if (Date.now() - hit.at > MEMO_TTL_MS) {
     memo.delete(url);
     return null;
   }
+  if (requireFinal && !hit.final) return null;
   // Refresh recency so the LRU evicts tiles nobody is asking for.
   memo.delete(url);
   memo.set(url, hit);
@@ -212,22 +230,27 @@ export function memoGet(url: string): Blob | null {
 export function persistedGet(url: string): Promise<Blob | null> {
   const pending = lookups.get(url);
   if (pending) return pending;
-  const p = store.get(url, Date.now())
-    .catch(() => null)
-    .then((blob) => {
-      if (blob) memoSet(url, blob);
-      return blob;
-    })
-    .finally(() => lookups.delete(url));
+  const p = new Promise<Blob | null>((resolve) => {
+    const timer = setTimeout(() => resolve(null), LOOKUP_TIMEOUT_MS);
+    void store.get(url, Date.now())
+      .catch(() => null)
+      .then((blob) => {
+        clearTimeout(timer);
+        // Stored tiles were final when stored.
+        if (blob) memoSet(url, blob, true);
+        resolve(blob);
+      });
+  }).finally(() => lookups.delete(url));
   lookups.set(url, p);
   return p;
 }
 
 /** Record a freshly downloaded tile: always in memory, in IndexedDB when policy allows. */
 export function storeTile(url: string, blob: Blob, policy: TileCachePolicy): void {
-  memoSet(url, blob);
-  const now = Date.now();
+  if (!isCacheableTile(blob)) return;
   const until = policy.persistUntil;
+  memoSet(url, blob, until !== undefined);
+  const now = Date.now();
   if (until === undefined || until <= now) return;
   void store.put(url, blob, until);
   if (now - lastPruneAt > PRUNE_INTERVAL_MS) {

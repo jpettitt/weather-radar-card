@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Osiągnięto limit żądań — oczekiwanie na zresetowanie limitu",
+    "server_error": "Błąd serwera radaru — ponawianie",
     "region_warning": {
       "wildfires_us_only": "Dane o pożarach są tylko dla USA. Twoja lokalizacja Home Assistant jest poza USA — nie będą wyświetlane żadne pożary.",
       "noaa_us_only": "Radar NOAA jest tylko dla USA. Twoja lokalizacja Home Assistant jest poza USA — radar może się nie załadować.",
@@ -86,8 +87,22 @@
       "style_dark": "CARTO Dark (tylko angielski)",
       "style_satellite": "Satelita (tylko angielski)",
       "style_osm": "OpenStreetMap (zlokalizowana)",
+      "style_grey": "Esri Grey Canvas (tylko angielski, bez klucza API)",
+      "style_grey_dark": "Esri Grey Canvas Dark (tylko angielski, bez klucza API)",
+      "style_custom": "Własny adres URL kafelków",
+      "style_maptiles": "Kafelki map HA (zlokalizowane, wymaga Home Assistant 2026.10+)",
+      "carto_api_key": "Klucz API CARTO",
+      "carto_api_key_helper": "Opcjonalnie. Usuwa znak wodny CARTO „API key required” z kafelków Light/Voyager/Dark/Satellite. Bezpłatny, konto CARTO nie jest potrzebne. Pozostaw puste, aby zachować obecne kafelki (ze znakiem wodnym).",
+      "carto_api_key_link": "Uzyskaj bezpłatny klucz",
       "zoom_level": "Poziom powiększenia",
-      "zoom_default": "Domyślnie (5)",
+      "zoom_default": "Domyślnie (7)",
+      "custom_tile_url": "Adres URL kafelków",
+      "custom_tile_url_helper": "Szablon Leaflet, np. https://tiles.example.com/{z}/{x}/{y}.png ({s} zamienia się na a/b/c). Klucz API wpisz bezpośrednio w adres URL: inne {zmienne} nie są uzupełniane, a mapa wraca do OpenStreetMap. Kafelki muszą zawierać etykiety. Pozostaw puste, aby użyć OpenStreetMap.",
+      "custom_tile_attribution": "Atrybucja mapy (opcjonalnie)",
+      "custom_tile_theme": "Kolory kafelków",
+      "custom_tile_theme_light": "Jasne kafelki (np. OSM)",
+      "custom_tile_theme_dark": "Kafelki są już ciemne (dostosowuje tylko kolory interfejsu)",
+      "custom_tile_theme_invert": "Jasne kafelki, wyświetlane jako ciemne (odwrócone)",
       "source_dwd": "DWD (Niemcy — rozdzielczość 5 min)"
     },
     "time_range": {
@@ -199,6 +214,7 @@
       "height": "Wysokość",
       "width": "Szerokość",
       "height_helper": "np. 400px, 50vh",
+      "height_section_locked_helper": "Określana przez komórkę siatki sekcji — przeciągnij uchwyt zmiany rozmiaru karty, aby zmienić jej wysokość.",
       "width_helper": "np. 100%, 500px",
       "radar_opacity": "Krycie radaru",
       "radar_opacity_helper": "1.0 = całkowicie nieprzezroczyste (domyślnie), mniejsze = bardziej przezroczyste nad mapą podkładową"

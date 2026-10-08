@@ -8,6 +8,7 @@ import {
   _setTileStoreForTests,
   hasInflight,
   memoGet,
+  isCacheableTile,
   persistUntilFor,
   persistedGet,
   sharedFetch,
@@ -73,13 +74,12 @@ describe('persistUntilFor', () => {
     expect(persistUntilFor(finalUpTo, finalUpTo, 120)).toBeDefined();
   });
 
-  it("expires when the frame leaves the source's longest history window, plus the margin", () => {
+  it("expires 30 minutes after the frame leaves the card's own history window", () => {
     const frame = finalUpTo - 60 * MIN;
-    // RainViewer / NOAA: 2 h of history.
-    expect(persistUntilFor(frame, finalUpTo, 120)).toBe(frame + 120 * MIN + PERSIST_EXPIRY_MARGIN_MS);
-    // DWD: 84 h of history.
-    expect(persistUntilFor(frame, finalUpTo, 5040)).toBe(frame + 5040 * MIN + PERSIST_EXPIRY_MARGIN_MS);
-    expect(PERSIST_EXPIRY_MARGIN_MS).toBe(60 * MIN);
+    expect(PERSIST_EXPIRY_MARGIN_MS).toBe(30 * MIN);
+    // A 2 h loop keeps a frame 2.5 h, not for the source's 84 h maximum.
+    expect(persistUntilFor(frame, finalUpTo, 120)).toBe(frame + 150 * MIN);
+    expect(persistUntilFor(frame, finalUpTo, 720)).toBe(frame + 750 * MIN);
   });
 });
 
@@ -132,6 +132,29 @@ describe('storeTile + memoGet', () => {
     expect(memoGet('second')).toBeNull();
   });
 
+  it('never caches an empty or non-image response', () => {
+    const until = Date.now() + 60 * MIN;
+    storeTile('empty', new Blob([]), { persistUntil: until });
+    storeTile('json', new Blob(['{"error":1}'], { type: 'application/json' }), { persistUntil: until });
+    storeTile('png', new Blob(['p'], { type: 'image/png' }), { persistUntil: until });
+    storeTile('untyped', new Blob(['p']), { persistUntil: until });
+    expect(memoGet('empty')).toBeNull();
+    expect(memoGet('json')).toBeNull();
+    expect(store.puts.map((p) => p.url)).toEqual(['png', 'untyped']);
+    expect(isCacheableTile(new Blob(['p'], { type: 'image/webp' }))).toBe(true);
+    expect(isCacheableTile(new Blob(['x'], { type: 'application/octet-stream' }))).toBe(false);
+  });
+
+  it('hands a non-final memory copy only to callers that accept one', () => {
+    const provisional = new Blob(['forecast']);
+    storeTile('dwd-unpinned', provisional, {});
+    expect(memoGet('dwd-unpinned')).toBe(provisional);
+    expect(memoGet('dwd-unpinned', true)).toBeNull();
+    const final = new Blob(['observed']);
+    storeTile('dwd-unpinned', final, { persistUntil: Date.now() + 60 * MIN });
+    expect(memoGet('dwd-unpinned', true)).toBe(final);
+  });
+
   it('persists only when persistUntil is in the future', () => {
     const now = Date.now();
     storeTile('none', new Blob(['a']), {});
@@ -168,6 +191,24 @@ describe('persistedGet', () => {
   it('treats a store failure as a miss', async () => {
     store.failGets = true;
     await expect(persistedGet('u')).resolves.toBeNull();
+  });
+
+  it('counts a stored tile as final in memory', async () => {
+    const blob = new Blob(['x']);
+    store.entries.set('u', { blob, expiresAt: Date.now() + MIN });
+    await persistedGet('u');
+    expect(memoGet('u', true)).toBe(blob);
+  });
+
+  it('gives up on a read that never answers, so the network can take over', async () => {
+    vi.useFakeTimers();
+    store.get = () => new Promise<Blob | null>(() => { /* a stuck IndexedDB */ });
+    let result: Blob | null | undefined;
+    void persistedGet('u').then((b) => { result = b; });
+    await vi.advanceTimersByTimeAsync(4_900);
+    expect(result).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(result).toBeNull();
   });
 });
 

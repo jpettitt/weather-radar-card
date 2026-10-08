@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Anfragelimit erreicht — warte auf Zurücksetzen des Kontingents",
+    "server_error": "Radarserver-Fehler — neuer Versuch",
     "region_warning": {
       "wildfires_us_only": "Waldbranddaten sind nur für die USA verfügbar. Ihr Home-Assistant-Standort liegt außerhalb der USA – es werden keine Brände angezeigt.",
       "noaa_us_only": "NOAA-Radar ist nur für die USA verfügbar. Ihr Home-Assistant-Standort liegt außerhalb der USA – das Radar lädt möglicherweise nicht.",
@@ -87,8 +88,22 @@
       "style_dark": "CARTO Dark (nur Englisch)",
       "style_satellite": "Satellit (nur Englisch)",
       "style_osm": "OpenStreetMap (lokalisiert)",
+      "style_grey": "Esri Grey Canvas (nur Englisch, kein API-Schlüssel nötig)",
+      "style_grey_dark": "Esri Grey Canvas Dark (nur Englisch, kein API-Schlüssel nötig)",
+      "style_custom": "Eigene Kachel-URL",
+      "style_maptiles": "HA-Kartenkacheln (lokalisiert, erfordert Home Assistant 2026.10+)",
+      "carto_api_key": "CARTO-API-Schlüssel",
+      "carto_api_key_helper": "Optional. Entfernt das CARTO-Wasserzeichen „API key required“ auf Light-/Voyager-/Dark-/Satellite-Kacheln. Kostenlos, kein CARTO-Konto nötig. Leer lassen, um die bisherigen Kacheln (mit Wasserzeichen) zu behalten.",
+      "carto_api_key_link": "Kostenlosen Schlüssel holen",
       "zoom_level": "Zoomstufe",
-      "zoom_default": "Standard (5)"
+      "zoom_default": "Standard (7)",
+      "custom_tile_url": "Kachel-URL",
+      "custom_tile_url_helper": "Leaflet-Vorlage, z. B. https://tiles.example.com/{z}/{x}/{y}.png ({s} wird zu a/b/c). API-Schlüssel direkt in die URL schreiben: andere {Platzhalter} werden nicht ersetzt, und die Karte zeigt dann OpenStreetMap. Die Kacheln müssen Beschriftungen enthalten. Leer lassen für OpenStreetMap.",
+      "custom_tile_attribution": "Kartenquellenangabe (optional)",
+      "custom_tile_theme": "Kachelfarben",
+      "custom_tile_theme_light": "Helle Kacheln (z. B. OSM)",
+      "custom_tile_theme_dark": "Kacheln sind bereits dunkel (passt nur die UI-Farben an)",
+      "custom_tile_theme_invert": "Helle Kacheln, dunkel dargestellt (invertiert)"
     },
     "time_range": {
       "past": "Verlaufsdauer",
@@ -199,6 +214,7 @@
       "height": "Höhe",
       "width": "Breite",
       "height_helper": "z. B. 400px, 50vh",
+      "height_section_locked_helper": "Wird von der Sections-Rasterzelle bestimmt — zum Ändern der Höhe den Größengriff der Karte ziehen.",
       "width_helper": "z. B. 100%, 500px",
       "radar_opacity": "Radar-Deckkraft",
       "radar_opacity_helper": "1.0 = vollständig deckend (Standard), niedriger = transparenter über der Hintergrundkarte"

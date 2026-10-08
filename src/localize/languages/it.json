@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Limite di richieste raggiunto — in attesa del ripristino della quota",
+    "server_error": "Errore del server radar — nuovo tentativo",
     "region_warning": {
       "wildfires_us_only": "I dati sugli incendi sono solo per gli USA. La tua posizione di Home Assistant è fuori dagli USA: non verrà mostrato alcun incendio.",
       "noaa_us_only": "Il radar NOAA è solo per gli USA. La tua posizione di Home Assistant è fuori dagli USA: il radar potrebbe non caricarsi.",
@@ -86,8 +87,22 @@
       "style_dark": "CARTO Dark (solo inglese)",
       "style_satellite": "Satellite (solo inglese)",
       "style_osm": "OpenStreetMap (localizzata)",
+      "style_grey": "Esri Grey Canvas (solo inglese, nessuna chiave API)",
+      "style_grey_dark": "Esri Grey Canvas Dark (solo inglese, nessuna chiave API)",
+      "style_custom": "URL tile personalizzato",
+      "style_maptiles": "Tile mappa di HA (localizzata, richiede Home Assistant 2026.10+)",
+      "carto_api_key": "Chiave API CARTO",
+      "carto_api_key_helper": "Facoltativa. Rimuove la filigrana \"API key required\" di CARTO dai tile Light/Voyager/Dark/Satellite. Gratuita, non serve un account CARTO. Lascia vuoto per mantenere i tile attuali (con filigrana).",
+      "carto_api_key_link": "Ottieni una chiave gratuita",
       "zoom_level": "Livello di zoom",
-      "zoom_default": "Predefinito (5)",
+      "zoom_default": "Predefinito (7)",
+      "custom_tile_url": "URL tile",
+      "custom_tile_url_helper": "Modello Leaflet, ad es. https://tiles.example.com/{z}/{x}/{y}.png ({s} diventa a/b/c). Inserisci la chiave API direttamente nell'URL: gli altri {segnaposto} non vengono compilati e la mappa torna a OpenStreetMap. I tile devono includere le etichette. Lascia vuoto per usare OpenStreetMap.",
+      "custom_tile_attribution": "Attribuzione mappa (facoltativa)",
+      "custom_tile_theme": "Colori dei tile",
+      "custom_tile_theme_light": "Tile chiari (ad es. OSM)",
+      "custom_tile_theme_dark": "I tile sono già scuri (adatta solo i colori dell'interfaccia)",
+      "custom_tile_theme_invert": "Tile chiari, mostrati scuri (invertiti)",
       "source_dwd": "DWD (Germania — risoluzione 5 min)"
     },
     "time_range": {
@@ -199,6 +214,7 @@
       "height": "Altezza",
       "width": "Larghezza",
       "height_helper": "es. 400px, 50vh",
+      "height_section_locked_helper": "Controllata dalla cella della griglia delle sezioni — trascina la maniglia di ridimensionamento della scheda per cambiarne l'altezza.",
       "width_helper": "es. 100%, 500px",
       "radar_opacity": "Opacità del radar",
       "radar_opacity_helper": "1.0 = completamente opaco (predefinito), inferiore = più trasparente sulla mappa di base"

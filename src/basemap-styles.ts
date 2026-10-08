@@ -41,6 +41,36 @@ export const CUSTOM_INVERT_CLASS = 'wrc-basemap-invert';
 
 export type CustomTileTheme = 'light' | 'dark' | 'invert';
 
+// Mirrors Leaflet's Util.template regex. Leaflet throws on any name it
+// can't fill, from inside addTo(), which left the card half-built with no
+// radar — so an unedited provider template like `?apikey={apikey}` has to
+// be caught before the layer exists.
+const TEMPLATE_RE = /\{ *([\w_ -]+) *\}/g;
+const TILE_PLACEHOLDERS = new Set(['s', 'x', 'y', 'z', 'r', '-y']);
+
+/** Placeholders in a custom tile URL that Leaflet can't fill. */
+export function unknownTilePlaceholders(url: string): string[] {
+  return [...url.matchAll(TEMPLATE_RE)].map((m) => m[1]).filter((n) => !TILE_PLACEHOLDERS.has(n));
+}
+
+/**
+ * The style actually drawn for a configured one (lowercase, `auto` already
+ * resolved): MapTiles needs HA's `map_tiles` integration (2026.10+) and
+ * falls back to Light; Custom needs a usable URL and falls back to OSM.
+ * Tiles, attribution and the light/dark palette all follow this.
+ */
+export function resolveBasemapStyle(
+  mapStyle: string,
+  opts: { mapTilesLoaded: boolean; customTileUrl?: string },
+): string {
+  if (mapStyle === 'maptiles' && !opts.mapTilesLoaded) return 'light';
+  if (mapStyle === 'custom') {
+    const url = opts.customTileUrl?.trim();
+    if (!url || unknownTilePlaceholders(url).length > 0) return 'osm';
+  }
+  return mapStyle;
+}
+
 export function getBasemapTiles(
   mapStyle: string,
   cartoApiKey?: string,
@@ -51,7 +81,7 @@ export function getBasemapTiles(
       const url = customTileUrl?.trim();
       // No URL yet (e.g. mid-edit in the visual editor) — show OSM rather
       // than an empty map; OSM has localized labels and needs no key.
-      if (!url) return getBasemapTiles('osm');
+      if (!url || unknownTilePlaceholders(url).length > 0) return getBasemapTiles('osm');
       return {
         url,
         // Only used when the template contains {s}.
@@ -161,11 +191,20 @@ export function isInvertedCustomBasemap(
  * lands in innerHTML); without one, credit the tile host so the map is
  * never shown uncredited.
  */
-export function getCustomAttribution(customTileUrl?: string, attribution?: string): string {
+export function getCustomAttribution(customTileUrl?: string, attribution?: string, baseUrl?: string): string {
   const text = attribution?.trim();
   if (text) return escapeHtml(text);
-  // The optional (?:[^@/?#]*@)? skips embedded userinfo (user:pass@host) so
-  // credentials in a custom tile URL never reach the map footer.
-  const host = customTileUrl?.trim().match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?([^/?#]+)/i)?.[1];
+  const raw = customTileUrl?.trim();
+  if (!raw) return '';
+  let host = '';
+  try {
+    // Placeholders aren't valid in a hostname, so drop them (and a `{s}.`
+    // subdomain prefix) first. baseUrl resolves relative and
+    // protocol-relative URLs. URL.host excludes user:pass@, so credentials
+    // in a custom tile URL never reach the map footer.
+    host = new URL(raw.replace(/\{[^{}]*\}\.?/g, ''), baseUrl).host;
+  } catch {
+    // Not a URL we can read a host from.
+  }
   return host ? `Map tiles: ${escapeHtml(host)}` : '';
 }

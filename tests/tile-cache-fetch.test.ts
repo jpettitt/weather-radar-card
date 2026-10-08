@@ -194,6 +194,41 @@ describe('createFetchTile with tileCache', () => {
     expect(store.puts).toEqual([]);
   });
 
+  it('a layer that persists does not take a memory copy a non-persisting layer fetched', async () => {
+    // DWD: an unpinned URL served a forecast while the frame was still
+    // ahead of the run; once the run covers it, the same URL is observed.
+    addTile(makeLayer({ tileCache: {} }));
+    await flush();
+    fetchCalls[0].resolve(new Blob(['forecast']));
+    await flush();
+    const until = Date.now() + 60_000;
+    addTile(makeLayer({ tileCache: { persistUntil: until } }));
+    await flush();
+    expect(fetchCalls.length).toBe(2);
+    fetchCalls[1].resolve(new Blob(['observed']));
+    await flush();
+    expect(store.puts).toEqual([{ url: URL_A, expiresAt: until }]);
+  });
+
+  it('a layer that persists does not join a download a non-persisting layer started', async () => {
+    addTile(makeLayer({ tileCache: {} }));
+    await flush();
+    addTile(makeLayer({ tileCache: { persistUntil: Date.now() + 60_000 } }));
+    await flush();
+    expect(fetchCalls.length).toBe(2);
+  });
+
+  it('a non-persisting layer still reuses a final copy', async () => {
+    addTile(makeLayer({ tileCache: { persistUntil: Date.now() + 60_000 } }));
+    await flush();
+    fetchCalls[0].resolve(new Blob(['observed']));
+    await flush();
+    const later = addTile(makeLayer({ tileCache: {} }));
+    await flush();
+    expect(fetchCalls.length).toBe(1);
+    expect(later.done).toHaveBeenCalledTimes(1);
+  });
+
   it('a tile unloaded during the persistent lookup is not counted as loaded or failed', async () => {
     const layer = makeLayer({ tileCache: { persistUntil: Date.now() + 60_000 } });
     const { tile, done } = addTile(layer);
