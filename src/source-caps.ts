@@ -47,8 +47,9 @@ export interface SourceCaps {
   defaultStrideMin?: number;
   /**
    * Newest data older than this (minutes) is flagged on the timestamp. Sized
-   * to the source's cadence + publication lag + the 5–6 min update period,
-   * so a healthy source never trips it.
+   * to the source's cadence (or longest stride choice) + publication lag +
+   * the 5–6 min update period, so a healthy source never trips it; a longer
+   * YAML stride adds the difference.
    */
   staleAfterMin: number;
 }

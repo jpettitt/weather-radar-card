@@ -56,6 +56,13 @@ describe('pickRainViewerFrames', () => {
   it('returns nothing for an empty list', () => {
     expect(pickRainViewerFrames([], 60, 10)).toEqual([]);
   });
+
+  it("keeps a 20-min loop on its grid when RainViewer adds the frame between", () => {
+    const phase = NEWEST; // the grid the loop started on
+    const next = [...list().slice(1), { time: NEWEST + 600, path: '/v2/radar/new' }];
+    // Anchored on the newest frame this picked NEWEST + 10 min, 10 min after the last frame.
+    expect(minsBack(pickRainViewerFrames(next, 60, 20, phase))).toEqual([60, 40, 20, 0]);
+  });
 });
 
 describe('RainViewer updates', () => {

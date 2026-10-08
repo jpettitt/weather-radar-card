@@ -15,6 +15,8 @@
 // exact TIMEs. No lag constant, no stride guessing, no duplicate-frame
 // dedup as the primary mechanism.
 
+import { gridPhase } from './stride-phase';
+
 const OPENGEO = 'https://opengeo.ncep.noaa.gov/geoserver';
 
 // NOAA's MRMS radar mosaics, one opengeo workspace each (extents from their
@@ -94,28 +96,39 @@ export async function fetchNoaaFrameTimes(signal?: AbortSignal, region = 'conus'
   return parseTimeDimension(await res.text());
 }
 
+/** How far a scan may be from a grid slot and still stand in for it. */
+const SLOT_TOLERANCE_SEC = 90;
+
 /**
- * Pick frame times from the listing for a target loop: anchor at the
- * newest listed time, lay an ideal grid every `strideMin` back across
- * `pastMin`, and snap each ideal slot to the NEAREST listed time.
- * Snapped duplicates collapse (the listing is irregular — ~1.5 to
- * ~2.5 min between scans — so two adjacent ideal slots can legally
- * snap to the same scan). Returns epoch seconds ascending.
+ * Pick frame times from the listing for a target loop: lay a grid every
+ * `strideMin` at `phaseSec` (see stride-phase.ts; default: on the newest
+ * listed time) back across `pastMin` from its newest slot a scan has
+ * reached, and snap each slot to the NEAREST listed time. Slots with no
+ * scan within 90 s (an outage) are left out, and snapped duplicates
+ * collapse (the listing is irregular — ~1.5 to ~2.5 min between scans — so
+ * two adjacent slots can legally snap to the same scan). Returns epoch
+ * seconds ascending.
  *
  * Snapping to nearest (rather than at-or-before) keeps the mean
  * time error per slot minimal and is safe because every returned
  * value is a time the server explicitly listed — there is no risk of
  * requesting a nonexistent frame.
  */
-export function pickFrameTimes(listedSec: number[], pastMin: number, strideMin: number): number[] {
+export function pickFrameTimes(listedSec: number[], pastMin: number, strideMin: number, phaseSec?: number): number[] {
   if (listedSec.length === 0) return [];
   const newest = listedSec[listedSec.length - 1];
   const strideSec = Math.max(60, Math.round(strideMin * 60));
+  const phase = gridPhase(phaseSec ?? newest, strideSec);
+  // A slot no scan has reached yet isn't settled: its nearest scan may still
+  // be published, and a frame taken early would be followed by a second one
+  // for the same slot.
+  const last = newest - gridPhase(newest - phase, strideSec);
   const slots = Math.max(0, Math.floor((pastMin * 60) / strideSec));
   const picked = new Set<number>();
   for (let i = slots; i >= 0; i--) {
-    const ideal = newest - i * strideSec;
-    picked.add(nearestListed(listedSec, ideal));
+    const ideal = last - i * strideSec;
+    const t = nearestListed(listedSec, ideal);
+    if (Math.abs(t - ideal) <= SLOT_TOLERANCE_SEC) picked.add(t);
   }
   // Stryker disable next-line MethodExpression,ArithmeticOperator: Set insertion order is already ascending (nearestListed is monotone in target); the sort is defensive
   return Array.from(picked).sort((a, b) => a - b);
