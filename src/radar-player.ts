@@ -17,7 +17,7 @@ import {
   rememberRun, swappableFrames,
 } from './forecast-refresh';
 import {
-  fetchNoaaFrameTimes, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
+  fetchNoaaFrameTimes, noaaRegionAt, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
 } from './noaa-frame-list';
 import { extractChannel } from './lk';
 import { createLkWorker, LkWorkerClient, estimateMotionLk } from './lk-worker';
@@ -478,6 +478,9 @@ export class RadarPlayer {
   // the tile layers point at; reset to false on the next successful
   // listing fetch.
   private _noaaLegacyMode = false;
+  // NOAA region whose scan times drive the loop, chosen from the map centre
+  // when the loop is built (see noaaRegionAt); null until then.
+  private _noaaListingRegion: string | null = null;
   // Displayed frame count. Starts as the caller's request but is
   // re-derived from reality as frames arrive: _initRadar sets it to the
   // number of frames the API actually returned, and _dedupFrames shrinks
@@ -2052,6 +2055,7 @@ export class RadarPlayer {
     this._dwdLatestRun = null;
     this._catchUpRun = null;
     this._catchUpPending = false;
+    this._noaaListingRegion = null;
   }
 
   // Resolve the DWD WMS layer the player is currently using. Niederschlagsradar
@@ -2298,7 +2302,11 @@ export class RadarPlayer {
       try {
         this._pathsAbortCtrl?.abort();
         this._pathsAbortCtrl = new AbortController();
-        const listed = await fetchNoaaFrameTimes(this._pathsAbortCtrl.signal);
+        if (this._noaaListingRegion === null) {
+          const c = this._map?.getCenter?.();
+          this._noaaListingRegion = c ? noaaRegionAt(c.lat, c.lng) : 'conus';
+        }
+        const listed = await fetchNoaaFrameTimes(this._pathsAbortCtrl.signal, this._noaaListingRegion);
         const times = pickFrameTimes(listed, range.pastMin, range.strideMin);
         if (times.length > 0) {
           this._noaaLegacyMode = false;

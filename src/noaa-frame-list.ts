@@ -15,12 +15,47 @@
 // exact TIMEs. No lag constant, no stride guessing, no duplicate-frame
 // dedup as the primary mechanism.
 
-export const NOAA_OPENGEO_WMS_URL =
-  'https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows';
-export const NOAA_OPENGEO_LAYER = 'conus_bref_qcd';
+const OPENGEO = 'https://opengeo.ncep.noaa.gov/geoserver';
 
-const CAPS_URL =
-  `${NOAA_OPENGEO_WMS_URL}?service=WMS&version=1.3.0&request=GetCapabilities`;
+// NOAA's MRMS radar mosaics, one opengeo workspace each (extents from their
+// GetCapabilities, 2026-10-08). The CONUS layer alone left Alaska, Hawaii,
+// Puerto Rico and Guam blank. CONUS is listed LAST so it draws on top where
+// the Caribbean mosaic overlaps Florida.
+export interface NoaaRegion {
+  id: string;
+  bbox: { minLat: number; maxLat: number; minLon: number; maxLon: number };
+}
+export const NOAA_REGIONS: NoaaRegion[] = [
+  { id: 'hawaii', bbox: { minLat: 15, maxLat: 26, minLon: -164, maxLon: -151 } },
+  { id: 'alaska', bbox: { minLat: 50, maxLat: 72, minLon: -176, maxLon: -126 } },
+  { id: 'carib', bbox: { minLat: 10, maxLat: 25, minLon: -90, maxLon: -60 } },
+  { id: 'guam', bbox: { minLat: 9, maxLat: 18, minLon: 140, maxLon: 150 } },
+  { id: 'conus', bbox: { minLat: 20, maxLat: 55, minLon: -130, maxLon: -60 } },
+];
+
+// One GetMap through the global endpoint draws every region: the server
+// snaps each layer to its own nearest scan for a single TIME (verified
+// 2026-10-08 — a Hawaii tile requested with a CONUS scan time matched
+// Hawaii's own tile byte for byte), so no per-region layers are needed.
+export const NOAA_OPENGEO_WMS_URL = `${OPENGEO}/ows`;
+export const NOAA_OPENGEO_LAYER = NOAA_REGIONS.map((r) => `${r.id}:${r.id}_bref_qcd`).join(',');
+
+/**
+ * The region whose scan times drive the loop: the one containing the map
+ * centre (CONUS wins where it overlaps the Caribbean mosaic), else CONUS.
+ * Frames then fall on that region's own scans; other regions snap to theirs.
+ */
+export function noaaRegionAt(lat: number, lon: number): string {
+  const lng = ((((lon + 180) % 360) + 360) % 360) - 180;
+  const inside = (r: NoaaRegion): boolean =>
+    lat >= r.bbox.minLat && lat <= r.bbox.maxLat && lng >= r.bbox.minLon && lng <= r.bbox.maxLon;
+  const conus = NOAA_REGIONS.find((r) => r.id === 'conus')!;
+  if (inside(conus)) return 'conus';
+  return NOAA_REGIONS.find(inside)?.id ?? 'conus';
+}
+
+const capsUrl = (region: string): string =>
+  `${OPENGEO}/${region}/${region}_bref_qcd/ows?service=WMS&version=1.3.0&request=GetCapabilities`;
 
 /**
  * Parse the WMS-T time dimension out of a GetCapabilities document.
@@ -53,8 +88,8 @@ export function parseTimeDimension(xml: string): number[] {
 
 /** Fetch + parse the current frame-time listing. Throws on HTTP/network
  * failure; resolves [] on a 200 with an unparseable body. */
-export async function fetchNoaaFrameTimes(signal?: AbortSignal): Promise<number[]> {
-  const res = await fetch(CAPS_URL, { signal });
+export async function fetchNoaaFrameTimes(signal?: AbortSignal, region = 'conus'): Promise<number[]> {
+  const res = await fetch(capsUrl(region), { signal });
   if (!res.ok) throw new Error(`NOAA capabilities HTTP ${res.status}`);
   return parseTimeDimension(await res.text());
 }

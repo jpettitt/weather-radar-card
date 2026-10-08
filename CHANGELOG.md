@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **DWD's heaviest rain could be cut out** — the 45–75 mm/h colour of the default precipitation layer, and the ≥ 85 dBZ class of the dBZ layer, were read as coverage-mask pixels and removed.
 - **RainViewer loops could cover more than `past_minutes`** — RainViewer's list sometimes skips a 10-minute frame, and the card took the last N frames, so a 60-minute loop reached back 70 minutes. Frames are now picked by time.
 - **NOAA loops could stay on 10-minute frames after a listing hiccup** — if opengeo's frame listing couldn't be fetched when the card started, it fell back to the legacy 10-minute grid, and after the listing came back the loop kept the fallback's frame count until a reload (a 60-minute, 2-minute-stride loop covered 12 minutes). The card now rebuilds the loop at the configured stride once the listing is back.
+- **NOAA radar was blank in Alaska, Hawaii, Puerto Rico and Guam** since 3.7 — the card drew only opengeo's continental US mosaic. Tiles now include every US regional mosaic, and a map centred outside the continental US takes its frame times from its own region's listing.
 
 ## [3.11.0] - 2026-10-07
 
