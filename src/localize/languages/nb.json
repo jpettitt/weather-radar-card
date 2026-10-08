@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Forespørselsgrense nådd — venter på tilbakestilling",
+    "server_error": "Feil på radarserveren — prøver igjen",
     "region_warning": {
       "wildfires_us_only": "Skogbrann-data er kun for USA. Din Home Assistant-plassering er utenfor USA – ingen branner vil vises.",
       "noaa_us_only": "NOAA-radar er kun for USA. Din Home Assistant-plassering er utenfor USA – radaren laster kanskje ikke.",
@@ -86,8 +87,22 @@
       "style_dark": "CARTO Dark (kun engelsk)",
       "style_satellite": "Satellitt (kun engelsk)",
       "style_osm": "OpenStreetMap (lokalisert)",
+      "style_grey": "Esri Grey Canvas (kun engelsk, ingen API-nøkkel nødvendig)",
+      "style_grey_dark": "Esri Grey Canvas Dark (kun engelsk, ingen API-nøkkel nødvendig)",
+      "style_custom": "Egen flis-URL",
+      "style_maptiles": "HA-kartfliser (lokalisert, krever Home Assistant 2026.10+)",
+      "carto_api_key": "CARTO API-nøkkel",
+      "carto_api_key_helper": "Valgfritt. Fjerner CARTOs vannmerke «API key required» på Light/Voyager/Dark/Satellite-fliser. Gratis, ingen CARTO-konto nødvendig. La stå tomt for å beholde dagens fliser (med vannmerke).",
+      "carto_api_key_link": "Få en gratis nøkkel",
       "zoom_level": "Zoomnivå",
-      "zoom_default": "Standard (5)",
+      "zoom_default": "Standard (7)",
+      "custom_tile_url": "Flis-URL",
+      "custom_tile_url_helper": "Leaflet-mal, f.eks. https://tiles.example.com/{z}/{x}/{y}.png ({s} blir a/b/c). Legg API-nøkler rett i URL-en: andre {plassholdere} fylles ikke ut, og kartet faller tilbake til OpenStreetMap. Flisene må ha etiketter. La stå tomt for å bruke OpenStreetMap.",
+      "custom_tile_attribution": "Kartkreditering (valgfritt)",
+      "custom_tile_theme": "Flisfarger",
+      "custom_tile_theme_light": "Lyse fliser (f.eks. OSM)",
+      "custom_tile_theme_dark": "Flisene er allerede mørke (tilpasser bare UI-farger)",
+      "custom_tile_theme_invert": "Lyse fliser, vist mørke (invertert)",
       "source_dwd": "DWD (Tyskland — 5-min oppløsning)"
     },
     "time_range": {
@@ -199,6 +214,7 @@
       "height": "Høyde",
       "width": "Bredde",
       "height_helper": "f.eks. 400px, 50vh",
+      "height_section_locked_helper": "Styres av cellen i seksjonsrutenettet — dra kortets størrelseshåndtak for å endre høyden.",
       "width_helper": "f.eks. 100%, 500px",
       "radar_opacity": "Radar-opasitet",
       "radar_opacity_helper": "1.0 = helt ugjennomsiktig (standard), lavere = mer gjennomsiktig over kartet"

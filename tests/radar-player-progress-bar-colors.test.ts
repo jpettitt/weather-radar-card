@@ -133,3 +133,22 @@ describe('_applyNowMarker — progress_bar_now_color override', () => {
     expect(seg.style.boxShadow).toBe('inset 0 2px 0 0 #00ff00');
   });
 });
+
+describe('_segColor — follows the basemap actually drawn', () => {
+  it('uses the dark palette when Auto resolves to a dark map', () => {
+    const p = new RadarPlayer({
+      map: {
+        on: vi.fn(), off: vi.fn(), getZoom: () => 7, getSize: () => ({ x: 600, y: 400 }),
+        getPane: vi.fn(), createPane: vi.fn(() => ({ style: {} })),
+        getContainer: () => ({ getBoundingClientRect: () => ({ left: 0, top: 0 }) }),
+      } as any,
+      shadowRoot: { getElementById: () => null, host: {} } as any,
+      getConfig: () => ({ type: 'custom:weather-radar-card', map_style: 'Auto' } as WeatherRadarCardConfig),
+      getMapStyle: () => 'dark',
+      rainviewerLimiter: {} as any,
+      noaaLimiter: {} as any,
+      dwdLimiter: {} as any,
+    }) as any;
+    expect(p._segColor('empty', false)).toBe('#444');
+  });
+});

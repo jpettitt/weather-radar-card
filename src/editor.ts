@@ -209,6 +209,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
               select: {
                 options: [
                   { value: '', label: localize('editor.map.zoom_default') },
+                  { value: '3', label: '3' },
                   { value: '4', label: '4' },
                   { value: '5', label: '5' },
                   { value: '6', label: '6' },

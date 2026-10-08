@@ -93,7 +93,7 @@ export function colorForAge(ageSec: number, maxAgeSec: number): string {
 
 // Compute the bearing from one lat/lon to another and bucket it into one
 // of the 8 cardinal/ordinal directions. Returns the localize key suffix
-// (caller does `localize('ui.lightning.bearing_${suffix}')`).
+// (caller does `localize(`ui.lightning.bearing.${suffix}`)`).
 //
 // Uses the standard great-circle initial-bearing formula. For the short
 // distances we deal with (< Blitzortung's typical 100 km cap) the

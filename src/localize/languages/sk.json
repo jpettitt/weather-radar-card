@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Prekročený limit požiadaviek — čaká sa na obnovenie kvóty",
+    "server_error": "Chyba radarového servera — skúša sa znova",
     "region_warning": {
       "wildfires_us_only": "Údaje o lesných požiaroch sú len pre USA. Vaša poloha Home Assistant je mimo USA – nebudú zobrazené žiadne požiare.",
       "noaa_us_only": "NOAA radar je len pre USA. Vaša poloha Home Assistant je mimo USA – radar sa nemusí načítať.",
@@ -86,8 +87,22 @@
       "style_dark": "CARTO Dark (iba angličtina)",
       "style_satellite": "Satelit (iba angličtina)",
       "style_osm": "OpenStreetMap (lokalizovaná)",
+      "style_grey": "Esri Grey Canvas (iba angličtina, bez API kľúča)",
+      "style_grey_dark": "Esri Grey Canvas Dark (iba angličtina, bez API kľúča)",
+      "style_custom": "Vlastná URL dlaždíc",
+      "style_maptiles": "Mapové dlaždice HA (lokalizované, vyžaduje Home Assistant 2026.10+)",
+      "carto_api_key": "API kľúč CARTO",
+      "carto_api_key_helper": "Voliteľné. Odstráni vodoznak CARTO „API key required“ z dlaždíc Light/Voyager/Dark/Satellite. Zadarmo, bez účtu CARTO. Nechajte prázdne, ak chcete ponechať súčasné dlaždice (s vodoznakom).",
+      "carto_api_key_link": "Získať kľúč zadarmo",
       "zoom_level": "Úroveň priblíženia",
-      "zoom_default": "Predvolené (5)",
+      "zoom_default": "Predvolené (7)",
+      "custom_tile_url": "URL dlaždíc",
+      "custom_tile_url_helper": "Šablóna Leaflet, napr. https://tiles.example.com/{z}/{x}/{y}.png ({s} sa nahradí a/b/c). API kľúč zadajte priamo do URL: iné {zástupné symboly} sa nevyplnia a mapa sa vráti na OpenStreetMap. Dlaždice musia obsahovať popisy. Nechajte prázdne pre OpenStreetMap.",
+      "custom_tile_attribution": "Uvedenie zdroja mapy (voliteľné)",
+      "custom_tile_theme": "Farby dlaždíc",
+      "custom_tile_theme_light": "Svetlé dlaždice (napr. OSM)",
+      "custom_tile_theme_dark": "Dlaždice sú už tmavé (prispôsobí iba farby rozhrania)",
+      "custom_tile_theme_invert": "Svetlé dlaždice, zobrazené tmavo (invertované)",
       "source_dwd": "DWD (Nemecko — rozlíšenie 5 min)"
     },
     "time_range": {
@@ -199,6 +214,7 @@
       "height": "Výška",
       "width": "Šírka",
       "height_helper": "napr. 400px, 50vh",
+      "height_section_locked_helper": "Určuje ju bunka mriežky sekcií — výšku zmeníte potiahnutím úchytu na zmenu veľkosti karty.",
       "width_helper": "napr. 100%, 500px",
       "radar_opacity": "Nepriehľadnosť radaru",
       "radar_opacity_helper": "1.0 = úplne nepriehľadný (predvolené), nižšie = viac priehľadný cez podkladovú mapu"

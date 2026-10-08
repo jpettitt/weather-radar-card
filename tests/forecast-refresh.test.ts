@@ -2,10 +2,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   dwdIsoTime,
   fetchLatestRun,
+  markUnverified,
   parseLatestRun,
   pinToRun,
   planForecastRefresh,
   swappableFrames,
+  type RunFrame,
 } from '../src/forecast-refresh';
 
 const MIN = 60;
@@ -93,6 +95,19 @@ describe('planForecastRefresh', () => {
     expect(plan.observed).toEqual([]);
   });
 
+  it('refetches frames loaded before the run was known, as observed or pinned', () => {
+    // Loaded unpinned at init with the run list down: the frame at run0+5
+    // got whatever DWD served then — a forecast, if run0 was the newest run.
+    const loaded = markUnverified<RunFrame>(
+      [{ time: run0 - 30 * MIN }, { time: run0 + 5 * MIN }, { time: run1 + 5 * MIN }],
+      (run0 - 15 * MIN) * 1000,
+    );
+    expect(loaded.map((f) => f.unverified)).toEqual([undefined, true, true]);
+    const plan = planForecastRefresh(loaded, run1, 0, 15, nowMs);
+    expect(plan.observed).toEqual([run0 + 5 * MIN]);
+    expect(plan.forecast).toEqual([run1 + 5 * MIN]);
+  });
+
   it('never touches frames that were observed all along', () => {
     const observedOnly = [{ time: run0 - 10 * MIN }, { time: run0 - 5 * MIN }];
     expect(planForecastRefresh(observedOnly, run1, 0, 5, nowMs)).toEqual({ forecast: [], observed: [] });
@@ -132,6 +147,23 @@ describe('fetchLatestRun', () => {
     expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe(
       'https://maps.dwd.de/geoserver/dwd/Radar_wn-product_1x1km_ger/ows?service=WMS&version=1.3.0&request=GetCapabilities',
     );
+  });
+
+  it('gives up after 10 s, so a stalled request cannot hold DWD init or the update chain', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_res, rej) => {
+        init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')));
+      })) as unknown as typeof fetch;
+      let result: number | null | undefined;
+      void fetchLatestRun('Niederschlagsradar').then((r) => { result = r; });
+      await vi.advanceTimersByTimeAsync(9_900);
+      expect(result).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(result).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('returns null on an HTTP error or a network failure', async () => {

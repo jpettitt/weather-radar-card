@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Limite de requisições atingido — aguardando reinicialização da cota",
+    "server_error": "Erro no servidor de radar — tentando novamente",
     "region_warning": {
       "wildfires_us_only": "Os dados de incêndios florestais são apenas para os EUA. Sua localização do Home Assistant está fora dos EUA — nenhum incêndio será exibido.",
       "noaa_us_only": "O radar NOAA é apenas para os EUA. Sua localização do Home Assistant está fora dos EUA — o radar pode não carregar.",
@@ -86,8 +87,22 @@
       "style_dark": "CARTO Dark (somente inglês)",
       "style_satellite": "Satélite (somente inglês)",
       "style_osm": "OpenStreetMap (localizado)",
+      "style_grey": "Esri Grey Canvas (somente inglês, sem chave de API)",
+      "style_grey_dark": "Esri Grey Canvas Dark (somente inglês, sem chave de API)",
+      "style_custom": "URL de blocos personalizada",
+      "style_maptiles": "Blocos de mapa do HA (localizado, requer Home Assistant 2026.10+)",
+      "carto_api_key": "Chave de API do CARTO",
+      "carto_api_key_helper": "Opcional. Remove a marca d'água \"API key required\" do CARTO nos blocos Light/Voyager/Dark/Satellite. Gratuita, sem conta no CARTO. Deixe em branco para manter os blocos atuais (com marca d'água).",
+      "carto_api_key_link": "Obter uma chave gratuita",
       "zoom_level": "Nível de zoom",
-      "zoom_default": "Padrão (5)",
+      "zoom_default": "Padrão (7)",
+      "custom_tile_url": "URL dos blocos",
+      "custom_tile_url_helper": "Modelo do Leaflet, ex.: https://tiles.example.com/{z}/{x}/{y}.png ({s} vira a/b/c). Coloque a chave de API direto na URL: outros {marcadores} não são preenchidos e o mapa volta para o OpenStreetMap. Os blocos precisam incluir rótulos. Deixe em branco para usar o OpenStreetMap.",
+      "custom_tile_attribution": "Atribuição do mapa (opcional)",
+      "custom_tile_theme": "Cores dos blocos",
+      "custom_tile_theme_light": "Blocos claros (ex.: OSM)",
+      "custom_tile_theme_dark": "Os blocos já são escuros (só adapta as cores da interface)",
+      "custom_tile_theme_invert": "Blocos claros, exibidos escuros (invertidos)",
       "source_dwd": "DWD (Alemanha — resolução de 5 min)"
     },
     "time_range": {
@@ -199,6 +214,7 @@
       "height": "Altura",
       "width": "Largura",
       "height_helper": "ex. 400px, 50vh",
+      "height_section_locked_helper": "Controlada pela célula da grade de seções — arraste a alça de redimensionamento do cartão para mudar a altura.",
       "width_helper": "ex. 100%, 500px",
       "radar_opacity": "Opacidade do radar",
       "radar_opacity_helper": "1.0 = totalmente opaco (padrão), menor = mais transparente sobre o mapa base"

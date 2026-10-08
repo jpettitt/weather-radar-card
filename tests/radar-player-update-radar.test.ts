@@ -233,3 +233,50 @@ describe('_updateRadar — animation-loop race (issue #249)', () => {
     expect(p._currentSlot).toBeGreaterThanOrEqual(0);
   });
 });
+
+// DWD frame times come from the clock on a 5-min grid while the update runs
+// every 6 min, so about every fifth update finds two new frames. Shifting in
+// only the newest left a 10-min gap for the whole window (reproduced live).
+describe('_updateRadar — several new frames in one update', () => {
+  it('shifts in every new frame, oldest first, so the loop keeps its spacing', async () => {
+    const p = makePlayer() as any;
+    const mkFrames = seedSteadyState(p);
+    p.run = false;
+    p._fetchPaths = vi.fn().mockResolvedValue(mkFrames(NOW_SEC + 2 * STRIDE_SEC));
+    const created: any[] = [];
+    p._createLayer = vi.fn(() => { const l = fakeLayer(`new-${created.length}`); created.push(l); return l; });
+    p._setLayerZ = vi.fn();
+
+    const updatePromise = p._updateRadar();
+    await vi.advanceTimersByTimeAsync(0);
+    await updatePromise;
+
+    const times = p._radarPaths.map((f: any) => f.time);
+    expect(times[FRAME_COUNT - 1]).toBe(NOW_SEC + 2 * STRIDE_SEC);
+    expect(times.slice(1).map((tm: number, i: number) => tm - times[i])).toEqual(new Array(FRAME_COUNT - 1).fill(STRIDE_SEC));
+    expect(created.length).toBe(2);
+    expect(p._radarImage[FRAME_COUNT - 2]).toBe(created[0]);
+    expect(p._radarImage[FRAME_COUNT - 1]).toBe(created[1]);
+  });
+
+  it('each new layer joins the loop at the slot it ended up in, whichever loads first', async () => {
+    const p = makePlayer() as any;
+    const mkFrames = seedSteadyState(p);
+    p.run = false;
+    p._fetchPaths = vi.fn().mockResolvedValue(mkFrames(NOW_SEC + 2 * STRIDE_SEC));
+    const created: any[] = [];
+    p._createLayer = vi.fn(() => { const l = fakeLayer(`new-${created.length}`); created.push(l); return l; });
+    p._setLayerZ = vi.fn();
+
+    const updatePromise = p._updateRadar();
+    await vi.advanceTimersByTimeAsync(0);
+    await updatePromise;
+    expect(p._loadedSlots).toEqual(Array.from({ length: FRAME_COUNT - 2 }, (_, i) => i));
+
+    created[1]._fireLoad(); // the newest arrives first
+    expect(p._loadedSlots.at(-1)).toBe(FRAME_COUNT - 1);
+    created[0]._fireLoad();
+    expect(p._loadedSlots).toEqual(Array.from({ length: FRAME_COUNT }, (_, i) => i));
+    expect(p._currentSlot).toBe(FRAME_COUNT - 1);
+  });
+});
