@@ -17,6 +17,8 @@ export const NWS_ALERT_COLORS: Record<string, string> = {
   'Severe Thunderstorm Watch': '#DB7093',
   'Severe Weather Statement': '#00FFFF',
   'Special Weather Statement': '#FFE4B5',
+  'Hazardous Weather Outlook': '#EEE8AA',
+  'Short Term Forecast': '#98FB98',
   'Extreme Wind Warning': '#FF8C00',
 
   // Flood
@@ -34,6 +36,7 @@ export const NWS_ALERT_COLORS: Record<string, string> = {
   'Lakeshore Flood Warning': '#228B22',
   'Lakeshore Flood Watch': '#66CDAA',
   'Lakeshore Flood Advisory': '#7CFC00',
+  'Lakeshore Flood Statement': '#6B8E23',
   'Hydrologic Outlook': '#90EE90',
 
   // Winter weather
@@ -65,21 +68,30 @@ export const NWS_ALERT_COLORS: Record<string, string> = {
   'Hurricane Force Wind Watch': '#9932CC',
   'Typhoon Warning': '#DC143C',
   'Typhoon Watch': '#FF00FF',
+  'Tropical Cyclone Local Statement': '#FFE4B5',
 
   // Wind
   'High Wind Warning': '#DAA520',
   'High Wind Watch': '#B8860B',
   'Wind Advisory': '#D2B48C',
+  'Lake Wind Advisory': '#D2B48C',
+  'Dust Storm Warning': '#FFE4C4',
+  'Blowing Dust Warning': '#FFE4C4',
+  'Blowing Dust Advisory': '#BDB76B',
+  'Dust Advisory': '#BDB76B',
 
   // Fire weather
   'Red Flag Warning': '#FF1493',
   'Fire Weather Watch': '#FFDEAD',
   'Extreme Fire Danger': '#E9967A',
+  'Fire Warning': '#A0522D',
 
   // Heat
   'Heat Advisory': '#FF7F50',
   'Excessive Heat Warning': '#C71585',
   'Excessive Heat Watch': '#800000',
+  'Extreme Heat Warning': '#C71585',
+  'Extreme Heat Watch': '#800000',
 
   // Cold / wind chill
   'Wind Chill Warning': '#B0C4DE',
@@ -102,6 +114,10 @@ export const NWS_ALERT_COLORS: Record<string, string> = {
   'Special Marine Warning': '#FFA500',
   'Marine Weather Statement': '#FFDAB9',
   'Gale Warning': '#DDA0DD',
+  'Freezing Spray Advisory': '#00BFFF',
+  'Heavy Freezing Spray Warning': '#00BFFF',
+  'Heavy Freezing Spray Watch': '#BC8F8F',
+  'Low Water Advisory': '#A52A2A',
   'Gale Watch': '#FFC0CB',
   'Storm Warning': '#9400D3',
   'Storm Watch': '#FFE4B5',

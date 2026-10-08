@@ -681,10 +681,10 @@ describe('fetchWindGrid', () => {
     const g = await fetchWindGrid({
       south: 38, west: -98, north: 39, east: -97, source: 'ndfd_wind', fetchImpl: fakeFetch,
     });
-    // Mercator metres → degrees, and file row 0 (10 m/s from 0°) → cells[2]
-    // with v = -10; the DWD parser would leave lonMin at -10800000.
+    // Mercator metres → degrees, and file row 0 (10 kt from 0°) → cells[2]
+    // with v = -10 kt in m/s; the DWD parser would leave lonMin at -10800000.
     expect(g.lonMin).toBeCloseTo(-97.0, 1);
-    expect(g.cells[2][0].v).toBeCloseTo(-10, 5);
+    expect(g.cells[2][0].v).toBeCloseTo(-10 * 0.514444, 5);
   });
 
   it('reports "see response body" for an XML body with no ExceptionText', async () => {
@@ -992,7 +992,7 @@ describe('buildWindGridUrl', () => {
 
 // ── parseNdfdWcsGrid ───────────────────────────────────────────────────────
 // NDFD's text/plain output has the same layout as DWD's, but axes are X/Y
-// in EPSG:3857 metres and bands are wind speed (m/s) and wind direction
+// in EPSG:3857 metres and bands are wind speed (knots) and wind direction
 // (degrees, meteorological "from"). The parser converts both to the
 // canonical lat/lon + U/V WindGrid the downstream samplers consume.
 
@@ -1046,23 +1046,30 @@ describe('parseNdfdWcsGrid', () => {
     for (const row of grid.cells) expect(row).toHaveLength(3);
   });
 
+  // Speeds below are knots in, m/s out (× 0.514444).
+  const KT = 0.514444;
   it.each([
-    ['from the west (270°) blows east', '10', '270', 10, 0],
-    ['from the east (90°) blows west', '10', '90', -10, 0],
-    ['from the north-east (45°) blows south-west', '10', '45', -7.0710678, -7.0710678],
-    ['from the south-west (225°) blows north-east', '10', '225', 7.0710678, 7.0710678],
-    ['direction 360° is valid and equals north', '10', '360', 0, -10],
-    ['speed just under the 200 m/s sentinel is real wind', '199', '90', -199, 0],
+    ['from the west (270°) blows east', '10', '270', 10 * KT, 0],
+    ['from the east (90°) blows west', '10', '90', -10 * KT, 0],
+    ['from the north-east (45°) blows south-west', '10', '45', -7.0710678 * KT, -7.0710678 * KT],
+    ['from the south-west (225°) blows north-east', '10', '225', 7.0710678 * KT, 7.0710678 * KT],
+    ['direction 360° is valid and equals north', '10', '360', 0, -10 * KT],
+    ['speed just under the 200 kt sentinel is real wind', '199', '90', -199 * KT, 0],
   ])('converts meteorological "from" wind: %s', (_name, speed, direction, u, v) => {
     const cell = uniformNdfdGrid(speed, direction).cells[0][0];
     expect(cell.u).toBeCloseTo(u, 5);
     expect(cell.v).toBeCloseTo(v, 5);
   });
 
+  it('reads the speed band as knots (6.03 kt measured where NWS forecast 3.09 m/s)', () => {
+    const cell = uniformNdfdGrid('6.025904', '270').cells[0][0];
+    expect(cell.u).toBeCloseTo(3.1, 1);
+  });
+
   it.each([
     ['negative direction', '10', '-1'],
     ['direction just above 360', '10', '361'],
-    ['speed at the 200 m/s sentinel threshold', '200', '90'],
+    ['speed at the 200 kt sentinel threshold', '200', '90'],
     ['negative speed at the threshold', '-200', '90'],
     ['9999 fill speed with a valid direction', '9999', '90'],
   ])('treats %s as calm', (_name, speed, direction) => {
@@ -1082,7 +1089,7 @@ describe('parseNdfdWcsGrid', () => {
     // band 1 = 180°).
     // South wind (180°): u = 0, v = -20.
     expect(grid.cells[0][0].u).toBeCloseTo(0, 5);
-    expect(grid.cells[0][0].v).toBeCloseTo(20, 5);  // -(-20) since cos(180°)=-1
+    expect(grid.cells[0][0].v).toBeCloseTo(20 * 0.514444, 5);  // -(-20 kt) since cos(180°)=-1
     // Wait — for direction=180° meteorological ("from south, going north"):
     //   u = -20 × sin(π) = 0
     //   v = -20 × cos(π) = -20 × (-1) = +20  (positive = northward)
@@ -1100,7 +1107,7 @@ describe('parseNdfdWcsGrid', () => {
     // The TOP file row (band 0 = 10, band 1 = 0°) becomes cells[2]
     // after the south-up flip.
     expect(grid.cells[2][0].u).toBeCloseTo(0, 5);
-    expect(grid.cells[2][0].v).toBeCloseTo(-10, 5);  // -10 × cos(0) = -10
+    expect(grid.cells[2][0].v).toBeCloseTo(-10 * 0.514444, 5);  // -10 kt × cos(0)
   });
 
   it('treats NaN speed/direction as calm', () => {
@@ -1148,8 +1155,8 @@ describe('parseNdfdWcsGrid', () => {
     expect(g.cells[2][0].u).toBe(0);
     expect(g.cells[2][0].v).toBe(0);
     // File row 2 (cells[0] after flip) had direction 180 → real wind.
-    // South wind (180°): u = 0, v = +20 (positive northward).
-    expect(g.cells[0][0].v).toBeCloseTo(20, 5);
+    // South wind (180°): u = 0, v = +20 kt in m/s (positive northward).
+    expect(g.cells[0][0].v).toBeCloseTo(20 * 0.514444, 5);
   });
 });
 

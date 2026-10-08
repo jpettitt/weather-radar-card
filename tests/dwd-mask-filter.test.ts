@@ -83,8 +83,11 @@ describe('classifyDwdPixel', () => {
 
   it('equal-channel pixels (r === g === b) classify as grey', () => {
     expect(classifyDwdPixel(126, 126, 126, 255, WN_PALETTE_PURPLES)).toBe('grey');
-    expect(classifyDwdPixel(0, 0, 0, 255, WN_PALETTE_PURPLES)).toBe('grey');
     expect(classifyDwdPixel(255, 255, 255, 255, WN_PALETTE_PURPLES)).toBe('grey');
+  });
+
+  it('opaque black is data: the dBZ layer draws ≥ 85 dBZ in black', () => {
+    expect(classifyDwdPixel(0, 0, 0, 255, WN_PALETTE_PURPLES)).toBe('data');
   });
 
   // ── opaque data — typical radar palette colours ──
@@ -159,4 +162,31 @@ describe('dwdPaletteFor', () => {
     expect(dwdPaletteFor('Some_Other_Layer')).toBe(RV_PALETTE_PURPLES);
     expect(dwdPaletteFor('')).toBe(RV_PALETTE_PURPLES);
   });
+});
+
+// Every rain colour in DWD's legends must survive the mask filter; one that
+// classifies as mask becomes a hole in the radar and is clipped out of the
+// coverage. From GetLegendGraphic (format=application/json), 2026-10-08;
+// the no-data grey and the transparent zero entry are left out.
+const LEGEND_COLOURS: Record<string, string[]> = {
+  Niederschlagsradar: [
+    '#33FFFF', '#1ACC9A', '#019934', '#4DB31B', '#99CC01', '#CCE601', '#FFFF01', '#FFC401',
+    '#FF8901', '#FF4501', '#FE0000', '#E5004C', '#CC0098', '#6600CB', '#0000FE',
+  ],
+  'Radar_wn-product_1x1km_ger': [
+    '#99FFFF', '#33FFFF', '#00CACA', '#009934', '#4DBF1A', '#99CC00', '#CCE600', '#FFFF00',
+    '#FFC400', '#FF8900', '#FF0000', '#B40000', '#4848FF', '#0000CA', '#990099', '#FF33FF', '#000000',
+  ],
+};
+
+describe('classifyDwdPixel against DWD legends', () => {
+  for (const [layer, colours] of Object.entries(LEGEND_COLOURS)) {
+    it(`keeps every ${layer} rain colour as data`, () => {
+      const misread = colours.filter((hex) => {
+        const n = parseInt(hex.slice(1), 16);
+        return classifyDwdPixel(n >> 16, (n >> 8) & 255, n & 255, 255, dwdPaletteFor(layer)) !== 'data';
+      });
+      expect(misread).toEqual([]);
+    });
+  }
 });

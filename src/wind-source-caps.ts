@@ -52,7 +52,7 @@ export interface WindSourceCaps {
    * count for a bbox so huge viewports get downsampled server-side. */
   nativeStep: number;
   /** Band 0/1 semantics. 'uv' means band 0 = U, band 1 = V (eastward,
-   * northward m/s). 'speed_dir' means band 0 = speed (m/s), band 1 =
+   * northward m/s). 'speed_dir' means band 0 = speed (knots), band 1 =
    * direction (degrees, meteorological "from"); the fetcher converts to
    * U/V before storing in the WindGrid. */
   bands: 'uv' | 'speed_dir';

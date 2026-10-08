@@ -61,6 +61,24 @@ export function buildLoadOrder(frameCount: number, nowIndex: number): number[] {
 }
 
 /**
+ * RainViewer frames inside the last `pastMin` minutes, on the stride grid
+ * counted back from the newest. By time, not count: the list (up to 13
+ * frames, 10 min apart) can skip a slot — 12 frames with one 20-min gap on
+ * 2026-10-08 — and the last N frames then reached 10 min further back than
+ * past_minutes. A 60 s tolerance absorbs any jitter in frame times.
+ */
+export function pickRainViewerFrames<T extends { time: number }>(past: T[], pastMin: number, strideMin: number): T[] {
+  const newest = past[past.length - 1]?.time;
+  if (newest === undefined) return [];
+  const strideSec = Math.max(600, Math.round(strideMin * 60));
+  return past.filter((f) => {
+    const back = newest - f.time;
+    const steps = back / strideSec;
+    return back <= pastMin * 60 + 60 && Math.abs(steps - Math.round(steps)) * strideSec < 60;
+  });
+}
+
+/**
  * "15 minutes ago", "1:00 hours ago", "1:20 hours ago", "in 25 minutes" for
  * a frame `deltaMs` from now (negative = past). Uses Intl.RelativeTimeFormat,
  * as HA does for its own relative times (its frontend has no "ago" string
@@ -199,6 +217,7 @@ export const WN_PALETTE_PURPLES = new Set<number>([
   (255 << 16) | (51 << 8) | 255,
 ]);
 export const RV_PALETTE_PURPLES = new Set<number>([
+  (229 << 16) | (0 << 8) | 76,   // 45–75 mm/h — red-purple, passes the purple-shape test
   (204 << 16) | (0 << 8) | 152,
   (102 << 16) | (0 << 8) | 203,
 ]);
@@ -226,7 +245,9 @@ export function classifyDwdPixel(
     // R≈G≈B; magenta-blend edges don't.
     return Math.abs(r - g) <= 15 && Math.abs(g - b) <= 15 ? 'grey' : 'outline';
   }
-  if (r === g && g === b) return 'grey';
+  // Opaque black is the dBZ layer's ≥ 85 dBZ class, not wash: the wash is
+  // never opaque (alpha 77 or 128, depending on the layer).
+  if (r === g && g === b && r !== 0) return 'grey';
   if (g === 0 && b === 255) return 'outline';
   // Purple-shape: G is the smallest channel, R and B both bright. Any
   // such pixel that's not a palette entry is an outline-on-data blend.
@@ -471,6 +492,8 @@ export class RadarPlayer {
   // count made every pan/zoom take the full teardown + refetch branch
   // forever once they diverged.
   private _requestedFrameCount = 5;
+  // Frames the source's listing gave the last init (before motion-comp dedup).
+  private _listedFrameCount = 0;
   private _doRadarUpdate = false;
   // Trailing debounce for the post-view-change refresh work
   // (motion-comp resnapshot + coverage-clip rebuild). Tracked-marker
@@ -2355,15 +2378,7 @@ export class RadarPlayer {
     const past: RadarFrame[] = (data?.radar?.past ?? []).map((f: any) => ({
       time: f.time, path: f.path, host,
     }));
-    // RainViewer returns at most 13 past frames at fixed 10-min spacing.
-    // Take the last `frameCount` — already capped by getEffectiveTimeRange
-    // against maxPastMin (120 min = 12 native frames + the "now" frame).
-    // Stride > 10 min (an unusual YAML override) is honoured by skipping
-    // intermediate frames in the slice.
-    const stridedFrames = strideMs > 10 * 60_000
-      ? past.filter((_, i) => (past.length - 1 - i) % Math.round(strideMs / (10 * 60_000)) === 0)
-      : past;
-    return stridedFrames.slice(-Math.min(frameCount, 13));
+    return pickRainViewerFrames(past, range.pastMin, range.strideMin);
   }
 
   // WMS params pinning a DWD forecast frame to its run. Leaflet WMS turns
@@ -2614,6 +2629,7 @@ export class RadarPlayer {
     this._lastFrameRefreshAt = Date.now();
     const frameCount = pastFrames.length;
     this._configFrameCount = frameCount;
+    this._listedFrameCount = frameCount;
     this._computeNowFrameIndex();
 
     this._buildSegments();
@@ -2892,7 +2908,12 @@ export class RadarPlayer {
     // 10-min grid: rebuild at the configured stride. Shifting in the new
     // frames kept the 10-min frames until they aged out, and a loop that
     // started in fallback kept its frame count (a 60-min loop covered 12).
-    if (!this._noaaLegacyMode && this._radarPaths.some((f) => f.legacy)) {
+    // RainViewer: a skipped 10-min slot entering or leaving the window
+    // changes how many frames it holds, which shifting (one in, one out)
+    // can't follow. Rebuild — the tiles come from the cache.
+    const rainViewerRecount = (this._cfg.data_source ?? 'RainViewer') === 'RainViewer'
+      && this._listedFrameCount > 0 && pastFrames.length !== this._listedFrameCount;
+    if ((!this._noaaLegacyMode && this._radarPaths.some((f) => f.legacy)) || rainViewerRecount) {
       this._doRadarUpdate = false;
       this._clearLayers();
       void this._initRadar();

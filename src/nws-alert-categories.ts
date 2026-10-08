@@ -58,6 +58,7 @@ const EVENT_TO_CATEGORY: Record<string, AlertCategory> = {
   'Lakeshore Flood Warning': 'flood',
   'Lakeshore Flood Watch': 'flood',
   'Lakeshore Flood Advisory': 'flood',
+  'Lakeshore Flood Statement': 'flood',
   'Hydrologic Outlook': 'flood',
 
   // winter
@@ -89,14 +90,20 @@ const EVENT_TO_CATEGORY: Record<string, AlertCategory> = {
   'Hurricane Force Wind Watch': 'tropical',
   'Typhoon Warning': 'tropical',
   'Typhoon Watch': 'tropical',
+  'Tropical Cyclone Local Statement': 'tropical',
 
   // fire_weather
   'Red Flag Warning': 'fire_weather',
   'Fire Weather Watch': 'fire_weather',
   'Extreme Fire Danger': 'fire_weather',
+  'Fire Warning': 'fire_weather',
 
   // heat
   'Heat Advisory': 'heat',
+  // NWS renamed Excessive Heat → Extreme Heat (2025); the old names stay
+  // mapped for any alert still issued under them.
+  'Extreme Heat Warning': 'heat',
+  'Extreme Heat Watch': 'heat',
   'Excessive Heat Warning': 'heat',
   'Excessive Heat Watch': 'heat',
 
@@ -105,6 +112,11 @@ const EVENT_TO_CATEGORY: Record<string, AlertCategory> = {
   'High Wind Warning': 'wind',
   'High Wind Watch': 'wind',
   'Wind Advisory': 'wind',
+  'Lake Wind Advisory': 'wind',
+  'Dust Storm Warning': 'wind',
+  'Blowing Dust Warning': 'wind',
+  'Blowing Dust Advisory': 'wind',
+  'Dust Advisory': 'wind',
   'Wind Chill Warning': 'wind',
   'Wind Chill Watch': 'wind',
   'Wind Chill Advisory': 'wind',
@@ -116,6 +128,10 @@ const EVENT_TO_CATEGORY: Record<string, AlertCategory> = {
   'Special Marine Warning': 'marine',
   'Marine Weather Statement': 'marine',
   'Gale Warning': 'marine',
+  'Freezing Spray Advisory': 'marine',
+  'Heavy Freezing Spray Warning': 'marine',
+  'Heavy Freezing Spray Watch': 'marine',
+  'Low Water Advisory': 'marine',
   'Gale Watch': 'marine',
   'Storm Warning': 'marine',
   'Storm Watch': 'marine',
