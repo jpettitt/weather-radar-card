@@ -40,7 +40,7 @@ US-only (CONUS mosaic). Radar tiles are fetched at a maximum of zoom 7 (the nati
 
 Since 3.7, NOAA serves from NCEP's opengeo GeoServer (`conus_bref_qcd` — the radar.weather.gov backend). Its per-layer `GetCapabilities` lists the layer's actual frame timestamps, so the card requests exact scan times: the newest frame is ~2 minutes behind real time, every frame in the loop is a distinct scan, and the **Frame interval** dropdown (2 / 5 / 10 min) controls loop density. The colour bar matches the modern radar.weather.gov reflectivity ramp.
 
-If the frame listing is unavailable, the card falls back to the legacy `mapservices.weather.noaa.gov` eventdriven server for that cycle (10-minute computed grid behind its ~15-minute availability lag — correct but stale) and retries the listing on the next refresh.
+If the frame listing is unavailable, the card falls back to the legacy `mapservices.weather.noaa.gov` eventdriven server for that cycle (10-minute computed grid behind its ~15-minute availability lag — correct but stale) and retries the listing on the next refresh. Once the listing is back, it rebuilds the loop at the configured stride.
 
 ## Wind overlay
 

@@ -133,6 +133,8 @@ export interface RadarFrame {
   run?: number;
   /** Loaded before DWD's run was known; may hold a forecast — see RunFrame. */
   unverified?: boolean;
+  /** From NOAA's legacy 10-min fallback grid (opengeo listing unavailable). */
+  legacy?: boolean;
 }
 
 /**
@@ -2304,7 +2306,7 @@ export class RadarPlayer {
       const legacyCount = Math.max(1, Math.floor(range.pastMin / NOAA_LEGACY_STRIDE_MIN) + 1);
       const frames: RadarFrame[] = [];
       for (let i = legacyCount - 1; i >= 0; i--) {
-        frames.push({ time: (snap - i * legacyStrideMs) / 1000, path: '' });
+        frames.push({ time: (snap - i * legacyStrideMs) / 1000, path: '', legacy: true });
       }
       return frames;
     }
@@ -2886,6 +2888,16 @@ export class RadarPlayer {
     const latestRun = await runPromise;
     if (myGen !== this._frameGeneration) return; // torn down while fetching
     if (pastFrames.length === 0) { this._scheduleUpdate(); return; } // no frames from API
+    // NOAA's listing is back after the loop took frames from the legacy
+    // 10-min grid: rebuild at the configured stride. Shifting in the new
+    // frames kept the 10-min frames until they aged out, and a loop that
+    // started in fallback kept its frame count (a 60-min loop covered 12).
+    if (!this._noaaLegacyMode && this._radarPaths.some((f) => f.legacy)) {
+      this._doRadarUpdate = false;
+      this._clearLayers();
+      void this._initRadar();
+      return;
+    }
     // A failed fetch keeps the last known run: still a valid "final up to",
     // and still a valid pin. Never step back to an older run — a lagging
     // server node would otherwise re-pin observed frames to an old forecast.

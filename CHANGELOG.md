@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **History loads before the forecast** — frames load one at a time from "now"; the forecast used to come next, so a cached history loop waited behind DWD's slower forecast requests on every reload. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
 - **DWD forecast frames are always pinned to a nowcast run**, with or without `forecast_refresh_minutes`, so their tiles can be cached. The tile requests gain a `DIM_REFERENCE_TIME` parameter; what they show doesn't change.
 
+### Fixed
+
+- **NOAA loops could stay on 10-minute frames after a listing hiccup** — if opengeo's frame listing couldn't be fetched when the card started, it fell back to the legacy 10-minute grid, and after the listing came back the loop kept the fallback's frame count until a reload (a 60-minute, 2-minute-stride loop covered 12 minutes). The card now rebuilds the loop at the configured stride once the listing is back.
+
 ## [3.11.0] - 2026-10-07
 
 > **Stable release.** Two new map styles: `MapTiles`, which uses Home Assistant 2026.10's own map tiles, and `Custom` for any tile URL. Radar tiles are now kept in the browser, so switching dashboards or reloading no longer refetches the loop, and `low_power_mode` makes the card usable on old wall tablets. Drop-in upgrade from 3.10.0 — no config changes required. The entries below are what changed since 3.10.0.
