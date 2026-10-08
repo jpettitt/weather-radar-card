@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  chooseStartRun,
   dwdIsoTime,
   fetchLatestRun,
   markUnverified,
   parseLatestRun,
   pinToRun,
   planForecastRefresh,
+  recalledRun,
+  rememberRun,
   swappableFrames,
   type RunFrame,
 } from '../src/forecast-refresh';
@@ -171,5 +174,38 @@ describe('fetchLatestRun', () => {
     await expect(fetchLatestRun('Niederschlagsradar')).resolves.toBeNull();
     global.fetch = vi.fn(async () => { throw new TypeError('offline'); }) as unknown as typeof fetch;
     await expect(fetchLatestRun('Niederschlagsradar')).resolves.toBeNull();
+  });
+});
+
+describe('remembered run (#279 forecast cache)', () => {
+  afterEach(() => localStorage.clear());
+
+  it('remembers the last run per DWD layer', () => {
+    rememberRun('Radar_wn-product_1x1km_ger', 1_800_000_000);
+    expect(recalledRun('Radar_wn-product_1x1km_ger')).toBe(1_800_000_000);
+    expect(recalledRun('Niederschlagsradar')).toBeNull();
+  });
+
+  it('ignores a missing or corrupt value', () => {
+    localStorage.setItem('weather-radar-card:dwd-forecast-run:x', 'garbage');
+    expect(recalledRun('x')).toBeNull();
+  });
+});
+
+describe('chooseStartRun', () => {
+  const latest = t('2026-10-08T16:40:00Z');
+  const now = (latest + 6 * MIN) * 1000;
+  const max = 30 * 60_000;
+
+  it('starts from the remembered run while it is at most 30 min old', () => {
+    expect(chooseStartRun(latest, latest - 10 * MIN, now, max)).toBe(latest - 10 * MIN);
+    expect(chooseStartRun(latest, latest - 24 * MIN, now, max)).toBe(latest - 24 * MIN);
+  });
+
+  it('starts from the newest run otherwise', () => {
+    expect(chooseStartRun(latest, null, now, max)).toBe(latest);
+    expect(chooseStartRun(latest, latest - 25 * MIN, now, max)).toBe(latest); // 31 min old
+    expect(chooseStartRun(latest, latest, now, max)).toBe(latest);
+    expect(chooseStartRun(latest, latest + 5 * MIN, now, max)).toBe(latest);
   });
 });

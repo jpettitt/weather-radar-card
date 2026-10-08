@@ -88,6 +88,11 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
+- **Remove the 3.12.0 beta callouts once 3.12.0 goes stable** — in
+  `docs/data-sources.md`'s Tile caching section (forecast tiles) and
+  `docs/configuration.md`'s Timestamp paragraph (forecast and stale
+  cues), both #279, from 3.12.0-beta1.
+
 - **Open-Meteo as an alternate wind source for global coverage.**
   The wind overlay landing in 3.6 (PR #133) is DWD-only — Germany +
   immediate neighbours via the ICON-D2 model. To extend the feature

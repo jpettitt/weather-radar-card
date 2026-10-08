@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as L from 'leaflet';
 import {
+  basemapCredits,
   getBasemapTiles,
   getBasemapTone,
   getCustomAttribution,
@@ -219,5 +220,23 @@ describe('resolveBasemapStyle', () => {
 
   it('gives an unusable Custom URL OSM tiles', () => {
     expect(getBasemapTiles('custom', undefined, `${custom}?k={apikey}`).url).toBe(getBasemapTiles('osm').url);
+  });
+});
+
+describe('basemapCredits', () => {
+  const text = (html: string[]): string[] => html.map((h) => h.replace(/<[^>]+>/g, '').replace('&copy;', '©'));
+
+  it('lists each map provider separately, so the Sources popup can put one per line', () => {
+    expect(text(basemapCredits('grey'))).toEqual(['© OpenStreetMap contributors', '© Esri, HERE, Garmin']);
+    expect(text(basemapCredits('dark'))).toEqual(['© OpenStreetMap', '© CARTO']);
+    expect(text(basemapCredits('osm'))).toEqual(['© OpenStreetMap contributors']);
+    expect(text(basemapCredits('maptiles'))).toEqual(['© OpenStreetMap contributors']);
+    expect(text(basemapCredits('satellite'))).toEqual(['© ESRI']);
+  });
+
+  it('credits a custom basemap by its attribution or host, and drops an empty one', () => {
+    expect(basemapCredits('custom', 'https://t.example.com/{z}/{x}/{y}.png', 'My tiles')).toEqual(['My tiles']);
+    expect(basemapCredits('custom', 'https://t.example.com/{z}/{x}/{y}.png')).toEqual(['Map tiles: t.example.com']);
+    expect(basemapCredits('custom', '/local/{z}/{x}/{y}.png')).toEqual([]);
   });
 });

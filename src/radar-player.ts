@@ -8,10 +8,13 @@ import { FetchTileLayer, FetchWmsTileLayer, layerSettled } from './fetch-tile-la
 import { isDarkBasemapStyle } from './basemap-styles';
 import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
-import { getEffectiveTimeRange } from './source-caps';
-import { TileCachePolicy, finalUpToMs, persistUntilFor } from './tile-cache';
+import { getEffectiveTimeRange, getSourceCaps } from './source-caps';
 import {
-  dwdIsoTime, fetchLatestRun, markUnverified, pinToRun, planForecastRefresh, swappableFrames,
+  FORECAST_REUSE_MAX_AGE_MS, TileCachePolicy, finalUpToMs, persistUntilFor, pinnedForecastPolicy,
+} from './tile-cache';
+import {
+  chooseStartRun, dwdIsoTime, fetchLatestRun, markUnverified, pinToRun, planForecastRefresh, recalledRun,
+  rememberRun, swappableFrames,
 } from './forecast-refresh';
 import {
   fetchNoaaFrameTimes, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
@@ -38,24 +41,46 @@ export function nearestFrameIndex(frames: { time: number }[], nowSec: number): n
 }
 
 /**
- * Frame-load order for the initial radar fetch: "now" first, then forward
- * through any forecast frames, then backward through any past frames.
+ * Frame-load order for the initial radar fetch: "now" first, then backward
+ * through the past frames, then forward through any forecast frames.
  * Pure function — factored out so it's unit-testable without standing up
  * a full RadarPlayer.
  *
- * For a past-only config (no forecast_minutes), nowIndex is already
- * frameCount-1, so this degenerates to the plain descending
- * frameCount-1..0 sequence — i.e. today's behavior is unchanged. It's
- * only a forecast-heavy config (little/no past_minutes) where nowIndex
- * sits near 0 that this differs: loading highest-index-first there would
- * load the farthest-future frame before "now" (issue #246).
+ * "Now" first so a forecast-heavy config doesn't load the farthest-future
+ * frame before it (issue #246). History before forecast because frames load
+ * one at a time: history usually comes straight from the tile cache while
+ * DWD's forecast can take 5–45 s, so forecast-first left a cached loop
+ * waiting behind the network on every reload (#279).
  */
 export function buildLoadOrder(frameCount: number, nowIndex: number): number[] {
   const now = Math.max(0, Math.min(frameCount - 1, nowIndex));
   const order: number[] = [];
-  for (let fi = now; fi < frameCount; fi++) order.push(fi);
-  for (let fi = now - 1; fi >= 0; fi--) order.push(fi);
+  for (let fi = now; fi >= 0; fi--) order.push(fi);
+  for (let fi = now + 1; fi < frameCount; fi++) order.push(fi);
   return order;
+}
+
+/**
+ * "15 minutes ago", "1:00 hours ago", "1:20 hours ago", "in 25 minutes" for
+ * a frame `deltaMs` from now (negative = past). Uses Intl.RelativeTimeFormat,
+ * as HA does for its own relative times (its frontend has no "ago" string
+ * of its own), so the wording and translation match HA in every language.
+ * Intl can only say "1 hour ago" for 1:20, so from an hour up the h:mm goes
+ * into its plural-hours phrase in place of the number — whole hours too, so
+ * the label keeps its shape as the loop crosses them.
+ */
+export function relativeTimeText(deltaMs: number, locale: string): string {
+  const minutes = Math.max(1, Math.round(Math.abs(deltaMs) / 60_000));
+  const sign = deltaMs < 0 ? -1 : 1;
+  let rtf: Intl.RelativeTimeFormat;
+  try {
+    rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'always' });
+  } catch {
+    rtf = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
+  }
+  if (minutes < 60) return rtf.format(sign * minutes, 'minute');
+  const hm = `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+  return rtf.formatToParts(sign * 2, 'hour').map((part) => (part.type === 'integer' ? hm : part.value)).join('');
 }
 
 /**
@@ -488,6 +513,11 @@ export class RadarPlayer {
   // ones waiting for their frame to be off screen (keyed by frame time,
   // since a refresh tick can shift frame indices underneath them).
   private _lastForecastRefreshAt = 0;
+  // Newest run, when init started the forecast from an older cached one;
+  // the catch-up refresh after the first load moves to it.
+  private _catchUpRun: number | null = null;
+  // True while that catch-up is loading — the timestamp says "updating".
+  private _catchUpPending = false;
   // DWD's newest nowcast run (epoch s) as last seen in its run list, or null.
   // Frames it covers are final, which is what lets them be persisted.
   private _dwdLatestRun: number | null = null;
@@ -1702,11 +1732,29 @@ export class RadarPlayer {
     for (let i = 0; i < this._configFrameCount; i++) {
       const seg = document.createElement('div');
       seg.id = `seg-${i}`;
-      seg.style.cssText = `flex:1;height:100%;background-color:${this._segColor('empty', false)}`;
+      seg.style.cssText = 'flex:1;height:100%';
       track.appendChild(seg);
       this._segEls.push(seg);
+      this._paintSegment(i, false);
     }
     this._updateLoadingSpinner();
+  }
+
+  // Every segment paint goes through here: status colour, plus hatching on
+  // frames after "now" so forecast reads as forecast on the bar itself.
+  private _paintSegment(fi: number, isCurrent: boolean): void {
+    const seg = this._segEls[fi];
+    if (!seg) return;
+    seg.style.backgroundColor = this._segColor(this._frameStatuses[fi] ?? 'empty', isCurrent);
+    const forecast = this._nowFrameIndex >= 0 && fi > this._nowFrameIndex;
+    const stripe = this._barIsDark() ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.22)';
+    seg.style.backgroundImage = forecast
+      ? `repeating-linear-gradient(135deg, ${stripe} 0 2px, transparent 2px 5px)`
+      : '';
+  }
+
+  private _barIsDark(): boolean {
+    return isDarkBasemapStyle(this._getMapStyle?.() ?? this._cfg.map_style, this._cfg.custom_tile_theme);
   }
 
   private _segColor(status: FrameStatus, isCurrent: boolean): string {
@@ -1719,8 +1767,7 @@ export class RadarPlayer {
       const override = isCurrent ? cfg.progress_bar_active_color : cfg.progress_bar_background_color;
       if (override) return override;
     }
-    const dark = isDarkBasemapStyle(this._getMapStyle?.() ?? cfg.map_style, cfg.custom_tile_theme);
-    const map = dark
+    const map = this._barIsDark()
       ? { empty: '#444', loading: '#aa7700', loaded: 'steelblue', failed: '#aa1111',
           cur_empty: '#666', cur_loading: '#cc9900', cur_loaded: '#6baed6', cur_failed: '#cc3333' }
       : { empty: '#e0e0e0', loading: '#ffcc00', loaded: '#ccf2ff', failed: '#ff4444',
@@ -1730,8 +1777,7 @@ export class RadarPlayer {
 
   private _setSegment(fi: number, status: FrameStatus): void {
     this._frameStatuses[fi] = status;
-    const seg = this._segEls[fi];
-    if (seg) seg.style.backgroundColor = this._segColor(status, fi === this._lastHighlightFi);
+    this._paintSegment(fi, fi === this._lastHighlightFi);
     this._updateLoadingSpinner();
   }
 
@@ -1768,6 +1814,8 @@ export class RadarPlayer {
     if (this._lastNowMarkerIndex >= 0) apply(this._lastNowMarkerIndex, false);
     if (this._nowFrameIndex >= 0) apply(this._nowFrameIndex, true);
     this._lastNowMarkerIndex = this._nowFrameIndex;
+    // The forecast hatching starts after "now", so it moved too.
+    for (let i = 0; i < this._segEls.length; i++) this._paintSegment(i, i === this._lastHighlightFi);
   }
 
   /**
@@ -1780,26 +1828,78 @@ export class RadarPlayer {
    * Intl-formatted strings + a localized "(now)" — defensive habit
    * for anything writing user-visible HTML.
    */
+  // HA's UI language, for Intl formatting the way HA's own frontend does it.
+  private _locale(): string {
+    const hass = this._hass as (HomeAssistant & { locale?: { language?: string } }) | undefined;
+    return hass?.locale?.language ?? hass?.language ?? navigator.language ?? 'en';
+  }
+
+  // Re-render the timestamp of the frame on screen (its tags can change
+  // without a frame change).
+  private _refreshTimestamp(): void {
+    const fi = this._loadedSlots[this._currentSlot];
+    if (fi !== undefined) this._setTimestamp(fi);
+  }
+
   private _setTimestamp(fi: number): void {
     const ts = this._shadowRoot.getElementById('timestamp');
     if (!ts) return;
     ts.textContent = '';  // wipe previous render
     const t = this._radarTime[fi];
     if (!t) return;
-    const dateSpan = document.createElement('span');
-    dateSpan.className = 'ts-date';
-    dateSpan.textContent = `${t.date} `;
-    ts.appendChild(dateSpan);
-    const timeSpan = document.createElement('span');
-    timeSpan.className = 'ts-time';
-    timeSpan.textContent = t.time;
-    ts.appendChild(timeSpan);
+    const tag = (className: string, text: string): void => {
+      const span = document.createElement('span');
+      span.className = className;
+      span.textContent = text;
+      ts.appendChild(span);
+    };
+    const nowMs = Date.now();
+    const frameMs = (this._radarPaths[fi]?.time ?? 0) * 1000;
+    // Relative to the frame on screen: "(latest)", "1:20 ago", "Forecast
+    // +0:25". A dwd_time_override loop is anchored in the past, so "ago"
+    // would only measure the override.
+    const relative = fi === this._nowFrameIndex || !this._cfg.dwd_time_override;
+    // Narrow cards (CSS container query) keep only the relative part; the
+    // clock time stays when there's no relative label to replace it.
+    tag('ts-date', `${t.date} `);
+    tag(relative ? 'ts-time ts-time-optional' : 'ts-time', t.time);
     if (fi === this._nowFrameIndex) {
-      const nowSpan = document.createElement('span');
-      nowSpan.className = 'ts-now';
-      nowSpan.textContent = ` ${localize('ui.now')}`;
-      ts.appendChild(nowSpan);
+      tag('ts-now', ` ${localize('ui.now')}`);
+    } else if (relative) {
+      tag('ts-sep', ' · ');
+      const rel = relativeTimeText(frameMs - nowMs, this._locale());
+      if (frameMs > nowMs) {
+        tag('ts-forecast', localize('ui.forecast_offset', '{time}', rel));
+        if (this._catchUpPending) tag('ts-updating', ` · ${localize('ui.updating')}`);
+      } else {
+        tag('ts-ago', rel);
+      }
     }
+    const age = this._staleAgeMin(nowMs);
+    if (age !== null) tag('ts-stale', ` ⚠ ${localize('ui.data_age', '{minutes}', String(age))}`);
+  }
+
+  /**
+   * Minutes since the newest radar data, when that's longer than the source
+   * should ever lag (an outage, a failing run list, a card that slept), else
+   * null. DWD's frame times come from the clock, so its age is the newest
+   * nowcast run's; the listed sources use their newest past frame.
+   */
+  private _staleAgeMin(nowMs: number): number | null {
+    if (this._cfg.dwd_time_override) return null;
+    const source = this._cfg.data_source ?? 'RainViewer';
+    let newestMs: number | null = null;
+    if (source === 'DWD') {
+      newestMs = this._dwdLatestRun !== null ? this._dwdLatestRun * 1000 : null;
+    } else {
+      for (const f of this._radarPaths) {
+        const t = f.time * 1000;
+        if (t <= nowMs && (newestMs === null || t > newestMs)) newestMs = t;
+      }
+    }
+    if (newestMs === null) return null;
+    const age = Math.floor((nowMs - newestMs) / 60_000);
+    return age > getSourceCaps(source).staleAfterMin ? age : null;
   }
 
   private _highlightSegment(fi: number): void {
@@ -1807,10 +1907,7 @@ export class RadarPlayer {
     // it — this runs every tick, and segment STATUS changes repaint
     // through _setSegment independently.
     if (fi === this._lastHighlightFi) return;
-    const paint = (j: number, isCurrent: boolean): void => {
-      const seg = this._segEls[j];
-      if (seg) seg.style.backgroundColor = this._segColor(this._frameStatuses[j] ?? 'empty', isCurrent);
-    };
+    const paint = (j: number, isCurrent: boolean): void => this._paintSegment(j, isCurrent);
     if (this._lastHighlightFi >= 0) paint(this._lastHighlightFi, false);
     paint(fi, true);
     this._lastHighlightFi = fi;
@@ -1928,6 +2025,8 @@ export class RadarPlayer {
     this._stagedForecast.clear();
     this._lastForecastRefreshAt = 0;
     this._dwdLatestRun = null;
+    this._catchUpRun = null;
+    this._catchUpPending = false;
   }
 
   // Resolve the DWD WMS layer the player is currently using. Niederschlagsradar
@@ -2290,6 +2389,7 @@ export class RadarPlayer {
   // DWD run read from the run list was published before the server
   // answered them (see TileCachePolicy).
   private _tileCachePolicy(frame: RadarFrame): TileCachePolicy {
+    if (frame.run !== undefined) return pinnedForecastPolicy(frame.time * 1000, frame.run * 1000);
     const source = this._cfg.data_source ?? 'RainViewer';
     const { pastMin, strideMin } = getEffectiveTimeRange(this._cfg);
     const finalUpTo = finalUpToMs(source, Date.now(), strideMin, this._dwdLatestRun);
@@ -2298,6 +2398,12 @@ export class RadarPlayer {
 
   private _isDwd(): boolean {
     return (this._cfg.data_source ?? 'RainViewer') === 'DWD';
+  }
+
+  // DWD with forecast frames in the loop: they're pinned to a run whenever
+  // one is known, with forecast refresh on or off.
+  private _dwdForecastActive(): boolean {
+    return this._isDwd() && getEffectiveTimeRange(this._cfg).forecastMin > 0;
   }
 
   private _createLayer(frame: RadarFrame): FetchTileLayer | FetchWmsTileLayer {
@@ -2481,12 +2587,19 @@ export class RadarPlayer {
     if (myGen !== this._frameGeneration) return;
     if (run !== null) {
       this._dwdLatestRun = run;
-      if (this._forecastRefreshMin() > 0) {
-        // Pin forecast frames to one run from the start, so every tile of a
-        // frame comes from the same run and the first refresh tick can tell
-        // whether anything newer exists. Without a run they load unpinned
-        // and the first refresh pins them.
-        pastFrames = pinToRun(pastFrames, run);
+      if (this._dwdForecastActive()) {
+        // Pin forecast frames to one run from the start, refresh on or off:
+        // every tile of a frame then comes from one run, the tiles can be
+        // cached (pinnedForecastPolicy), and a refresh can tell whether
+        // anything newer exists. A run used in the last 30 min is reused so
+        // its cached tiles show at once; the newest replaces it once the
+        // first load is done (_catchUpRun). Without a run frames load
+        // unpinned and the first refresh pins them.
+        const layerName = this._dwdLayerName();
+        const startRun = chooseStartRun(run, recalledRun(layerName), Date.now(), FORECAST_REUSE_MAX_AGE_MS);
+        pastFrames = pinToRun(pastFrames, startRun);
+        rememberRun(layerName, startRun);
+        this._catchUpRun = startRun < run ? run : null;
         this._lastForecastRefreshAt = Date.now();
       }
     } else if (this._forecastRefreshMin() > 0) {
@@ -2645,6 +2758,17 @@ export class RadarPlayer {
       this._radarReady = true;
       this._scheduleUpdate();
     }
+
+    // Started from a cached older run: move to the newest now the loop is
+    // up, whatever the refresh setting. With refresh off the frames then
+    // keep that run, as they would have without the cache.
+    if (this._catchUpRun !== null) {
+      const latest = this._catchUpRun;
+      this._catchUpRun = null;
+      this._lastForecastRefreshAt = 0;
+      this._catchUpPending = this._refreshForecast(latest);
+      this._refreshTimestamp();
+    }
   }
 
   // Record a successfully-loaded frame's effect on playback bootstrap
@@ -2767,9 +2891,11 @@ export class RadarPlayer {
     // server node would otherwise re-pin observed frames to an old forecast.
     if (latestRun !== null) this._dwdLatestRun = Math.max(this._dwdLatestRun ?? latestRun, latestRun);
     const refreshing = this._forecastRefreshMin() > 0;
-    const refreshRun = refreshing ? this._dwdLatestRun : null;
-    if (refreshRun !== null) {
-      pastFrames = pinToRun(pastFrames, refreshRun);
+    const pinRun = this._dwdForecastActive() ? this._dwdLatestRun : null;
+    const refreshRun = refreshing ? pinRun : null;
+    if (pinRun !== null) {
+      pastFrames = pinToRun(pastFrames, pinRun);
+      rememberRun(this._dwdLayerName(), pinRun);
     } else if (refreshing) {
       pastFrames = markUnverified(pastFrames, finalUpToMs('DWD', Date.now(), getEffectiveTimeRange(this._cfg).strideMin, null));
     }
@@ -2802,6 +2928,8 @@ export class RadarPlayer {
       this._lastFrameRefreshAt = Date.now();
       this._doRadarUpdate = false;
       if (refreshRun !== null) this._refreshForecast(refreshRun);
+      // A paused card shows no new frame, but its age tag can change.
+      this._refreshTimestamp();
       this._scheduleUpdate();
       return;
     }
@@ -2875,10 +3003,7 @@ export class RadarPlayer {
     this._computeNowFrameIndex();
     this._applyNowMarker();
 
-    for (let i = 0; i < frameCount - 1; i++) {
-      const seg = this._shadowRoot.getElementById(`seg-${i}`);
-      if (seg) seg.style.backgroundColor = this._segColor(this._frameStatuses[i] ?? 'empty', false);
-    }
+    for (let i = 0; i < frameCount - 1; i++) this._paintSegment(i, i === this._lastHighlightFi);
     this._setSegment(frameCount - 1, 'loading');
 
     newLayer.once('load', () => {
@@ -2928,18 +3053,21 @@ export class RadarPlayer {
   // Replacements load hidden alongside the loop and swap in via
   // _swapStagedFrames once loaded; a replacement that fails keeps the old
   // frame rather than showing holes.
-  private _refreshForecast(latestRun: number): void {
-    if (!this._map || this._forecastLoading.length > 0) return;
+  private _refreshForecast(latestRun: number): boolean {
+    if (!this._map || this._forecastLoading.length > 0) return false;
     const plan = planForecastRefresh(
       this._radarPaths, latestRun, this._lastForecastRefreshAt, this._forecastRefreshMin(), Date.now(),
     );
-    if (plan.forecast.length > 0) this._lastForecastRefreshAt = Date.now();
+    if (plan.forecast.length > 0) {
+      this._lastForecastRefreshAt = Date.now();
+      rememberRun(this._dwdLayerName(), latestRun);
+    }
     const jobs: RadarFrame[] = [];
     for (const f of this._radarPaths) {
       if (plan.observed.includes(f.time)) jobs.push({ ...f, run: undefined, unverified: undefined });
       else if (plan.forecast.includes(f.time)) jobs.push({ ...f, run: latestRun, unverified: undefined });
     }
-    if (jobs.length === 0) return;
+    if (jobs.length === 0) return false;
     const gen = this._frameGeneration;
     const staged = jobs.map((frame) => {
       const layer = this._createLayer(frame) as FetchWmsTileLayer;
@@ -2962,6 +3090,7 @@ export class RadarPlayer {
       });
       this._swapStagedFrames();
     });
+    return true;
   }
 
   // Put loaded replacements in place of their frames' layers, taking over
@@ -2970,7 +3099,7 @@ export class RadarPlayer {
   // holdBusy: true right after a fade starts, false once visibility is
   // settled, undefined to infer it from whether the loop is running.
   private _swapStagedFrames(currentSlot = this._currentSlot, holdBusy?: boolean): void {
-    if (this._stagedForecast.size === 0) return;
+    if (this._stagedForecast.size === 0) { this._endCatchUpIfDone(); return; }
     const indexOf = new Map<number, number>();
     for (const time of this._stagedForecast.keys()) {
       const fi = this._radarPaths.findIndex((f) => f.time === time);
@@ -3013,6 +3142,15 @@ export class RadarPlayer {
       if (fi + 1 < this._frameMotion.length) this._frameMotion[fi + 1] = null;
       void this._onLayerLoaded(staged.layer);
     }
+    this._endCatchUpIfDone();
+  }
+
+  // The catch-up is over once nothing is loading or waiting to swap —
+  // including when every replacement failed and the cached frames stay.
+  private _endCatchUpIfDone(): void {
+    if (!this._catchUpPending || this._stagedForecast.size > 0 || this._forecastLoading.length > 0) return;
+    this._catchUpPending = false;
+    this._refreshTimestamp();
   }
 
   // ── Web worker timer ─────────────────────────────────────────────────────

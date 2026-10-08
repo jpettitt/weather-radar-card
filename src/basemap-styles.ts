@@ -186,6 +186,39 @@ export function isInvertedCustomBasemap(
   return mapStyle?.toLowerCase() === 'custom' && customTileTheme?.toLowerCase() === 'invert';
 }
 
+const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+
+/**
+ * Map tile credits for the drawn style (resolved — see resolveBasemapStyle),
+ * one HTML entry per provider: the footer joins them on one line, the
+ * Sources popup lists them one per line. Empty for a custom URL with no
+ * readable host and no attribution.
+ */
+export function basemapCredits(
+  mapStyle: string,
+  customTileUrl?: string,
+  customTileAttribution?: string,
+  baseUrl?: string,
+): string[] {
+  if (mapStyle === 'custom' && customTileUrl?.trim()) {
+    const credit = getCustomAttribution(customTileUrl, customTileAttribution, baseUrl);
+    return credit ? [credit] : [];
+  }
+  switch (mapStyle) {
+    case 'osm':
+    case 'custom':
+    case 'maptiles':
+      return [`${OSM_CREDIT} contributors`];
+    case 'satellite':
+      return ['&copy; <a href="http://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank">ESRI</a>'];
+    case 'grey':
+    case 'greydark':
+      return [`${OSM_CREDIT} contributors`, '&copy; <a href="https://www.esri.com" target="_blank">Esri</a>, HERE, Garmin'];
+    default:
+      return [OSM_CREDIT, '&copy; <a href="https://carto.com/attribution" target="_blank">CARTO</a>'];
+  }
+}
+
 /**
  * Attribution HTML for a custom basemap. The user's text is escaped (it
  * lands in innerHTML); without one, credit the tile host so the map is

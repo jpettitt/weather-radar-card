@@ -339,13 +339,23 @@ option; basemap layers don't. With it:
   what lets the coverage mask reuse the anchor frame's tiles instead of
   downloading them a second time;
 - tiles whose content is final (`finalUpToMs`) are also stored in
-  IndexedDB, until the frame falls outside the source's longest
-  history window (`maxPastMin`) plus 60 minutes: RainViewer and NOAA
+  IndexedDB, until the frame falls out of the card's own history
+  window (`past_minutes`) plus 30 minutes: RainViewer and NOAA
   frames one frame interval old, DWD frames its newest run covers
   (`_dwdLatestRun`, from the run list read on every DWD init and
-  update; 15 minutes old if unknown). Forecast and newer frames are
-  never stored: DWD answers every request against its newest run, so
-  their content changes every 5 minutes.
+  update; 15 minutes old if unknown). Unpinned newer frames are never
+  stored: DWD answers them against its newest run, so their content
+  changes every 5 minutes.
+- DWD forecast frames are pinned to a run (`DIM_REFERENCE_TIME`)
+  whenever one is known, and a pinned tile is stored if it's requested
+  at least 5 minutes before its frame time (`pinnedForecastPolicy`,
+  judged per request by `isFinalRequest`: a pan can refetch long after
+  the layer was built, and once a frame's time passes DWD answers the
+  pinned URL with observations). They expire 35 minutes after the run.
+  Init reuses the last run pinned for that layer (`recalledRun`, in
+  localStorage) if it's at most 30 minutes old, so the forecast comes
+  from the cache, then refreshes once to the newest run (`_catchUpRun`)
+  whatever `forecast_refresh_minutes` says.
 - the store-or-not decision (`persistUntil`) is fixed when the layer
   is built, before any of its tiles are requested, and DWD init waits
   for the run list before building any layer. Deciding at download
@@ -384,14 +394,14 @@ longer than the visible-refresh interval.
 
 ## Frame loading sequence
 
-Frames load starting at "now" (`buildLoadOrder`), fanning forward
-through any forecast frames and then backward through any past
-frames — not always newest-first. For a past-only config `_nowFrameIndex`
-is already the newest frame, so this degenerates to the old
-newest-first order; it's forecast-heavy configs (little/no
-`past_minutes`) where "now" sits near index 0 that this differs, so
-"now" always loads (and is shown) first regardless of the past/forecast
-split (issue #246).
+Frames load one at a time starting at "now" (`buildLoadOrder`), then
+backward through the past frames, then forward through any forecast
+frames. "Now" first so a forecast-heavy config (little/no
+`past_minutes`) never loads the farthest-future frame before it
+(issue #246); history before forecast because history usually comes
+from the tile cache while DWD's forecast can take 5–45 s, and
+forecast-first held a cached loop behind the network on every reload
+(#279).
 
 As each frame settles (`layerSettled`):
 

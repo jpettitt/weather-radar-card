@@ -229,6 +229,26 @@ describe('createFetchTile with tileCache', () => {
     expect(later.done).toHaveBeenCalledTimes(1);
   });
 
+  it('persists a pinned forecast tile requested before its cutoff, but not one requested after', async () => {
+    const until = Date.now() + 30 * 60_000;
+    addTile(makeLayer({ tileCache: { persistUntil: until, finalBefore: Date.now() + 60_000 } }));
+    await flush();
+    fetchCalls[0].resolve(new Blob(['forecast']));
+    await flush();
+    expect(store.puts).toEqual([{ url: URL_A, expiresAt: until }]);
+
+    _resetTileCacheForTests();
+    store = new FakeStore();
+    _setTileStoreForTests(store);
+    fetchCalls = [];
+    // A pan long after the layer was built: DWD now answers with observations.
+    addTile(makeLayer({ tileCache: { persistUntil: until, finalBefore: Date.now() - 1 } }));
+    await flush();
+    fetchCalls[0].resolve(new Blob(['observed']));
+    await flush();
+    expect(store.puts).toEqual([]);
+  });
+
   it('a tile unloaded during the persistent lookup is not counted as loaded or failed', async () => {
     const layer = makeLayer({ tileCache: { persistUntil: Date.now() + 60_000 } });
     const { tile, done } = addTile(layer);

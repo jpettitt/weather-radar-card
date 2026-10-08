@@ -3,7 +3,7 @@
 import * as L from 'leaflet';
 import { RateLimiter } from './rate-limiter';
 import {
-  TileCachePolicy, hasInflight, memoGet, persistedGet, sharedFetch, storeTile,
+  TileCachePolicy, hasInflight, isFinalRequest, memoGet, persistedGet, sharedFetch, storeTile,
 } from './tile-cache';
 
 const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -208,11 +208,12 @@ export function createFetchTile(
   const on5xx = opts.on5xx;
   const onTileRecovered = opts.onTileRecovered;
   const cache = opts.tileCache;
-  // A layer that persists needs final content: it never takes a memory copy
-  // or joins a download that a non-persisting layer started for this URL,
-  // which may be a DWD forecast under the same unpinned URL.
-  const needFinal = cache?.persistUntil !== undefined;
-  const shareKey = needFinal ? url : `${url}#provisional`;
+  // A request that persists needs final content: it never takes a memory copy
+  // or joins a download that a non-persisting request started for this URL,
+  // which may be a DWD forecast under the same unpinned URL. Judged per
+  // request, not per layer: a pinned forecast tile stops being final once its
+  // frame time comes close (see pinnedForecastPolicy).
+  const shareKeyFor = (final: boolean): string => (final ? url : `${url}#provisional`);
   let attempt = 0;
 
   layer._tilePending++;
@@ -252,7 +253,8 @@ export function createFetchTile(
   const tryFetch = (): void => {
     // Joining a download that is already in flight costs no request, so it
     // skips the rate limiter.
-    const joining = !!cache && hasInflight(shareKey);
+    const final = isFinalRequest(cache, Date.now());
+    const joining = !!cache && hasInflight(shareKeyFor(final));
     if (!joining) {
       if (limiter && !limiter.canFetch(url)) {
         setTimeout(tryFetch, limiter.msUntilSlot());
@@ -267,8 +269,8 @@ export function createFetchTile(
     tile.__wrcAbort = ctrl;
 
     const raw = cache
-      ? sharedFetch(shareKey, ctrl.signal, (signal) => fetchTileBlob(url, signal).then((b) => {
-        storeTile(url, b, cache);
+      ? sharedFetch(shareKeyFor(final), ctrl.signal, (signal) => fetchTileBlob(url, signal).then((b) => {
+        storeTile(url, b, final ? cache : {});
         return b;
       }))
       : fetchTileBlob(url, ctrl.signal);
@@ -321,6 +323,7 @@ export function createFetchTile(
 
   const start = (): void => {
     if (!cache) { tryFetch(); return; }
+    const needFinal = isFinalRequest(cache, Date.now());
     const hit = memoGet(url, needFinal);
     if (hit) { deliverCached(hit); return; }
     // IndexedDB only ever holds tiles that were final when stored, so a hit

@@ -18,15 +18,16 @@ import { rainviewerLimiter, noaaLimiter, dwdLimiter } from './rate-limiters';
 import { FetchTileLayer } from './fetch-tile-layer';
 import {
   CUSTOM_INVERT_CLASS,
+  basemapCredits,
   getBasemapTiles,
   getBasemapTone,
-  getCustomAttribution,
   isDarkBasemapStyle,
   isInvertedCustomBasemap,
   resolveBasemapStyle,
   unknownTilePlaceholders,
 } from './basemap-styles';
 import { attachMapTilesLayer, isMapTilesLoaded } from './map-tiles-token';
+import { CreditsPopup } from './credits-popup';
 import { isWheelZoomEnabled } from './map-interaction';
 import { WindOverlay } from './wind-overlay';
 import { defaultWindSourceForLocation, DEFAULT_WIND_SOURCE } from './wind-source-caps';
@@ -236,6 +237,10 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _navContainer: HTMLElement | null = null;
   private _markUserMove: (() => void) | null = null;
   private _darkModeQuery: MediaQueryList | null = null;
+  private _credits = new CreditsPopup(() => ({
+    toggle: this.shadowRoot?.getElementById('credits-toggle') ?? null,
+    popup: this.shadowRoot?.getElementById('credits-popup') ?? null,
+  }));
   private _darkModeHandler: (() => void) | null = null;
 
   // Per-source rate limiters live as module-level singletons in
@@ -572,6 +577,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._credits.close();
     // Cancel any pending debounced rebuild — rebuilding a detached card
     // would leak a fresh Leaflet map with no DOM to live in.
     if (this._rebuildTimer) { clearTimeout(this._rebuildTimer); this._rebuildTimer = null; }
@@ -675,6 +681,13 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
             <div class="loading-spinner-arc" aria-hidden="true"></div>
           </div>
           <div id="attribution"></div>
+          <button id="credits-toggle" type="button" aria-haspopup="dialog" aria-expanded="false"
+            aria-controls="credits-popup" @click=${this._credits.toggle}>© ${localize('ui.sources')}</button>
+          <div id="credits-popup" role="dialog" aria-label=${localize('ui.sources')} hidden>
+            <div id="credits-body"></div>
+            <button id="credits-close" type="button" aria-label=${localize('ui.close')}
+              @click=${this._credits.close}>×</button>
+          </div>
         </div>
       </ha-card>
     `;
@@ -965,21 +978,27 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const el = this.shadowRoot?.getElementById('attribution');
     if (!el) return;
     const ds = this._config.data_source ?? 'RainViewer';
-    const radarCredit = ds === 'NOAA'
-      ? 'Radar: <a href="https://www.weather.gov" target="_blank">NOAA/NWS</a>'
+    const radar = ds === 'NOAA'
+      ? '<a href="https://www.weather.gov" target="_blank">NOAA/NWS</a>'
       : ds === 'DWD'
-        ? 'Radar: <a href="https://www.dwd.de" target="_blank">DWD</a>'
-        : 'Radar: <a href="https://rainviewer.com" target="_blank">RainViewer</a>';
-    const mapCredit = mapStyle === 'custom' && this._config.custom_tile_url?.trim()
-      ? getCustomAttribution(this._config.custom_tile_url, this._config.custom_tile_attribution, window.location.href)
-      : mapStyle === 'osm' || mapStyle === 'custom' || mapStyle === 'maptiles'
-      ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
-      : mapStyle === 'satellite'
-        ? '&copy; <a href="http://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank">ESRI</a>'
-        : mapStyle === 'grey' || mapStyle === 'greydark'
-          ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors &copy; <a href="https://www.esri.com" target="_blank">Esri</a>, HERE, Garmin'
-          : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> &copy; <a href="https://carto.com/attribution" target="_blank">CARTO</a>';
-    el.innerHTML = `<a href="https://leafletjs.com" target="_blank">Leaflet</a> | ${mapCredit} | ${radarCredit}`;
+        ? '<a href="https://www.dwd.de" target="_blank">DWD</a>'
+        : '<a href="https://rainviewer.com" target="_blank">RainViewer</a>';
+    const map = basemapCredits(mapStyle, this._config.custom_tile_url, this._config.custom_tile_attribution, window.location.href);
+    const leaflet = '<a href="https://leafletjs.com" target="_blank">Leaflet</a>';
+    el.innerHTML = [leaflet, map.join(' '), `Radar: ${radar}`].filter(Boolean).join(' | ');
+    // Narrow cards: the same credits in the Sources popup, labelled, one
+    // provider per line. Labels are the card's own strings, escaped anyway.
+    const body = this.shadowRoot?.getElementById('credits-body');
+    if (!body) return;
+    const row = (label: string, credits: string[]): string => (credits.length
+      ? `<span class="credits-label">${escapeHtml(label)}</span><span>${credits.map((c) => `<div>${c}</div>`).join('')}</span>`
+      : '');
+    body.innerHTML = `<div class="credits-title">${escapeHtml(localize('ui.sources'))}</div>`
+      + '<div class="credits-grid">'
+      + row(localize('ui.credits_radar'), [radar])
+      + row(localize('ui.credits_map'), map)
+      + row(localize('ui.credits_library'), [leaflet])
+      + '</div>';
   }
 
   // ── Markers ───────────────────────────────────────────────────────────────
@@ -1535,6 +1554,35 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         color: var(--primary-text-color);
       }
       #bottom-container a { color: var(--primary-color); }
+      #credits-toggle {
+        display: none; flex: 0 0 auto; margin-left: auto; padding: 4px 8px;
+        background: none; border: 0; cursor: pointer; white-space: nowrap;
+        font: inherit; font-size: 12px; color: var(--primary-color);
+      }
+      /* Above Leaflet's controls (1000) and popup pane (1100). Shown only
+         on narrow cards; the container query below turns it on. */
+      #credits-popup {
+        display: none; position: absolute; right: 4px; bottom: calc(100% + 4px);
+        z-index: 1200; max-width: calc(100% - 8px); box-sizing: border-box;
+        padding: 8px 32px 10px 12px; border-radius: 8px; font-size: 12px;
+        background: var(--ha-card-background, var(--card-background-color, #fff));
+        color: var(--primary-text-color);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      }
+      .credits-title {
+        margin-bottom: 4px; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7;
+      }
+      .credits-grid {
+        display: grid; grid-template-columns: auto 1fr;
+        column-gap: 12px; row-gap: 4px; line-height: 1.4;
+      }
+      .credits-label { opacity: 0.65; }
+      #credits-close {
+        position: absolute; top: 2px; right: 2px; padding: 2px 8px;
+        background: none; border: 0; cursor: pointer;
+        font: inherit; font-size: 18px; line-height: 1; color: inherit;
+      }
       #timestampid {
         flex: 0 1 auto; min-width: 0;
         max-width: calc(50% - 16px);
@@ -1544,6 +1592,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         margin: 0; padding: 4px 8px; font-size: 12px; white-space: nowrap;
         overflow: hidden; text-overflow: ellipsis;
       }
+      .ts-forecast { font-style: italic; }
+      .ts-updating { opacity: 0.7; }
+      .ts-stale { color: var(--warning-color, #ff9800); font-weight: 500; }
       #attribution {
         flex: 1 1 auto; min-width: 0;
         text-align: right; padding: 4px 8px;
@@ -1558,6 +1609,16 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
          panel mode, masonry — all "just work"). */
       @container (max-width: 397px) {
         .ts-date { display: none; }
+        /* Credits move into the Sources popup, so the timestamp gets the
+           rest of the row: clock time plus "1:20 hours ago". */
+        #attribution { display: none; }
+        #credits-toggle { display: block; }
+        #credits-popup:not([hidden]) { display: block; }
+        #timestampid { flex: 1 1 auto; max-width: none; }
+      }
+      /* Very narrow: just the relative label, "(latest)" on the newest. */
+      @container (max-width: 279px) {
+        .ts-time-optional, .ts-sep { display: none; }
       }
       .map-dark .leaflet-control-scale-line {
         color: #bbb; border-color: #bbb; background: rgba(0,0,0,0.5);

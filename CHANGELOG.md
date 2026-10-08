@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **DWD forecast tiles survive a reload** — forecast frames are now cached too: after a reload or a dashboard switch the card shows the forecast from the last run it used (at most 30 minutes old) straight away, then fetches the newest run in the background. With refresh off the frames then keep that run, as before. In testing, a reloaded 2 h history + 2 h forecast DWD loop played after 6.5 s and was complete after 12 s, from 18 tile requests; its first, uncached load took 69 s and 196. Requested by [@m42cel](https://github.com/m42cel). ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
+- **Relative times, forecast and stale-data cues** — every frame says how far back or ahead it is (*15 minutes ago*, *1:20 hours ago*, *Forecast · in 25 minutes*), worded in Home Assistant's language like HA's own relative times. On narrow cards the map credits move behind a *© Sources* button that opens them in a popup, leaving the footer to the time. Forecast segments of the progress bar are hatched. If the newest radar data is older than the source should ever lag (DWD 20 min, NOAA 20, RainViewer 25), the time shows an amber *⚠ N min old*; a reloaded card says *updating…* on forecast frames until the newest run is in.
+
+### Changed
+
+- **History loads before the forecast** — frames load one at a time from "now"; the forecast used to come next, so a cached history loop waited behind DWD's slower forecast requests on every reload. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
+- **DWD forecast frames are always pinned to a nowcast run**, with or without `forecast_refresh_minutes`, so their tiles can be cached. The tile requests gain a `DIM_REFERENCE_TIME` parameter; what they show doesn't change.
+
 ## [3.11.0] - 2026-10-07
 
 > **Stable release.** Two new map styles: `MapTiles`, which uses Home Assistant 2026.10's own map tiles, and `Custom` for any tile URL. Radar tiles are now kept in the browser, so switching dashboards or reloading no longer refetches the loop, and `low_power_mode` makes the card usable on old wall tablets. Drop-in upgrade from 3.10.0 — no config changes required. The entries below are what changed since 3.10.0.
