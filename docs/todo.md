@@ -88,14 +88,6 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
-- **Remove the 3.11.0 beta callouts once 3.11.0 goes stable** — in
-  `docs/configuration.md`'s Map Style section (`Custom`,
-  [#273](https://github.com/jpettitt/weather-radar-card/pull/273), and
-  `MapTiles`, #276, from 3.11.0-beta1) and `docs/data-sources.md`'s Tile
-  caching section (#279, from 3.11.0-beta2), and the Low power mode section
-  in `docs/configuration.md` (#279, 3.11.0-beta4). Docs on `main` shouldn't
-  claim a not-yet-stable feature as generally available.
-
 - **Open-Meteo as an alternate wind source for global coverage.**
   The wind overlay landing in 3.6 (PR #133) is DWD-only — Germany +
   immediate neighbours via the ICON-D2 model. To extend the feature
@@ -214,7 +206,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   key shape, edge cases.
 
 - ✅ **Refresh DWD forecast frames when a new nowcast run lands** —
-  shipped in 3.11.0-beta2 as `forecast_refresh_minutes`
+  shipped in 3.11.0 as `forecast_refresh_minutes`
   ([#279](https://github.com/jpettitt/weather-radar-card/issues/279),
   the issue's second ask). Forecast frames are pinned to a run with
   `DIM_REFERENCE_TIME` (the plain `REFERENCE_TIME` name is ignored);
@@ -346,6 +338,10 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - NOAA `intervalMin` bump 5 → 10 — matches empirical publication cadence on the eventdriven WMS service, eliminates duplicate frames at the source ✅ — 3.7.0-alpha2
 - Stale-frame full re-init on resume from long-hidden / device-sleep windows ✅ — 3.7.0-alpha2
 - Local Docker HA testbed (`npm run ha:up`) replacing the abandoned `.devcontainer/` ✅ — post-3.4.0
+- `map_style: Custom` (contributed by [@jvandenbroek](https://github.com/jvandenbroek), [#273](https://github.com/jpettitt/weather-radar-card/pull/273)) and `map_style: MapTiles` through Home Assistant 2026.10's `map_tiles` integration ([#276](https://github.com/jpettitt/weather-radar-card/pull/276)) ✅ — 3.11.0
+- Radar tile reuse — shared downloads, 5-min memory cache, IndexedDB once a frame is final ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)) ✅ — 3.11.0
+- `forecast_refresh_minutes` — DWD forecast frames follow newer nowcast runs ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)) ✅ — 3.11.0
+- `low_power_mode` for slow wall tablets ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)) ✅ — 3.11.0
 
 ## Canvas rendering for lightning + hazard layers
 

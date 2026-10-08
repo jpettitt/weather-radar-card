@@ -19,25 +19,28 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 
 [![Watch the demo on YouTube](https://img.youtube.com/vi/xfbZRElOi0o/maxresdefault.jpg)](https://youtu.be/xfbZRElOi0o)
 
-## What's new in 3.10 (current stable)
+## What's new in 3.11 (current stable)
+
+Home Assistant 2026.10 added its own map tiles, and the card can now use them. Radar loops also load from the browser instead of the network, and a new low power mode suits old wall tablets.
+
+- **`MapTiles` map style** — OpenStreetMap tiles through Home Assistant's own `map_tiles` integration: localized labels, no CARTO watermark, no API key. Needs Home Assistant 2026.10+. ([3.11.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta1))
+- **`map_style: Custom`** — any `{z}/{x}/{y}` raster tile URL, with optional attribution and a dark or inverted theme. Contributed by [@jvandenbroek](https://github.com/jvandenbroek). ([3.11.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta1))
+- **Radar tiles are reused instead of re-downloaded** — switching dashboards or reloading no longer refetches the whole loop; matters most for DWD and NOAA. ([3.11.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta2), [beta3](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta3))
+- **`low_power_mode`** — for old or slow wall tablets: no fades or motion compensation, and DWD frames shown as DWD draws them, which loads a DWD loop several times faster. ([3.11.0-beta4](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta4))
+- **`forecast_refresh_minutes`** — DWD forecast frames follow newer nowcast runs instead of keeping the run they loaded with. ([3.11.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.11.0-beta2))
+
+For the full release history see [CHANGELOG](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md).
+
+## What's new in 3.10
 
 The wind overlays no longer show a stale wind field outside the US, and there's a new option to stop the mouse wheel hijacking dashboard scrolling.
 
 - **Fixed wind arrows/barbs/flow showing a day-old wind field** (sometimes looking reversed) outside the US — DWD's server returns its oldest slice for a missing or off-step time, and the card now always requests the current one. ([3.9.1-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.9.1-beta1))
 - **`disable_wheel_zoom` option (YAML-only)** — the mouse wheel scrolls the dashboard instead of zooming the map, while the +/- buttons, pinch and drag keep working (unlike `static_map`). ([3.10.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.10.0-beta1))
 
-For the full release history see [CHANGELOG](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md).
-
-## What's new in 3.9
-
-CARTO began requiring an API key to avoid a watermark on their free basemap tiles (Light/Voyager/Dark/Satellite) — this release adds an option to remove it, plus two new basemap styles that never need a key at all.
-
-- **`carto_api_key` config option** — free CARTO API key (no account needed — [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/)) removes the watermark. Set it in the editor's Map section or via YAML; leaving it unset keeps the previous (watermarked but working) tiles.
-- **Two new no-key map styles: `Grey` and `GreyDark`** — Esri Light/Dark Grey Canvas basemaps, for anyone who'd rather not sign up for a CARTO key at all.
-
 ## Roadmap
 
-Active threads, no specific version commitment — with 3.10 shipped, these target 3.11 or later. See [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md) for the full backlog with status per item.
+Active threads, no specific version commitment — with 3.11 shipped, these target 3.12 or later. See [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md) for the full backlog with status per item.
 
 - **Real-time per-user layer visibility control panel** — UI for toggling individual overlays in real time. Persistence framework already shipped (3.6.5); first consumer shipped (playback speed in 3.7.0-alpha1); the on-map panel itself is the remaining piece. Full design in [docs/layer-control-design.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/layer-control-design.md).
 - **Additional wind sources** — Open-Meteo for global coverage, ICON pressure levels for upper-air wind, regional finer-than-ICON-D2 sources (AROME, MEPS, HRRR). Tiers and trade-offs documented in [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md).
@@ -46,8 +49,8 @@ Active threads, no specific version commitment — with 3.10 shipped, these targ
 
 | Topic | What's there |
 | --- | --- |
-| [Configuration](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md) | Full options table, Map Style choices, Animation knobs, Double-tap action, sections-grid behaviour |
-| [Data Sources](https://github.com/jpettitt/weather-radar-card/blob/main/docs/data-sources.md) | RainViewer / NOAA / DWD specifics, per-source caps, NOAA & DWD notes, DWD forecast leading-edge note |
+| [Configuration](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md) | Full options table, Map Style choices, Animation knobs, low power mode, Double-tap action, sections-grid behaviour |
+| [Data Sources](https://github.com/jpettitt/weather-radar-card/blob/main/docs/data-sources.md) | RainViewer / NOAA / DWD specifics, per-source caps, tile caching, NOAA & DWD notes, DWD forecast leading-edge note |
 | [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md) | US wildfire perimeters, NWS watches & warnings, lightning (Blitzortung), and global wind — usage, knobs, **safety disclaimers** |
 | [Markers](https://github.com/jpettitt/weather-radar-card/blob/main/docs/markers.md) | The `markers[]` schema, track-resolution rules, default home marker, migration from the legacy single-marker fields |
 | [Examples](https://github.com/jpettitt/weather-radar-card/blob/main/docs/examples.md) | Sample YAMLs for common setups (basic, dense DWD loop, NOAA, OSM, mobile-only, person tracking, hazard overlays) |
