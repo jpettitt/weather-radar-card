@@ -31,6 +31,7 @@ vi.mock('../src/fetch-tile-layer', () => {
 });
 
 import { RadarPlayer } from '../src/radar-player';
+import { _resetMissingNoaaLayersForTests } from '../src/noaa-frame-list';
 import type { WeatherRadarCardConfig } from '../src/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -66,6 +67,8 @@ describe('NOAA regions in the player', () => {
 
   afterEach(() => {
     global.fetch = realFetch;
+    _resetMissingNoaaLayersForTests();
+    vi.restoreAllMocks();
   });
 
   it("takes frame times from the listing of the region the map is centred on, until the loop is rebuilt", async () => {
@@ -90,5 +93,49 @@ describe('NOAA regions in the player', () => {
     expect(built[0].options.layers.split(',')).toEqual([
       'hawaii:hawaii_bref_qcd', 'alaska:alaska_bref_qcd', 'carib:carib_bref_qcd', 'guam:guam_bref_qcd', 'conus:conus_bref_qcd',
     ]);
+  });
+
+  // If opengeo loses one regional layer it answers every tile of the request
+  // LayerNotDefined, CONUS included (checked 2026-10-08).
+  describe('a regional layer missing on opengeo', () => {
+    const frame = { time: Date.UTC(2026, 9, 8, 20, 28, 8) / 1000, path: '' };
+    function rebuilding(): any {
+      centre = { lat: 39.1, lng: -94.58 };
+      const p = makePlayer();
+      p._clearLayers = vi.fn();
+      p._initRadar = vi.fn(async () => {});
+      return p;
+    }
+
+    it('rebuilds the loop without it, once', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const p = rebuilding();
+      p._createLayer(frame);
+      const report = built[0].options.onLayerNotDefined;
+      report('guam:guam_bref_qcd');
+      report('guam:guam_bref_qcd'); // the frame's other tiles fail too
+      expect(p._initRadar).toHaveBeenCalledOnce();
+      p._createLayer(frame);
+      expect(built[1].options.layers).not.toContain('guam');
+    });
+
+    it('rebuilds a second card whose tiles fail after the first card dropped the layer', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const a = rebuilding();
+      const b = rebuilding();
+      a._createLayer(frame);
+      b._createLayer(frame);
+      built[0].options.onLayerNotDefined('guam:guam_bref_qcd');
+      built[1].options.onLayerNotDefined('guam:guam_bref_qcd');
+      expect(a._initRadar).toHaveBeenCalledOnce();
+      expect(b._initRadar).toHaveBeenCalledOnce();
+    });
+
+    it('legacy-server layers have no such handler', () => {
+      const p = rebuilding();
+      p._noaaLegacyMode = true;
+      p._createLayer(frame);
+      expect(built[0].options.onLayerNotDefined).toBeUndefined();
+    });
   });
 });

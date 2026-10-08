@@ -30,6 +30,12 @@ export interface FetchTileOptions extends L.TileLayerOptions {
    * means for its own banner/timer state.
    */
   onTileRecovered?: () => void;
+  /**
+   * Called when a WMS answers a tile with a LayerNotDefined exception, with
+   * the layer it names ('' if none). Retrying can't help, so the tile fails
+   * at once; the caller can rebuild without that layer.
+   */
+  onLayerNotDefined?: (layer: string) => void;
   /** When true, Leaflet's _updateOpacity is suppressed so CSS animations own opacity. */
   animationOwnsOpacity?: boolean;
   /**
@@ -75,6 +81,7 @@ const INTERNAL_OPTION_FIELDS: Record<InternalOptionKey, true> = {
   on429: true,
   on5xx: true,
   onTileRecovered: true,
+  onLayerNotDefined: true,
   animationOwnsOpacity: true,
   pixelFilter: true,
   tileCache: true,
@@ -180,9 +187,16 @@ function fetchTileBlob(url: string, signal: AbortSignal): Promise<Blob> {
     // sources that omit the header keep working.
     const ctype = r.headers.get('content-type') ?? '';
     if (ctype.includes('xml') || ctype.includes('html') || ctype.startsWith('text/')) {
-      const e: any = new Error(`non-image tile response (${ctype})`);
-      e.status = 200;
-      throw e;
+      return r.text().then((body): never => {
+        const e: any = new Error(`non-image tile response (${ctype})`);
+        e.status = 200;
+        // A WMS without one of the requested layers fails the whole request
+        // (GeoServer names only the first missing layer).
+        if (body.includes('code="LayerNotDefined"')) {
+          e.missingLayer = /Could not find layer\s+([^\s<]+)/.exec(body)?.[1] ?? '';
+        }
+        throw e;
+      });
     }
     return r.blob();
   });
@@ -287,7 +301,10 @@ export function createFetchTile(
           tile.__wrcAbort = null;
           return;
         }
-        if (err.status === 404) {
+        if (err.missingLayer !== undefined) {
+          opts.onLayerNotDefined?.(err.missingLayer);
+          fail();
+        } else if (err.status === 404) {
           fail();
         } else if (err.status === 429 || (limiter && !err.status)) {
           // 429 with CORS headers sets err.status; without CORS headers the browser

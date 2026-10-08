@@ -4,10 +4,10 @@
 // refused browsers) — frame times now come from the server's own
 // listing, so every frame is real and unique by construction.
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   parseTimeDimension, pickFrameTimes, fetchNoaaFrameTimes, noaaRegionAt,
-  NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
+  NOAA_OPENGEO_WMS_URL, noaaOpengeoLayers, dropMissingNoaaLayer, _resetMissingNoaaLayersForTests,
 } from '../src/noaa-frame-list';
 import { getEffectiveTimeRange } from '../src/source-caps';
 
@@ -123,7 +123,7 @@ describe('opengeo endpoint constants', () => {
   // A typo here would only show up as blank radar in production.
   it('request every regional mosaic through the global endpoint, CONUS last (drawn on top)', () => {
     expect(NOAA_OPENGEO_WMS_URL).toBe('https://opengeo.ncep.noaa.gov/geoserver/ows');
-    expect(NOAA_OPENGEO_LAYER).toBe(
+    expect(noaaOpengeoLayers()).toBe(
       'hawaii:hawaii_bref_qcd,alaska:alaska_bref_qcd,carib:carib_bref_qcd,guam:guam_bref_qcd,conus:conus_bref_qcd',
     );
   });
@@ -136,6 +136,33 @@ describe('opengeo endpoint constants', () => {
       'https://opengeo.ncep.noaa.gov/geoserver/hawaii/hawaii_bref_qcd/ows?service=WMS&version=1.3.0&request=GetCapabilities',
     );
     vi.unstubAllGlobals();
+  });
+});
+
+// One missing layer fails every tile of the request (LayerNotDefined), so a
+// layer opengeo reports missing is left out for the rest of the page load.
+describe('dropMissingNoaaLayer', () => {
+  beforeEach(() => _resetMissingNoaaLayersForTests());
+  afterEach(() => _resetMissingNoaaLayersForTests());
+
+  it('leaves out the layer opengeo named, with or without its workspace', () => {
+    dropMissingNoaaLayer('guam:guam_bref_qcd');
+    dropMissingNoaaLayer('carib_bref_qcd');
+    expect(noaaOpengeoLayers()).toBe('hawaii:hawaii_bref_qcd,alaska:alaska_bref_qcd,conus:conus_bref_qcd');
+  });
+
+  it('keeps only CONUS when the report names none of our layers', () => {
+    dropMissingNoaaLayer('');
+    expect(noaaOpengeoLayers()).toBe('conus:conus_bref_qcd');
+    _resetMissingNoaaLayersForTests();
+    dropMissingNoaaLayer('nope:other_layer');
+    expect(noaaOpengeoLayers()).toBe('conus:conus_bref_qcd');
+  });
+
+  it('never leaves no layer at all', () => {
+    dropMissingNoaaLayer('');
+    dropMissingNoaaLayer('conus:conus_bref_qcd');
+    expect(noaaOpengeoLayers()).toBe('conus:conus_bref_qcd');
   });
 });
 
