@@ -133,6 +133,17 @@ describe('timestamp', () => {
     expect(stamp(p, 0)).toBe('Wed 10:00 · 1:00 hours ago ⚠ 40 min old');
   });
 
+  it("allows for a stride longer than the source's cadence", () => {
+    // A 20-min RainViewer loop holds its newest frame until the next 20-min slot.
+    const p = makePlayer({ data_source: 'RainViewer', frame_stride_minutes: 20 });
+    seed(p);
+    p._radarPaths = [-67, -47, -27].map((m) => ({ time: NOW + m * 60, path: '' }));
+    p._nowFrameIndex = 2;
+    expect(stamp(p, 2)).toBe('Wed 10:00 (latest)');
+    p._radarPaths = [-76, -56, -36].map((m) => ({ time: NOW + m * 60, path: '' }));
+    expect(stamp(p, 2)).toBe('Wed 10:00 (latest) ⚠ 36 min old');
+  });
+
   it('shows neither tag for a pinned-in-the-past loop (dwd_time_override)', () => {
     const p = makePlayer({ data_source: 'DWD', dwd_time_override: '2026-10-07T06:00:00Z' });
     seed(p);

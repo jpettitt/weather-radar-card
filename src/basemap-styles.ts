@@ -1,14 +1,13 @@
 // Basemap tile URL templates per map_style, factored out of
 // weather-radar-card.ts so they're unit-testable without Leaflet/DOM.
 //
-// CARTO's free basemap tiles (Dark/Voyager/Light, and Satellite's label
-// overlay) now stamp anonymous requests with a visible "API key
-// required" watermark — the tiles still load, just watermarked. A free
-// key (carto.com/basemaps/apikey — no account needed) removes it via a
-// `?key=` query param. Grey/GreyDark are ESRI Living Atlas Canvas
-// basemaps that never need a key at all, for anyone who'd rather not
-// sign up — same free-for-public-apps basis this project already
-// relies on for Satellite's World_Imagery.
+// CARTO's basemap tiles (Dark/Voyager/Light, and Satellite's label
+// overlay) need a free key (carto.com/basemaps/apikey — no account), sent
+// as `?key=`. Without one CARTO answers every tile with a blank "API KEY
+// REQUIRED" placeholder (checked 2026-10-08; earlier it only watermarked
+// real tiles), so Auto avoids CARTO unless a key is set. Grey/GreyDark are
+// ESRI Living Atlas Canvas basemaps that never need a key — same
+// free-for-public-apps basis as Satellite's World_Imagery.
 //
 // Custom is a user-supplied {z}/{x}/{y} template (a self-hosted tile
 // server or caching proxy, a commercial provider with the key baked into
@@ -56,14 +55,15 @@ export function unknownTilePlaceholders(url: string): string[] {
 /**
  * The style actually drawn for a configured one (lowercase, `auto` already
  * resolved): MapTiles needs HA's `map_tiles` integration (2026.10+) and
- * falls back to Light; Custom needs a usable URL and falls back to OSM.
+ * falls back to OSM, the same tiles fetched directly (Light would be blank
+ * without a CARTO key); Custom needs a usable URL and falls back to OSM.
  * Tiles, attribution and the light/dark palette all follow this.
  */
 export function resolveBasemapStyle(
   mapStyle: string,
   opts: { mapTilesLoaded: boolean; customTileUrl?: string },
 ): string {
-  if (mapStyle === 'maptiles' && !opts.mapTilesLoaded) return 'light';
+  if (mapStyle === 'maptiles' && !opts.mapTilesLoaded) return 'osm';
   if (mapStyle === 'custom') {
     const url = opts.customTileUrl?.trim();
     if (!url || unknownTilePlaceholders(url).length > 0) return 'osm';
@@ -105,10 +105,12 @@ export function getBasemapTiles(
         labelsBakedIn: false,
       };
     case 'satellite':
+      // Without a key CARTO's label tiles are "API KEY REQUIRED" placeholders
+      // that would print across the imagery, so leave the labels off.
       return {
         url: `${ESRI_HOST}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
         subdomains: 'abcd',
-        labelUrl: cartoTile('rastertiles/voyager_only_labels', cartoApiKey),
+        labelUrl: cartoApiKey?.trim() ? cartoTile('rastertiles/voyager_only_labels', cartoApiKey) : '',
         labelsBakedIn: false,
       };
     case 'osm':
@@ -119,6 +121,7 @@ export function getBasemapTiles(
         labelsBakedIn: true,
       };
     case 'maptiles':
+    case 'maptiles-dark':
       // HA core's map_tiles integration (2026.10+) — proxies the same OSM
       // raster tiles through the HA instance itself, behind a rotating
       // access token substituted into {token} (see map-tiles-token.ts).
@@ -162,7 +165,7 @@ export function getBasemapTone(
 ): BasemapTone {
   const s = mapStyle?.toLowerCase();
   if (s === 'satellite') return 'satellite';
-  if (s === 'dark' || s === 'greydark') return 'dark';
+  if (s === 'dark' || s === 'greydark' || s === 'maptiles-dark') return 'dark';
   if (s === 'custom') {
     const t = customTileTheme?.toLowerCase();
     return t === 'dark' || t === 'invert' ? 'dark' : 'light';
@@ -179,11 +182,40 @@ export function isDarkBasemapStyle(
 }
 
 /** True when the custom basemap should be colour-inverted by CSS. */
-export function isInvertedCustomBasemap(
+/** True when the basemap is light tiles shown dark by the CSS invert filter:
+ *  Custom with `custom_tile_theme: invert`, or Auto's dark-mode MapTiles. */
+export function isInvertedBasemap(
   mapStyle: string | undefined,
   customTileTheme?: string,
 ): boolean {
-  return mapStyle?.toLowerCase() === 'custom' && customTileTheme?.toLowerCase() === 'invert';
+  const s = mapStyle?.toLowerCase();
+  return s === 'maptiles-dark' || (s === 'custom' && customTileTheme?.toLowerCase() === 'invert');
+}
+
+/** CARTO styles whose tiles are blank without a key (Satellite only loses its labels). */
+const CARTO_STYLES = new Set(['light', 'voyager', 'dark']);
+
+/** True when a CARTO style is chosen without a key, so its tiles will be blank. */
+export function cartoKeyMissing(mapStyle: string | undefined, cartoApiKey?: string): boolean {
+  return CARTO_STYLES.has(mapStyle?.toLowerCase() ?? '') && !cartoApiKey?.trim();
+}
+
+/**
+ * What `map_style: Auto` draws. With a CARTO key, as before: CARTO Dark in
+ * dark mode, CARTO Light for English, OSM otherwise. Without one CARTO is
+ * blank, so: Home Assistant's own map tiles (2026.10+), shown inverted in
+ * dark mode like HA's own map; on older cores the keyless Grey/GreyDark,
+ * or OSM for its localized labels.
+ */
+export function resolveAutoBasemap(opts: {
+  dark: boolean;
+  english: boolean;
+  cartoApiKey?: string;
+  mapTilesLoaded: boolean;
+}): string {
+  if (opts.cartoApiKey?.trim()) return opts.dark ? 'dark' : opts.english ? 'light' : 'osm';
+  if (opts.mapTilesLoaded) return opts.dark ? 'maptiles-dark' : 'maptiles';
+  return opts.dark ? 'greydark' : opts.english ? 'grey' : 'osm';
 }
 
 const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
@@ -208,6 +240,7 @@ export function basemapCredits(
     case 'osm':
     case 'custom':
     case 'maptiles':
+    case 'maptiles-dark':
       return [`${OSM_CREDIT} contributors`];
     case 'satellite':
       return ['&copy; <a href="http://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank">ESRI</a>'];

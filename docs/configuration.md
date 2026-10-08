@@ -31,7 +31,7 @@ All options can be configured using the GUI editor — there is no need to edit 
 | center_latitude               | number / string | **Optional**   | Initial map center latitude — number or entity ID                                                                                                                                                                                                                                                                                                                      | HA instance location                  |
 | center_longitude              | number / string | **Optional**   | Initial map center longitude — number or entity ID                                                                                                                                                                                                                                                                                                                     | HA instance location                  |
 | map_style                     | string          | **Optional**   | Map style (see [Map Style](#map-style))                                                                                                                                                                                                                                                                                                                                | `'Auto'` (follows OS dark/light mode) |
-| carto_api_key                 | string          | **Optional**   | Free CARTO API key (no account needed — see [Map Style](#map-style)) appended to CARTO basemap tile requests. Removes the "API key required" watermark on Light/Voyager/Dark/Satellite tiles. No effect for OSM/Grey/GreyDark/Custom/MapTiles.                                                                                                                         | unset (watermarked anonymous tiles)   |
+| carto_api_key                 | string          | **Optional**   | Free CARTO API key (no account needed — see [Map Style](#map-style)) appended to CARTO basemap tile requests. Required for Light/Voyager/Dark (blank without one) and Satellite's labels. No effect for OSM/Grey/GreyDark/Custom/MapTiles.                                                                                                                             | unset (CARTO styles blank)            |
 | custom_tile_url               | string          | **Optional**   | `map_style: Custom` only. Leaflet tile template for the basemap, e.g. `https://tiles.example.com/{z}/{x}/{y}.png` (`{s}` expands to a/b/c). Tiles must carry their own labels. Blank falls back to OSM — see [Custom tiles](#custom-tiles).                                                                                                                            | unset                                 |
 | custom_tile_attribution       | string          | **Optional**   | `map_style: Custom` only. Plain-text map credit for the footer (HTML is escaped).                                                                                                                                                                                                                                                                                      | `Map tiles: <host>`                   |
 | custom_tile_theme             | string          | **Optional**   | `map_style: Custom` only. `light`, `dark` (tiles are already dark), or `invert` (show light tiles as a dark map via a CSS filter). Picks the matching UI palette.                                                                                                                                                                                                      | `light`                               |
@@ -93,24 +93,27 @@ Specifies the base map style. All CARTO- and Esri-based styles render labels in 
 
 | Value        | Description                                                                                      |
 |--------------|--------------------------------------------------------------------------------------------------|
-| `Auto`       | Follows OS dark/light mode — Dark when system is dark, Light (English) or OSM (other) when light |
-| `Light`      | CARTO Light — English only                                                                       |
-| `Dark`       | CARTO Dark — English only                                                                        |
-| `Voyager`    | CARTO Voyager — English only                                                                     |
-| `Satellite`  | ESRI World Imagery — English only                                                                |
+| `Auto`       | Follows dark/light mode — see below                                                              |
+| `Light`      | CARTO Light — English only, needs a CARTO key                                                    |
+| `Dark`       | CARTO Dark — English only, needs a CARTO key                                                     |
+| `Voyager`    | CARTO Voyager — English only, needs a CARTO key                                                  |
+| `Satellite`  | ESRI World Imagery — labels (English only) need a CARTO key                                      |
 | `OSM`        | OpenStreetMap — labels rendered in local language                                                |
 | `Grey`       | Esri Light Grey Canvas — English only, no CARTO key needed, free without signup                  |
 | `GreyDark`   | Esri Dark Grey Canvas — English only, no CARTO key needed, free without signup                   |
 | `Custom`     | Your own tile URL (`custom_tile_url`) — e.g. a self-hosted tile server or caching proxy          |
 | `MapTiles`   | OpenStreetMap via HA's `map_tiles` integration — localized, no API key, requires HA 2026.10+     |
 
-When `map_style` is not set or set to `Auto`, the card picks Dark when the OS is in dark mode, `Light` for English-language instances in light mode, and `OSM` for all other languages in light mode. The map updates automatically if the OS theme changes.
+When `map_style` is not set or set to `Auto`, the card follows Home Assistant's dark mode (or the OS's) and updates when it changes:
 
-`MapTiles` needs Home Assistant's `map_tiles` integration (2026.10+), which proxies OpenStreetMap tiles through your HA instance. The editor greys out this option when the connected core doesn't have it; if `map_style: MapTiles` is set anyway (e.g. hand-typed YAML, or a core downgrade), the card falls back to `Light` rather than showing a broken map.
+- Without a CARTO key: `MapTiles` (shown inverted in dark mode, as HA's own map does). On cores before 2026.10, `Grey`/`GreyDark` for English and `OSM` for other languages in light mode.
+- With `carto_api_key`: CARTO `Dark` in dark mode, `Light` for English and `OSM` for other languages in light mode.
+
+`MapTiles` needs Home Assistant's `map_tiles` integration (2026.10+), which proxies OpenStreetMap tiles through your HA instance. The editor greys out this option when the connected core doesn't have it; if `map_style: MapTiles` is set anyway (e.g. hand-typed YAML, or a core downgrade), the card falls back to `OSM` rather than showing a broken map.
 
 ### CARTO API key
 
-CARTO's Light/Dark/Voyager tiles, and Satellite's label overlay, now stamp a visible "API key required" watermark on tiles fetched without a key — the tiles still load, just watermarked. A free key (no CARTO account needed — see [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/), 5 million tile requests/month free) removes it. Set it in the editor's Map section, or via `carto_api_key` in YAML. Leaving it unset keeps today's watermarked-but-working tiles — never a hard error. Has no effect for `OSM`, `Grey`, `GreyDark` or `Custom`, none of which use CARTO tiles, nor for `MapTiles` unless it falls back to Light on Home Assistant before 2026.10.
+CARTO's Light/Dark/Voyager tiles, and Satellite's label overlay, need a free API key (no CARTO account needed — see [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/), 5 million tile requests/month free). Without one CARTO sends a blank "API KEY REQUIRED" tile instead of the map, so those styles show a banner saying a key is needed, Satellite drops its labels, and `Auto` uses a keyless style instead. Set the key in the editor's Map section, or via `carto_api_key` in YAML. It has no effect for `OSM`, `Grey`, `GreyDark`, `Custom` or `MapTiles`, none of which use CARTO tiles.
 
 ### Custom tiles
 

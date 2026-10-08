@@ -153,6 +153,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
   }
 
   private _renderMainView(config: WeatherRadarCardConfig): TemplateResult {
+    const cartoKeySuffix = config.carto_api_key?.trim() ? '' : ` · ${localize('editor.map.key_required')}`;
     return html`
       <div class="values">
 
@@ -182,9 +183,9 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
               select: {
                 options: [
                   { value: 'Auto', label: localize('editor.map.style_auto') },
-                  { value: 'Light', label: localize('editor.map.style_light') },
-                  { value: 'Voyager', label: localize('editor.map.style_voyager') },
-                  { value: 'Dark', label: localize('editor.map.style_dark') },
+                  { value: 'Light', label: localize('editor.map.style_light') + cartoKeySuffix },
+                  { value: 'Voyager', label: localize('editor.map.style_voyager') + cartoKeySuffix },
+                  { value: 'Dark', label: localize('editor.map.style_dark') + cartoKeySuffix },
                   { value: 'Satellite', label: localize('editor.map.style_satellite') },
                   { value: 'OSM', label: localize('editor.map.style_osm') },
                   { value: 'Grey', label: localize('editor.map.style_grey') },
@@ -267,7 +268,15 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             `;
           }
           const cartoApplies = !['osm', 'grey', 'greydark', 'maptiles'].includes(style);
+          // Without a key CARTO's tiles are blank placeholders (Satellite just
+          // loses its labels), so say so before the user wonders why.
+          const keyless = ['light', 'voyager', 'dark', 'satellite'].includes(style) && !config.carto_api_key?.trim();
           return cartoApplies ? html`
+            ${keyless ? html`
+              <div class="section-description" style="color: var(--warning-color, #ff9800)">
+                ${localize('editor.map.carto_key_required')}
+              </div>
+            ` : ''}
             <ha-input
               label=${localize('editor.map.carto_api_key')}
               type="password"

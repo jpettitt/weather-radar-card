@@ -22,7 +22,9 @@ import {
   getBasemapTiles,
   getBasemapTone,
   isDarkBasemapStyle,
-  isInvertedCustomBasemap,
+  cartoKeyMissing,
+  isInvertedBasemap,
+  resolveAutoBasemap,
   resolveBasemapStyle,
   unknownTilePlaceholders,
 } from './basemap-styles';
@@ -266,8 +268,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const isDark = typeof haDark === 'boolean'
       ? haDark
       : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (isDark) return 'dark';
-    return isEnglish ? 'light' : 'osm';
+    return resolveAutoBasemap({
+      dark: isDark,
+      english: isEnglish,
+      cartoApiKey: this._config?.carto_api_key,
+      mapTilesLoaded: isMapTilesLoaded(this.hass),
+    });
   }
 
   private _validateCssSize(value: string): boolean {
@@ -657,6 +663,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
           <img id="img-color-bar" height="8" style="vertical-align:top" src=${colourBarSrc} />
         </div>
         <div id="banner-stack" class="banner-stack">
+          ${cartoKeyMissing(this._config.map_style, this._config.carto_api_key) ? html`
+            <div class="status-banner status-banner-info">${localize('ui.carto_key_required')}</div>
+          ` : ''}
           ${getRegionWarnings(this.hass, this._config).map(msg => html`
             <div class="status-banner status-banner-info">${msg}</div>
           `)}
@@ -873,7 +882,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // mapStyle is already resolved (_effectiveMapStyle): 'maptiles' only
     // when HA's map_tiles integration is loaded, so the access_token WS call
     // never goes to a core that doesn't know it.
-    const useMapTiles = mapStyle === 'maptiles';
+    const useMapTiles = mapStyle === 'maptiles' || mapStyle === 'maptiles-dark';
     const badPlaceholders = cfg.map_style?.toLowerCase() === 'custom' && cfg.custom_tile_url
       ? unknownTilePlaceholders(cfg.custom_tile_url) : [];
     if (badPlaceholders.length > 0) {
@@ -885,7 +894,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const { url, subdomains, labelUrl, labelsBakedIn } = getBasemapTiles(
       mapStyle, cfg.carto_api_key, cfg.custom_tile_url,
     );
-    const className = isInvertedCustomBasemap(mapStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
+    const className = isInvertedBasemap(mapStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
 
     // token is a no-op for every other style's URL template; only
     // 'maptiles' references {token}. The layer is created synchronously

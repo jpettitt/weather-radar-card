@@ -234,9 +234,9 @@ export class NwsAlertsLayer {
   }
 
   // Fetch any zone shape we don't already have cached for an alert in
-  // _features. Uses Promise.all over the missing-set; the browser will
-  // throttle to ~6 concurrent requests per origin, which fits comfortably
-  // inside NWS's published rate limits. Re-renders when the batch settles.
+  // _features, all at once (api.weather.gov is HTTP/2, so the browser does
+  // not cap this at ~6; a cold cache can mean hundreds). Re-renders when
+  // the batch settles, and logs one error summarising any failures.
   private async _resolveZones(): Promise<void> {
     const myGen = this._gen;
     const needed = new Set<string>();
@@ -262,8 +262,21 @@ export class NwsAlertsLayer {
     // entry exists before any sync return path (e.g. a persistent-cache hit) can
     // hit the matching `finally { delete }`. We just collect the promises
     // here for the Promise.all join.
-    const promises = Array.from(needed, (url) => this._fetchZone(url, ctrl.signal));
+    const failures: unknown[] = [];
+    const promises = Array.from(needed, (url) => this._fetchZone(url, ctrl.signal, failures));
     await Promise.all(promises);
+    if (failures.length > 0) {
+      // One line per batch, not per zone: a rate-limited burst fails
+      // hundreds at once. NWS's limiter blocks without CORS headers, which
+      // the browser reports as a status-less TypeError.
+      const blocked = failures.some((e) => e instanceof TypeError);
+      console.error(
+        `NWS alerts: ${failures.length} of ${needed.size} zone requests failed`
+        + (blocked ? ' (status-less: NWS may be rate-limiting this address)' : '')
+        + '; those alerts stay without shapes until the next refresh.',
+        failures[0],
+      );
+    }
     if (myGen !== this._gen) return;   // stale (cleared / reconfigured during the fetch)
     if (this._zoneAbortCtrl === ctrl) this._zoneAbortCtrl = null;
 
@@ -273,7 +286,7 @@ export class NwsAlertsLayer {
     this._render({ skipIfDecisionsUnchanged: true });
   }
 
-  private async _fetchZone(url: string, signal: AbortSignal): Promise<void> {
+  private async _fetchZone(url: string, signal: AbortSignal, failures: unknown[] = []): Promise<void> {
     // Self-register so concurrent callers dedupe. Registration must happen
     // BEFORE the persistent-cache early-return path so the matching `finally
     // { delete }` always pairs with a real entry, never a stale one. If
@@ -313,10 +326,9 @@ export class NwsAlertsLayer {
       // Deliberate cancellation — alert list was replaced; new
       // _resolveZones pass will refetch any still-relevant zones.
       if ((err as Error)?.name === 'AbortError') return;
-      // Per-zone failures are common (404s on retired zones, transient
-      // network blips). Log once and move on; the alert's other zones
-      // may still resolve and render.
-      console.warn('NWS alerts: zone fetch failed', url, err);
+      // Per-zone failures happen (404s on retired zones, blips); the
+      // alert's other zones may still resolve. _resolveZones logs them.
+      failures.push(err);
     } finally {
       this._zoneFetches.delete(url);
       resolveOuter();

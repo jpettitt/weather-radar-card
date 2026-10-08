@@ -117,7 +117,7 @@ const DEFAULT_MAX_CELLS = 50_000;
 //
 // What axes 0/1 mean and what the bands carry depends on the source —
 // for DWD ICON-D2 axes are (lon, lat) degrees and bands are (U, V) m/s,
-// for NDFD axes are (X, Y) EPSG:3857 metres and bands are (speed m/s,
+// for NDFD axes are (X, Y) EPSG:3857 metres and bands are (speed knots,
 // direction °). parseRawWcsGrid extracts the geometry + raw bands
 // without interpretation; the source-specific finalizers below convert
 // to the canonical lat/lon WindGrid.
@@ -217,7 +217,7 @@ export function parseWcsTextGrid(body: string): WindGrid {
 }
 
 /** NDFD finalizer: axes are (X, Y) in EPSG:3857 metres, bands are (wind
- * speed m/s, wind direction degrees, meteorological "from"). Converts
+ * speed knots, wind direction degrees, meteorological "from"). Converts
  * the bbox bounds to lat/lon, picks a representative degree step at the
  * bbox centre latitude, and converts speed/direction to U/V components.
  *
@@ -264,12 +264,16 @@ export function parseNdfdWcsGrid(body: string): WindGrid {
   // it worse: a sample near a coverage edge mixes valid and 9999,
   // giving an interpolated value that's still in the thousands.
   //
-  // Any wind speed above ~150 m/s is well past Category 5 / strong
-  // tornado peaks (~145 m/s); 200 is a comfortable cutoff for
-  // distinguishing real values from the sentinel without false
+  // The raw band is knots: 200 kt (~103 m/s) is well past any forecast
+  // grid's sustained wind (strongest hurricanes ~160 kt), a comfortable
+  // cutoff for distinguishing real values from the sentinel without false
   // positives. Direction outside [0, 360] is also a clear sentinel
   // signal. Either condition → treat the cell as calm.
   const SPEED_SENTINEL_THRESHOLD = 200;
+  // NDFD's GeoServer coverage serves speed in knots (its DescribeCoverage
+  // unit is bogus): OKC 2026-10-08 21Z read 6.03 where api.weather.gov's
+  // gridpoint said 11.1 km/h = 6.0 kt. U/V everywhere else are m/s.
+  const KNOTS_TO_MS = 0.514444;
   const cells: { u: number; v: number }[][] = [];
   for (let r = 0; r < raw.rows; r++) {
     const fileRow = raw.rows - 1 - r;
@@ -284,9 +288,10 @@ export function parseNdfdWcsGrid(body: string): WindGrid {
         continue;
       }
       const rad = direction * Math.PI / 180;
+      const ms = speed * KNOTS_TO_MS;
       row.push({
-        u: -speed * Math.sin(rad),
-        v: -speed * Math.cos(rad),
+        u: -ms * Math.sin(rad),
+        v: -ms * Math.cos(rad),
       });
     }
     cells.push(row);

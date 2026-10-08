@@ -2,6 +2,7 @@
 import { HomeAssistant } from 'custom-card-helpers';
 import { WeatherRadarCardConfig } from './types';
 import { localize } from './localize/localize';
+import { NOAA_REGIONS } from './noaa-frame-list';
 
 // Returns banner messages for any enabled overlay/data-source whose coverage
 // region doesn't include the user's HA-configured country. Empty array means
@@ -76,7 +77,9 @@ export function getRegionWarnings(
     ? cfg.center_longitude
     : (hass?.config as any)?.longitude;
   const showingUs = inBbox(centreLat, centreLon, US_COVERAGE_BBOX)
-    || inBbox(centreLat, centreLon, US_ALEUTIAN_BBOX);
+    || inBbox(centreLat, centreLon, US_ALEUTIAN_BBOX)
+    // NOAA's own mosaics — adds Guam, west of the antimeridian.
+    || NOAA_REGIONS.some((r) => inBbox(centreLat, centreLon, r.bbox));
   const showingDwd = inBbox(centreLat, centreLon, DWD_COVERAGE_BBOX);
 
   // Catalogue of features that only have US data coverage. Each entry's

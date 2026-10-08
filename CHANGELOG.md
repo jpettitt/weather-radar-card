@@ -14,8 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking: without a CARTO key, `Auto` uses Home Assistant's map tiles** — CARTO now answers keyless requests with a blank "API KEY REQUIRED" tile instead of a watermarked map, and `Auto` picked CARTO Light/Dark, so the map was blank. Without `carto_api_key`, `Auto` now uses HA's own map tiles (2026.10+, inverted in dark mode like HA's map), or Grey/GreyDark/OSM on older cores. To keep CARTO's look, add a free key ([carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/), no account needed). Choosing a CARTO style without a key shows a banner, the editor marks those styles as needing a key, Satellite drops its CARTO labels, and `MapTiles` on an older core falls back to OSM instead of CARTO Light.
 - **History loads before the forecast** — frames load one at a time from "now"; the forecast used to come next, so a cached history loop waited behind DWD's slower forecast requests on every reload. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
+- **RainViewer requests are capped at 250 a minute** (was 500) — its tile server allows 500 and its FAQ says 100 per IP, shared by every device behind one router.
+- **Failed NWS zone requests are logged** — one console error per batch with the count, instead of a warning per zone.
 - **DWD forecast frames are always pinned to a nowcast run**, with or without `forecast_refresh_minutes`, so their tiles can be cached. The tile requests gain a `DIM_REFERENCE_TIME` parameter; what they show doesn't change.
+
+### Fixed
+
+- **US wind (NWS NDFD) was about 1.9× too strong** — the NDFD coverage serves speed in knots and the card read it as m/s, so barbs, arrow colours and flow speeds overstated the wind.
+- **NWS "Extreme Heat" alerts were uncategorised** — NWS renamed Excessive Heat to Extreme Heat, and a dozen other current event types (dust storms, freezing spray, Tropical Cyclone Local Statement, Lake Wind Advisory…) were unmapped, so they showed in `other` with the fallback colour. Every event NWS issues now has its official colour.
+- **DWD's heaviest rain could be cut out** — the 45–75 mm/h colour of the default precipitation layer, and the ≥ 85 dBZ class of the dBZ layer, were read as coverage-mask pixels and removed.
+- **RainViewer loops could cover more than `past_minutes`** — RainViewer's list sometimes skips a 10-minute frame, and the card took the last N frames, so a 60-minute loop reached back 70 minutes. Frames are now picked by time.
+- **NOAA loops could stay on 10-minute frames after a listing hiccup** — if opengeo's frame listing couldn't be fetched when the card started, it fell back to the legacy 10-minute grid, and after the listing came back the loop kept the fallback's frame count until a reload (a 60-minute, 2-minute-stride loop covered 12 minutes). The card now rebuilds the loop at the configured stride once the listing is back.
+- **Loops with a frame interval longer than their refresh drifted down to it** — every refresh took the newest frame as a new one, so a running NOAA 10-minute loop filled with 5-minute frames and covered half its window, and a RainViewer `frame_stride_minutes: 20` loop played at 10 minutes. Frames now stay on the grid the loop started on, so the newest can be up to one interval old; cards with the same source and interval share the grid, and a reload within half the loop's window keeps it.
+- **NOAA radar was blank in Alaska, Hawaii, Puerto Rico and Guam** since 3.7 — the card drew only opengeo's continental US mosaic. Tiles now include every US regional mosaic, and a map centred outside the continental US takes its frame times from its own region's listing.
 
 ## [3.11.0] - 2026-10-07
 

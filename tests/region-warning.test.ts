@@ -283,6 +283,12 @@ describe('getRegionWarnings — Aleutian antimeridian box', () => {
     expect(result).toEqual([]);
   });
 
+  it("suppresses the NOAA warning on Guam, which NOAA's guam mosaic covers", () => {
+    // HA reports Guam as its own country (GU), and it sits east of the
+    // antimeridian, outside the main US box.
+    expect(getRegionWarnings(hassFor('GU'), cfg({ data_source: 'NOAA', center_latitude: 13.44, center_longitude: 144.79 }))).toEqual([]);
+  });
+
   it('still fires for non-US locations at similar latitudes (Kamchatka)', () => {
     const [msg, ...rest] = getRegionWarnings(
       hassFor('DE'),

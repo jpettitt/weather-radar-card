@@ -17,8 +17,9 @@ import {
   rememberRun, swappableFrames,
 } from './forecast-refresh';
 import {
-  fetchNoaaFrameTimes, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
+  fetchNoaaFrameTimes, noaaRegionAt, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
 } from './noaa-frame-list';
+import { gridPhase, recallStridePhase, rememberStridePhase } from './stride-phase';
 import { extractChannel } from './lk';
 import { createLkWorker, LkWorkerClient, estimateMotionLk } from './lk-worker';
 
@@ -58,6 +59,29 @@ export function buildLoadOrder(frameCount: number, nowIndex: number): number[] {
   for (let fi = now; fi >= 0; fi--) order.push(fi);
   for (let fi = now + 1; fi < frameCount; fi++) order.push(fi);
   return order;
+}
+
+/**
+ * RainViewer frames on the stride grid at `phaseSec` (see stride-phase.ts;
+ * default: on the newest frame), inside `pastMin` of the newest one on it.
+ * By time, not count: the list (up to 13 frames, 10 min apart) can skip a
+ * slot — 12 frames with one 20-min gap on 2026-10-08 — and the last N frames
+ * then reached 10 min further back than past_minutes. A 60 s tolerance
+ * absorbs any jitter in frame times.
+ */
+export function pickRainViewerFrames<T extends { time: number }>(
+  past: T[], pastMin: number, strideMin: number, phaseSec?: number,
+): T[] {
+  const newest = past[past.length - 1]?.time;
+  if (newest === undefined) return [];
+  const strideSec = Math.max(600, Math.round(strideMin * 60));
+  const phase = gridPhase(phaseSec ?? newest, strideSec);
+  const onGrid = past.filter((f) => {
+    const off = gridPhase(f.time - phase, strideSec);
+    return Math.min(off, strideSec - off) < 60;
+  });
+  const last = onGrid[onGrid.length - 1]?.time ?? 0;
+  return onGrid.filter((f) => last - f.time <= pastMin * 60 + 60);
 }
 
 /**
@@ -133,6 +157,8 @@ export interface RadarFrame {
   run?: number;
   /** Loaded before DWD's run was known; may hold a forecast — see RunFrame. */
   unverified?: boolean;
+  /** From NOAA's legacy 10-min fallback grid (opengeo listing unavailable). */
+  legacy?: boolean;
 }
 
 /**
@@ -197,6 +223,7 @@ export const WN_PALETTE_PURPLES = new Set<number>([
   (255 << 16) | (51 << 8) | 255,
 ]);
 export const RV_PALETTE_PURPLES = new Set<number>([
+  (229 << 16) | (0 << 8) | 76,   // 45–75 mm/h — red-purple, passes the purple-shape test
   (204 << 16) | (0 << 8) | 152,
   (102 << 16) | (0 << 8) | 203,
 ]);
@@ -224,7 +251,9 @@ export function classifyDwdPixel(
     // R≈G≈B; magenta-blend edges don't.
     return Math.abs(r - g) <= 15 && Math.abs(g - b) <= 15 ? 'grey' : 'outline';
   }
-  if (r === g && g === b) return 'grey';
+  // Opaque black is the dBZ layer's ≥ 85 dBZ class, not wash: the wash is
+  // never opaque (alpha 77 or 128, depending on the layer).
+  if (r === g && g === b && r !== 0) return 'grey';
   if (g === 0 && b === 255) return 'outline';
   // Purple-shape: G is the smallest channel, R and B both bright. Any
   // such pixel that's not a palette entry is an outline-on-data blend.
@@ -455,6 +484,12 @@ export class RadarPlayer {
   // the tile layers point at; reset to false on the next successful
   // listing fetch.
   private _noaaLegacyMode = false;
+  // NOAA region whose scan times drive the loop, chosen from the map centre
+  // when the loop is built (see noaaRegionAt); null until then.
+  private _noaaListingRegion: string | null = null;
+  // The loop's stride grid phase (stride-phase.ts), fixed at its first
+  // listing; null until then.
+  private _stridePhaseSec: number | null = null;
   // Displayed frame count. Starts as the caller's request but is
   // re-derived from reality as frames arrive: _initRadar sets it to the
   // number of frames the API actually returned, and _dedupFrames shrinks
@@ -469,6 +504,8 @@ export class RadarPlayer {
   // count made every pan/zoom take the full teardown + refetch branch
   // forever once they diverged.
   private _requestedFrameCount = 5;
+  // Frames the source's listing gave the last init (before motion-comp dedup).
+  private _listedFrameCount = 0;
   private _doRadarUpdate = false;
   // Trailing debounce for the post-view-change refresh work
   // (motion-comp resnapshot + coverage-clip rebuild). Tracked-marker
@@ -1899,7 +1936,12 @@ export class RadarPlayer {
     }
     if (newestMs === null) return null;
     const age = Math.floor((nowMs - newestMs) / 60_000);
-    return age > getSourceCaps(source).staleAfterMin ? age : null;
+    const caps = getSourceCaps(source);
+    // A listed source's newest frame waits for the next slot of its stride
+    // (stride-phase.ts), so a stride longer than the threshold allows for adds to it.
+    const sizedFor = Math.max(caps.intervalMin, ...(caps.strideChoices ?? []));
+    const slack = source === 'DWD' ? 0 : Math.max(0, getEffectiveTimeRange(this._cfg).strideMin - sizedFor);
+    return age > caps.staleAfterMin + slack ? age : null;
   }
 
   private _highlightSegment(fi: number): void {
@@ -2027,6 +2069,8 @@ export class RadarPlayer {
     this._dwdLatestRun = null;
     this._catchUpRun = null;
     this._catchUpPending = false;
+    this._noaaListingRegion = null;
+    this._stridePhaseSec = null;
   }
 
   // Resolve the DWD WMS layer the player is currently using. Niederschlagsradar
@@ -2273,8 +2317,14 @@ export class RadarPlayer {
       try {
         this._pathsAbortCtrl?.abort();
         this._pathsAbortCtrl = new AbortController();
-        const listed = await fetchNoaaFrameTimes(this._pathsAbortCtrl.signal);
-        const times = pickFrameTimes(listed, range.pastMin, range.strideMin);
+        if (this._noaaListingRegion === null) {
+          const c = this._map?.getCenter?.();
+          this._noaaListingRegion = c ? noaaRegionAt(c.lat, c.lng) : 'conus';
+        }
+        const listed = await fetchNoaaFrameTimes(this._pathsAbortCtrl.signal, this._noaaListingRegion);
+        const times = listed.length === 0 ? [] : pickFrameTimes(
+          listed, range.pastMin, range.strideMin, this._stridePhase('NOAA', listed[listed.length - 1], range),
+        );
         if (times.length > 0) {
           this._noaaLegacyMode = false;
           return times.map((t) => ({ time: t, path: '' }));
@@ -2304,7 +2354,7 @@ export class RadarPlayer {
       const legacyCount = Math.max(1, Math.floor(range.pastMin / NOAA_LEGACY_STRIDE_MIN) + 1);
       const frames: RadarFrame[] = [];
       for (let i = legacyCount - 1; i >= 0; i--) {
-        frames.push({ time: (snap - i * legacyStrideMs) / 1000, path: '' });
+        frames.push({ time: (snap - i * legacyStrideMs) / 1000, path: '', legacy: true });
       }
       return frames;
     }
@@ -2353,15 +2403,23 @@ export class RadarPlayer {
     const past: RadarFrame[] = (data?.radar?.past ?? []).map((f: any) => ({
       time: f.time, path: f.path, host,
     }));
-    // RainViewer returns at most 13 past frames at fixed 10-min spacing.
-    // Take the last `frameCount` — already capped by getEffectiveTimeRange
-    // against maxPastMin (120 min = 12 native frames + the "now" frame).
-    // Stride > 10 min (an unusual YAML override) is honoured by skipping
-    // intermediate frames in the slice.
-    const stridedFrames = strideMs > 10 * 60_000
-      ? past.filter((_, i) => (past.length - 1 - i) % Math.round(strideMs / (10 * 60_000)) === 0)
-      : past;
-    return stridedFrames.slice(-Math.min(frameCount, 13));
+    if (past.length === 0) return [];
+    const phase = this._stridePhase('RainViewer', past[past.length - 1].time, range);
+    return pickRainViewerFrames(past, range.pastMin, range.strideMin, phase);
+  }
+
+  // The loop's stride grid phase: on its first listing, the phase cards on
+  // this source and stride last used if that was under half the window ago,
+  // else the newest frame's. Each listing marks it as used.
+  private _stridePhase(source: string, newestSec: number, range: { pastMin: number; strideMin: number }): number {
+    const strideSec = Math.round(range.strideMin * 60);
+    const now = Date.now();
+    if (this._stridePhaseSec === null) {
+      this._stridePhaseSec = recallStridePhase(source, strideSec, now, range.pastMin * 30_000)
+        ?? gridPhase(newestSec, strideSec);
+    }
+    rememberStridePhase(source, strideSec, this._stridePhaseSec, now);
+    return this._stridePhaseSec;
   }
 
   // WMS params pinning a DWD forecast frame to its run. Leaflet WMS turns
@@ -2612,6 +2670,7 @@ export class RadarPlayer {
     this._lastFrameRefreshAt = Date.now();
     const frameCount = pastFrames.length;
     this._configFrameCount = frameCount;
+    this._listedFrameCount = frameCount;
     this._computeNowFrameIndex();
 
     this._buildSegments();
@@ -2886,6 +2945,21 @@ export class RadarPlayer {
     const latestRun = await runPromise;
     if (myGen !== this._frameGeneration) return; // torn down while fetching
     if (pastFrames.length === 0) { this._scheduleUpdate(); return; } // no frames from API
+    // NOAA's listing is back after the loop took frames from the legacy
+    // 10-min grid: rebuild at the configured stride. Shifting in the new
+    // frames kept the 10-min frames until they aged out, and a loop that
+    // started in fallback kept its frame count (a 60-min loop covered 12).
+    // RainViewer: a skipped 10-min slot entering or leaving the window
+    // changes how many frames it holds, which shifting (one in, one out)
+    // can't follow. Rebuild — the tiles come from the cache.
+    const rainViewerRecount = (this._cfg.data_source ?? 'RainViewer') === 'RainViewer'
+      && this._listedFrameCount > 0 && pastFrames.length !== this._listedFrameCount;
+    if ((!this._noaaLegacyMode && this._radarPaths.some((f) => f.legacy)) || rainViewerRecount) {
+      this._doRadarUpdate = false;
+      this._clearLayers();
+      void this._initRadar();
+      return;
+    }
     // A failed fetch keeps the last known run: still a valid "final up to",
     // and still a valid pin. Never step back to an older run — a lagging
     // server node would otherwise re-pin observed frames to an old forecast.

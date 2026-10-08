@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  parseTimeDimension, pickFrameTimes, fetchNoaaFrameTimes,
+  parseTimeDimension, pickFrameTimes, fetchNoaaFrameTimes, noaaRegionAt,
   NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
 } from '../src/noaa-frame-list';
 import { getEffectiveTimeRange } from '../src/source-caps';
@@ -121,9 +121,36 @@ describe('fetchNoaaFrameTimes', () => {
 
 describe('opengeo endpoint constants', () => {
   // A typo here would only show up as blank radar in production.
-  it('pin the WMS endpoint and layer the radar tiles are requested from', () => {
-    expect(NOAA_OPENGEO_WMS_URL).toBe('https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows');
-    expect(NOAA_OPENGEO_LAYER).toBe('conus_bref_qcd');
+  it('request every regional mosaic through the global endpoint, CONUS last (drawn on top)', () => {
+    expect(NOAA_OPENGEO_WMS_URL).toBe('https://opengeo.ncep.noaa.gov/geoserver/ows');
+    expect(NOAA_OPENGEO_LAYER).toBe(
+      'hawaii:hawaii_bref_qcd,alaska:alaska_bref_qcd,carib:carib_bref_qcd,guam:guam_bref_qcd,conus:conus_bref_qcd',
+    );
+  });
+
+  it("reads a region's own listing", async () => {
+    const fn = vi.fn(async () => ({ ok: true, text: async () => '' }));
+    vi.stubGlobal('fetch', fn);
+    await fetchNoaaFrameTimes(undefined, 'hawaii');
+    expect(String((fn.mock.calls[0] as unknown[])[0])).toBe(
+      'https://opengeo.ncep.noaa.gov/geoserver/hawaii/hawaii_bref_qcd/ows?service=WMS&version=1.3.0&request=GetCapabilities',
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('noaaRegionAt', () => {
+  it.each([
+    ['Honolulu', 21.31, -157.86, 'hawaii'],
+    ['Anchorage', 61.22, -149.9, 'alaska'],
+    ['San Juan', 18.47, -66.11, 'carib'],
+    ['Guam', 13.44, 144.79, 'guam'],
+    ['Miami (CONUS and Caribbean overlap: CONUS wins)', 25.76, -80.19, 'conus'],
+    ['Kansas City', 39.1, -94.58, 'conus'],
+    ['Berlin (outside every region)', 52.52, 13.4, 'conus'],
+    ['Honolulu one world-wrap east', 21.31, -157.86 + 360, 'hawaii'],
+  ])('%s → %s', (_name, lat, lon, region) => {
+    expect(noaaRegionAt(lat, lon)).toBe(region);
   });
 });
 
@@ -177,10 +204,45 @@ describe('pickFrameTimes', () => {
     expect(pickFrameTimes([1000, 1120], 1, 1)).toEqual([1120]);
   });
 
-  it('clamps to the oldest entry when the window reaches back past the listing', () => {
-    // Newest 1360, 5 min back => ideals 1060..1360; those before 1300
-    // (the oldest listed time) all snap to it.
+  it('leaves out slots before the listing starts', () => {
+    // Newest 1360, 5 min back => ideals 1060..1360; 1240 snaps to 1300 (60 s),
+    // and 1060..1180 are more than 90 s before the oldest listed time.
     expect(pickFrameTimes([1300, 1360], 5, 1)).toEqual([1300, 1360]);
+  });
+
+  // The grid stays where the loop started (stride-phase.ts): re-anchoring on
+  // the newest scan at every 5-min refresh turned a 10-min loop into a 5-min one.
+  describe('on a fixed grid phase', () => {
+    const scans = (fromMin: number, toMin: number): number[] =>
+      Array.from({ length: (toMin - fromMin) / 2 + 1 }, (_, i) => t0 + (fromMin + i * 2) * 60 + 3);
+    const atLoad = scans(0, 60);
+    const phase = atLoad[atLoad.length - 1]; // newest scan at load: t0 + 60 min + 3 s
+
+    it('adds no frame until a scan reaches the next slot', () => {
+      const before = pickFrameTimes(atLoad, 60, 10, phase);
+      expect(pickFrameTimes(scans(4, 66), 60, 10, phase).at(-1)).toBe(before.at(-1));
+      expect(pickFrameTimes(scans(10, 70), 60, 10, phase).at(-1)).toBe(phase + 600);
+    });
+
+    it('matches anchoring on the newest scan when the phase is that scan', () => {
+      expect(pickFrameTimes(atLoad, 60, 10, phase)).toEqual(pickFrameTimes(atLoad, 60, 10));
+    });
+
+    it('takes a scan up to 90 s from its slot, and no further', () => {
+      const sparse = Array.from({ length: 7 }, (_, i) => t0 + i * 600);
+      const newest = sparse[6];
+      expect(pickFrameTimes(sparse, 60, 10, newest - 80)).toEqual(sparse);
+      // The slot 80 s after the newest scan isn't settled, so that scan waits for it.
+      expect(pickFrameTimes(sparse, 60, 10, newest + 80)).toEqual(sparse.slice(0, 6));
+      expect(pickFrameTimes(sparse, 60, 10, newest + 100)).toEqual([]);
+    });
+
+    it('leaves out a slot with no scan within 90 s (an outage)', () => {
+      const gap = scans(0, 60).filter((t) => t < t0 + 25 * 60 || t > t0 + 35 * 60);
+      const out = pickFrameTimes(gap, 60, 10, phase);
+      expect(out).not.toContain(t0 + 30 * 60 + 3);
+      expect(out).toHaveLength(6);
+    });
   });
 });
 

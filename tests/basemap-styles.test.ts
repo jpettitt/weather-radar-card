@@ -2,11 +2,13 @@ import { describe, it, expect } from 'vitest';
 import * as L from 'leaflet';
 import {
   basemapCredits,
+  cartoKeyMissing,
+  resolveAutoBasemap,
   getBasemapTiles,
   getBasemapTone,
   getCustomAttribution,
   isDarkBasemapStyle,
-  isInvertedCustomBasemap,
+  isInvertedBasemap,
   resolveBasemapStyle,
   unknownTilePlaceholders,
 } from '../src/basemap-styles';
@@ -164,13 +166,13 @@ describe('getBasemapTone / isDarkBasemapStyle', () => {
   });
 });
 
-describe('isInvertedCustomBasemap', () => {
+describe('isInvertedBasemap', () => {
   it('only inverts a custom basemap with custom_tile_theme: invert', () => {
-    expect(isInvertedCustomBasemap('custom', 'invert')).toBe(true);
-    expect(isInvertedCustomBasemap('Custom', 'Invert')).toBe(true);
-    expect(isInvertedCustomBasemap('custom', 'dark')).toBe(false);
-    expect(isInvertedCustomBasemap('custom')).toBe(false);
-    expect(isInvertedCustomBasemap('osm', 'invert')).toBe(false);
+    expect(isInvertedBasemap('custom', 'invert')).toBe(true);
+    expect(isInvertedBasemap('Custom', 'Invert')).toBe(true);
+    expect(isInvertedBasemap('custom', 'dark')).toBe(false);
+    expect(isInvertedBasemap('custom')).toBe(false);
+    expect(isInvertedBasemap('osm', 'invert')).toBe(false);
   });
 });
 
@@ -200,8 +202,8 @@ describe('unknownTilePlaceholders', () => {
 describe('resolveBasemapStyle', () => {
   const custom = 'https://tiles.example.com/{z}/{x}/{y}.png';
 
-  it('falls back to Light for MapTiles without the map_tiles integration', () => {
-    expect(resolveBasemapStyle('maptiles', { mapTilesLoaded: false })).toBe('light');
+  it('falls back to OSM for MapTiles without the map_tiles integration', () => {
+    expect(resolveBasemapStyle('maptiles', { mapTilesLoaded: false })).toBe('osm');
     expect(resolveBasemapStyle('maptiles', { mapTilesLoaded: true })).toBe('maptiles');
   });
 
@@ -238,5 +240,52 @@ describe('basemapCredits', () => {
     expect(basemapCredits('custom', 'https://t.example.com/{z}/{x}/{y}.png', 'My tiles')).toEqual(['My tiles']);
     expect(basemapCredits('custom', 'https://t.example.com/{z}/{x}/{y}.png')).toEqual(['Map tiles: t.example.com']);
     expect(basemapCredits('custom', '/local/{z}/{x}/{y}.png')).toEqual([]);
+  });
+});
+
+// CARTO answers keyless requests with a blank "API KEY REQUIRED" tile
+// (checked 2026-10-08), so Auto must not pick it without a key.
+describe('resolveAutoBasemap', () => {
+  const auto = (dark: boolean, english: boolean, key: string | undefined, mapTilesLoaded: boolean): string =>
+    resolveAutoBasemap({ dark, english, cartoApiKey: key, mapTilesLoaded });
+
+  it("uses Home Assistant's map tiles without a CARTO key, inverted in dark mode", () => {
+    expect(auto(false, true, undefined, true)).toBe('maptiles');
+    expect(auto(true, true, '', true)).toBe('maptiles-dark');
+  });
+
+  it('falls back to the keyless Grey styles (OSM for other languages) on older cores', () => {
+    expect(auto(false, true, undefined, false)).toBe('grey');
+    expect(auto(true, false, undefined, false)).toBe('greydark');
+    expect(auto(false, false, undefined, false)).toBe('osm');
+  });
+
+  it('keeps the CARTO choice when a key is set', () => {
+    expect(auto(false, true, 'k', true)).toBe('light');
+    expect(auto(true, false, 'k', true)).toBe('dark');
+    expect(auto(false, false, 'k', true)).toBe('osm');
+  });
+});
+
+describe('maptiles-dark (Auto in dark mode)', () => {
+  it('draws MapTiles through the invert filter with the dark palette', () => {
+    expect(getBasemapTiles('maptiles-dark').url).toBe(getBasemapTiles('maptiles').url);
+    expect(isInvertedBasemap('maptiles-dark')).toBe(true);
+    expect(isDarkBasemapStyle('maptiles-dark')).toBe(true);
+    expect(basemapCredits('maptiles-dark')).toEqual(basemapCredits('maptiles'));
+  });
+});
+
+describe('cartoKeyMissing', () => {
+  it('flags the CARTO styles without a key, and nothing else', () => {
+    for (const style of ['Light', 'voyager', 'Dark']) expect(cartoKeyMissing(style, undefined)).toBe(true);
+    expect(cartoKeyMissing('Light', '  ')).toBe(true);
+    expect(cartoKeyMissing('Light', 'k')).toBe(false);
+    for (const style of ['Auto', 'Satellite', 'OSM', 'Grey', 'MapTiles', undefined]) expect(cartoKeyMissing(style, undefined)).toBe(false);
+  });
+
+  it("leaves Satellite's CARTO labels off without a key", () => {
+    expect(getBasemapTiles('satellite').labelUrl).toBe('');
+    expect(getBasemapTiles('satellite', 'k').labelUrl).toContain('voyager_only_labels');
   });
 });
