@@ -9,7 +9,9 @@ import {
   hasInflight,
   memoGet,
   isCacheableTile,
+  isFinalRequest,
   persistUntilFor,
+  pinnedForecastPolicy,
   persistedGet,
   sharedFetch,
   storeTile,
@@ -282,5 +284,31 @@ describe('sharedFetch', () => {
     await expect(p1).rejects.toMatchObject({ status: 429 });
     await expect(p2).rejects.toMatchObject({ status: 429 });
     expect(hasInflight('u')).toBe(false);
+  });
+});
+
+describe('pinnedForecastPolicy / isFinalRequest', () => {
+  const run = Date.UTC(2026, 9, 8, 16, 35);
+  const frame = run + 60 * MIN;
+
+  it('keeps a run-pinned forecast tile only as long as a reload could reuse the run', () => {
+    expect(pinnedForecastPolicy(frame, run)).toEqual({
+      persistUntil: run + 35 * MIN,
+      finalBefore: frame - 5 * MIN,
+    });
+  });
+
+  it('counts a pinned request as final only while its frame is still 5+ min ahead', () => {
+    // Once the frame time passes, DWD answers the same URL with observations.
+    const policy = pinnedForecastPolicy(frame, run);
+    expect(isFinalRequest(policy, frame - 6 * MIN)).toBe(true);
+    expect(isFinalRequest(policy, frame - 5 * MIN)).toBe(false);
+    expect(isFinalRequest(policy, frame + MIN)).toBe(false);
+  });
+
+  it('treats other policies as before: final exactly when they persist', () => {
+    expect(isFinalRequest(undefined, 0)).toBe(false);
+    expect(isFinalRequest({}, 0)).toBe(false);
+    expect(isFinalRequest({ persistUntil: 1 }, Date.now())).toBe(true);
   });
 });

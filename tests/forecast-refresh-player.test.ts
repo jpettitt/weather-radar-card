@@ -174,3 +174,106 @@ describe('forecast refresh in the player', () => {
     expect([frame, loading, staged].map((l) => l.options.minNativeZoom)).toEqual([8, 8, 8]);
   });
 });
+
+// Forecast tiles that survive a reload (#279, 3.12): forecast frames are
+// pinned to a run whenever one is known, a reload reuses the last run used
+// (cached) if it's at most 30 min old, then catches up to the newest.
+describe('forecast cache in the player', () => {
+  const realFetch = global.fetch;
+  const LAYER = 'Radar_wn-product_1x1km_ger';
+  // Run times near the real clock: chooseStartRun judges age against now.
+  const latest = Math.floor(Date.now() / 300_000) * 300 - 300;
+  const NO_REFRESH: Partial<WeatherRadarCardConfig> = { data_source: 'DWD', past_minutes: 30, forecast_minutes: 60 };
+  // Fires 'load' on the next turn, so init runs to the end.
+  const settlingLayer = (): any => {
+    const l = fakeLayer();
+    l._tileFailed = 0;
+    l.once = vi.fn((ev: string, cb: () => void) => { if (ev === 'load') setTimeout(cb, 0); });
+    return l;
+  };
+  const frameTimes = (): RadarFrame[] => [-1200, -600, 0, 600, 1200].map((d) => ({ time: latest + d, path: '' }));
+  const runOf = (p: any): Array<number | undefined> => p._radarPaths.map((f: RadarFrame) => f.run);
+
+  beforeEach(() => {
+    localStorage.clear();
+    global.fetch = vi.fn(async () => new Response(caps(latest), { status: 200 })) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = realFetch;
+    localStorage.clear();
+  });
+
+  it('pins forecast frames to the run with forecast refresh off too', async () => {
+    const p = makePlayer(NO_REFRESH);
+    p._fetchPaths = vi.fn(async () => frameTimes());
+    p._createLayer = vi.fn(() => fakeLayer());
+
+    void p._initRadarBody(p._frameGeneration);
+    await flush();
+    await flush();
+    expect(runOf(p)).toEqual([undefined, undefined, undefined, latest, latest]);
+    expect(localStorage.getItem(`weather-radar-card:dwd-forecast-run:${LAYER}`)).toBe(String(latest));
+  });
+
+  it('starts from a remembered run up to 30 min old, then catches up to the newest', async () => {
+    const remembered = latest - 600;
+    localStorage.setItem(`weather-radar-card:dwd-forecast-run:${LAYER}`, String(remembered));
+    const p = makePlayer(NO_REFRESH);
+    p._fetchPaths = vi.fn(async () => frameTimes());
+    p._createLayer = vi.fn(() => settlingLayer());
+    p._startLoop = vi.fn();
+    p._refreshForecast = vi.fn(() => true);
+
+    await p._initRadarBody(p._frameGeneration);
+    // Cached run first: every frame after it, including the one now observed.
+    expect(runOf(p)).toEqual([undefined, undefined, remembered, remembered, remembered]);
+    expect(p._refreshForecast).toHaveBeenCalledWith(latest);
+    expect(p._catchUpPending).toBe(true);
+  });
+
+  it('ignores a remembered run more than 30 min old', async () => {
+    localStorage.setItem(`weather-radar-card:dwd-forecast-run:${LAYER}`, String(latest - 2400));
+    const p = makePlayer(NO_REFRESH);
+    p._fetchPaths = vi.fn(async () => frameTimes());
+    p._createLayer = vi.fn(() => settlingLayer());
+    p._startLoop = vi.fn();
+    p._refreshForecast = vi.fn(() => true);
+
+    await p._initRadarBody(p._frameGeneration);
+    expect(runOf(p)).toEqual([undefined, undefined, undefined, latest, latest]);
+    expect(p._refreshForecast).not.toHaveBeenCalled();
+  });
+
+  it('ends the catch-up once nothing is left to swap, even if every replacement failed', () => {
+    const p = makePlayer(NO_REFRESH);
+    p._catchUpPending = true;
+    p._swapStagedFrames();
+    expect(p._catchUpPending).toBe(false);
+  });
+
+  it('caches a pinned frame under the pinned-forecast policy, others as before', () => {
+    const p = makePlayer(NO_REFRESH);
+    p._dwdLatestRun = latest;
+    expect(p._tileCachePolicy({ time: latest + 1800, path: '', run: latest })).toEqual({
+      persistUntil: (latest + 35 * 60) * 1000,
+      finalBefore: (latest + 1800 - 300) * 1000,
+    });
+    expect(p._tileCachePolicy({ time: latest - 600, path: '' }).finalBefore).toBeUndefined();
+  });
+
+  it('with refresh off, an update pins its new frames to the newest run without refreshing the rest', async () => {
+    const p = makePlayer(NO_REFRESH);
+    p._radarPaths = frameTimes().map((f) => (f.time > latest - 300 ? { ...f, run: latest - 300 } : f));
+    p._dwdLatestRun = latest - 300;
+    p._fetchPaths = vi.fn(async () => [...frameTimes(), { time: latest + 1800, path: '' }]);
+    p._stopLoop = vi.fn();
+    const shifted: RadarFrame[] = [];
+    p._shiftInFrame = vi.fn((f: RadarFrame) => { shifted.push(f); });
+    p._refreshForecast = vi.fn();
+
+    await p._updateRadar();
+    expect(shifted).toEqual([{ time: latest + 1800, path: '', run: latest }]);
+    expect(p._refreshForecast).not.toHaveBeenCalled();
+  });
+});

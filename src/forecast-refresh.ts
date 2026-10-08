@@ -130,3 +130,33 @@ export function swappableFrames(
   }
   return stagedFis.filter((fi) => !busy.has(fi));
 }
+
+// The run a card last pinned its forecast to, per DWD layer. Its tiles are in
+// the tile cache, so a reload can show that forecast at once and then catch
+// up to the newest run. localStorage: per browser, like the IndexedDB cache
+// it points into, and cleared along with it.
+const RUN_KEY_PREFIX = 'weather-radar-card:dwd-forecast-run:';
+
+export function rememberRun(layerName: string, runSec: number): void {
+  try { localStorage.setItem(RUN_KEY_PREFIX + layerName, String(runSec)); } catch { /* storage blocked */ }
+}
+
+export function recalledRun(layerName: string): number | null {
+  try {
+    const v = Number(localStorage.getItem(RUN_KEY_PREFIX + layerName));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Run to load the forecast from at init: the one used last when it's older
+ * than the newest but no more than `maxAgeMs` old (its tiles are cached, so
+ * the forecast shows at once and a catch-up refresh moves it on), else the
+ * newest.
+ */
+export function chooseStartRun(latestSec: number, recalledSec: number | null, nowMs: number, maxAgeMs: number): number {
+  if (recalledSec !== null && recalledSec < latestSec && nowMs - recalledSec * 1000 <= maxAgeMs) return recalledSec;
+  return latestSec;
+}

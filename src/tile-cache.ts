@@ -53,6 +53,41 @@ export interface TileCachePolicy {
    * after the server answered it, and store a forecast as final.
    */
   persistUntil?: number;
+  /**
+   * Epoch ms after which a request no longer counts as final, so isn't
+   * persisted (pan/zoom refetches come long after the layer is built). Set
+   * for run-pinned DWD forecast tiles — see pinnedForecastPolicy.
+   */
+  finalBefore?: number;
+}
+
+/** How long a DWD run's forecast tiles stay reusable after the run. A
+ *  reload starts from the last run used only within this window (#279). */
+export const FORECAST_REUSE_MAX_AGE_MS = 30 * 60_000;
+// Pinned tiles must be requested this long before their frame time to count
+// as final, so the request can't land after DWD has started answering it
+// with observations.
+const PINNED_FINAL_MARGIN_MS = 5 * 60_000;
+
+/**
+ * Cache policy for a DWD forecast frame pinned to `runMs` via
+ * DIM_REFERENCE_TIME. While the frame time is still ahead, the run's answer
+ * is fixed; once it passes, DWD serves the newest observation under the same
+ * URL instead (measured 2026-10-08: +30..+115 min steps byte-identical across
+ * 11 min and a new run's listing; the +5 step changed as its time passed).
+ * Kept only as long as a reload could still start from this run.
+ */
+export function pinnedForecastPolicy(frameTimeMs: number, runMs: number): TileCachePolicy {
+  return {
+    persistUntil: runMs + FORECAST_REUSE_MAX_AGE_MS + PINNED_FINAL_MARGIN_MS,
+    finalBefore: frameTimeMs - PINNED_FINAL_MARGIN_MS,
+  };
+}
+
+/** Whether a request made at `nowMs` under `policy` may be treated as final. */
+export function isFinalRequest(policy: TileCachePolicy | undefined, nowMs: number): boolean {
+  if (policy?.persistUntil === undefined) return false;
+  return policy.finalBefore === undefined || nowMs < policy.finalBefore;
 }
 
 /**

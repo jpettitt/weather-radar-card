@@ -45,6 +45,12 @@ export interface SourceCaps {
    */
   strideChoices?: number[];
   defaultStrideMin?: number;
+  /**
+   * Newest data older than this (minutes) is flagged on the timestamp. Sized
+   * to the source's cadence + publication lag + the 5–6 min update period,
+   * so a healthy source never trips it.
+   */
+  staleAfterMin: number;
 }
 
 export const SOURCE_CAPS: Record<string, SourceCaps> = {
@@ -55,6 +61,8 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
     maxForecastMin: 0,
     defaultPastMin: 60,
     defaultForecastMin: 0,
+    // 10-min frames, ~1 min late, plus a 6-min update period: ≤ ~17 min.
+    staleAfterMin: 25,
   },
   NOAA: {
     // NOAA serves from NCEP's opengeo GeoServer (the radar.weather.gov
@@ -80,6 +88,8 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
     defaultForecastMin: 0,
     strideChoices: [2, 5, 10],
     defaultStrideMin: 5,
+    // Up to a 10-min stride, ~2 min late, plus the update period: ≤ ~15 min.
+    staleAfterMin: 20,
   },
   DWD: {
     intervalMin: 5,
@@ -88,6 +98,9 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
     maxForecastMin: 120,    // Radar_wn-product_*_ger carries +2h nowcast
     defaultPastMin: 120,    // matches the DWD WarnWetter app
     defaultForecastMin: 120,
+    // Measured on the newest nowcast run, which is listed 3–8 min after its
+    // time, plus a 6-min update period: ≤ ~14 min.
+    staleAfterMin: 20,
   },
 };
 
