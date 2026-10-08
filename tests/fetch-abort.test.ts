@@ -430,6 +430,26 @@ describe('createFetchTile (fetch-tile-layer)', () => {
     expect(done).toHaveBeenCalled();
   });
 
+  it('a LayerNotDefined tile fails at once and reports the layer the WMS named', async () => {
+    // GeoServer's reply when one layer of a multi-layer GetMap doesn't exist
+    // (opengeo, 2026-10-08): retrying the same URL can never succeed.
+    const layer = makeFetchLayerStub();
+    const onLayerNotDefined = vi.fn();
+    layer.options = { maxRetries: 3, retryDelay: 0, onLayerNotDefined };
+    const done = vi.fn();
+    createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+
+    fetchCalls[0].resolve(
+      new Blob(['<?xml version="1.0" encoding="UTF-8"?><ServiceExceptionReport version="1.3.0">   <ServiceException code="LayerNotDefined" locator="layers">\n      Could not find layer hawaii:x1\n</ServiceException></ServiceExceptionReport>'], { type: 'text/xml' }),
+      { status: 200, headers: { 'content-type': 'text/xml;charset=UTF-8' } },
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    expect(fetchCalls.length).toBe(1);
+    expect(onLayerNotDefined).toHaveBeenCalledWith('hawaii:x1');
+    expect(layer._tileFailed).toBe(1);
+    expect(done).toHaveBeenCalled();
+  });
+
   it('a missing content-type header is still treated as an image (no false soft-error)', async () => {
     const layer = makeFetchLayerStub();
     const done = vi.fn();

@@ -40,7 +40,33 @@ export const NOAA_REGIONS: NoaaRegion[] = [
 // 2026-10-08 — a Hawaii tile requested with a CONUS scan time matched
 // Hawaii's own tile byte for byte), so no per-region layers are needed.
 export const NOAA_OPENGEO_WMS_URL = `${OPENGEO}/ows`;
-export const NOAA_OPENGEO_LAYER = NOAA_REGIONS.map((r) => `${r.id}:${r.id}_bref_qcd`).join(',');
+const NOAA_LAYERS = NOAA_REGIONS.map((r) => `${r.id}:${r.id}_bref_qcd`);
+
+// Layers opengeo has answered LayerNotDefined for, this page load: one
+// missing layer fails every tile of the request (checked 2026-10-08).
+const missingLayers = new Set<string>();
+
+/** The regional layers to request, without any opengeo has reported missing. */
+export function noaaOpengeoLayers(): string {
+  return NOAA_LAYERS.filter((l) => !missingLayers.has(l)).join(',');
+}
+
+/**
+ * Stop requesting the layer opengeo reported missing. If the report names
+ * none of ours, keep only CONUS, the request before the other regions were
+ * added. Never leaves no layer at all.
+ */
+export function dropMissingNoaaLayer(reported: string): void {
+  const named = reported ? NOAA_LAYERS.filter((l) => l === reported || l.endsWith(`:${reported}`)) : [];
+  const drop = named.length > 0 ? named : NOAA_LAYERS.filter((l) => l !== 'conus:conus_bref_qcd');
+  if (NOAA_LAYERS.every((l) => missingLayers.has(l) || drop.includes(l))) return;
+  for (const l of drop) missingLayers.add(l);
+}
+
+/** @internal */
+export function _resetMissingNoaaLayersForTests(): void {
+  missingLayers.clear();
+}
 
 /**
  * The region whose scan times drive the loop: the one containing the map

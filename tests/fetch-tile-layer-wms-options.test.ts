@@ -46,6 +46,7 @@ function sampleInternalValues(): Record<string, unknown> {
     on429: vi.fn(),
     on5xx: vi.fn(),
     onTileRecovered: vi.fn(),
+    onLayerNotDefined: vi.fn(),
     animationOwnsOpacity: true,
     pixelFilter: vi.fn(),
     tileCache: { persistUntil: 123 },

@@ -17,7 +17,7 @@ import {
   rememberRun, swappableFrames,
 } from './forecast-refresh';
 import {
-  fetchNoaaFrameTimes, noaaRegionAt, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
+  dropMissingNoaaLayer, fetchNoaaFrameTimes, noaaOpengeoLayers, noaaRegionAt, pickFrameTimes, NOAA_OPENGEO_WMS_URL,
 } from './noaa-frame-list';
 import { gridPhase, recallStridePhase, rememberStridePhase } from './stride-phase';
 import { extractChannel } from './lk';
@@ -487,6 +487,8 @@ export class RadarPlayer {
   // NOAA region whose scan times drive the loop, chosen from the map centre
   // when the loop is built (see noaaRegionAt); null until then.
   private _noaaListingRegion: string | null = null;
+  // The opengeo layers the loop's tiles request (see _onNoaaLayerMissing).
+  private _noaaLayersBuilt = '';
   // The loop's stride grid phase (stride-phase.ts), fixed at its first
   // listing; null until then.
   private _stridePhaseSec: number | null = null;
@@ -1989,7 +1991,22 @@ export class RadarPlayer {
     this._initRadar();
   }
 
+  // opengeo answered a tile LayerNotDefined: a regional mosaic is gone, and
+  // with it every tile of the request. Rebuild without it. It names only the
+  // first missing layer, so another shows up on the next round; late
+  // failures from the old layers find the loop already rebuilt.
+  private _onNoaaLayerMissing(name: string): void {
+    dropMissingNoaaLayer(name);
+    const layers = noaaOpengeoLayers();
+    if (layers === this._noaaLayersBuilt) return;
+    console.warn(`[weather-radar-card] NOAA layer ${name || '(unnamed)'} is missing on opengeo; drawing radar without it.`);
+    this._noaaLayersBuilt = layers;
+    this._clearLayers();
+    void this._initRadar();
+  }
+
   // ── Server error banner ──────────────────────────────────────────────────
+
   // Distinct from the rate-limit banner above: a 5xx means the source's
   // server is up but struggling, not that we've hit our own pacing limit.
   // Tile-level retries (fetch-tile-layer.ts) handle recovery on their own
@@ -2489,7 +2506,8 @@ export class RadarPlayer {
       // time), legacy eventdriven when it didn't (frame.time is a blind
       // grid slot the legacy server snaps internally).
       const url = this._noaaLegacyMode ? NOAA_LEGACY_WMS_URL : NOAA_OPENGEO_WMS_URL;
-      const layer = this._noaaLegacyMode ? NOAA_LEGACY_WMS_LAYER : NOAA_OPENGEO_LAYER;
+      const layer = this._noaaLegacyMode ? NOAA_LEGACY_WMS_LAYER : noaaOpengeoLayers();
+      if (!this._noaaLegacyMode) this._noaaLayersBuilt = layer;
       return wireSpinner(new FetchWmsTileLayer(url, {
         layers: layer,
         format: 'image/png',
@@ -2509,6 +2527,7 @@ export class RadarPlayer {
         on429: () => this._onRateLimited(),
         on5xx: () => this._onServerError(),
         onTileRecovered: () => this._onTileRecovered(),
+        ...(this._noaaLegacyMode ? {} : { onLayerNotDefined: (name: string) => this._onNoaaLayerMissing(name) }),
         animationOwnsOpacity: true,
         // Legacy slots are snapped server-side to the nearest published
         // frame, so a later frame can change what an old URL returns:
