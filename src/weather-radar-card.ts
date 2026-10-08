@@ -23,6 +23,8 @@ import {
   getCustomAttribution,
   isDarkBasemapStyle,
   isInvertedCustomBasemap,
+  resolveBasemapStyle,
+  unknownTilePlaceholders,
 } from './basemap-styles';
 import { attachMapTilesLayer, isMapTilesLoaded } from './map-tiles-token';
 import { isWheelZoomEnabled } from './map-interaction';
@@ -245,7 +247,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   private _effectiveMapStyle(): string {
     const configured = this._config?.map_style?.toLowerCase();
-    if (configured && configured !== 'auto') return configured;
+    if (configured && configured !== 'auto') {
+      return resolveBasemapStyle(configured, {
+        mapTilesLoaded: isMapTilesLoaded(this.hass),
+        customTileUrl: this._config?.custom_tile_url,
+      });
+    }
     const isEnglish = (this.hass?.language ?? 'en').startsWith('en');
     // Follow HA's dark-mode flag when available — the user can set it directly
     // or have HA follow the browser. Fall back to OS prefs only if HA hasn't
@@ -744,9 +751,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const isAuto = !cfg.map_style || cfg.map_style.toLowerCase() === 'auto';
     if (isAuto) {
       this._darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      // Re-init directly: a bare requestUpdate() is dropped by shouldUpdate()
+      // (no prop changed), leaving the map blank until the next hass update —
+      // same trap as connectedCallback's reconnect, see there.
       this._darkModeHandler = () => {
         this._teardown();
-        this.requestUpdate();
+        this._initMap();
       };
       this._darkModeQuery.addEventListener('change', this._darkModeHandler);
     }
@@ -761,6 +771,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       shadowRoot: this.shadowRoot!,
       getConfig: () => this._config,
       getHass: () => this.hass,
+      getMapStyle: () => this._effectiveMapStyle(),
       rainviewerLimiter,
       noaaLimiter,
       dwdLimiter,
@@ -846,17 +857,22 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const cfg = this._config;
     const tileSize = cfg.extra_labels ? 128 : 256;
     const zoomOffset = cfg.extra_labels ? 1 : 0;
-    // 'maptiles' needs HA core's map_tiles integration (2026.10+) actually
-    // loaded on the connected instance; fall back to 'light' otherwise —
-    // same silent-fallback behaviour any other unresolvable style string
-    // already gets. This also means we never fire the access_token WS call
-    // against a core that doesn't recognise it.
-    const useMapTiles = mapStyle === 'maptiles' && isMapTilesLoaded(this.hass);
-    const effectiveStyle = mapStyle === 'maptiles' && !useMapTiles ? 'light' : mapStyle;
+    // mapStyle is already resolved (_effectiveMapStyle): 'maptiles' only
+    // when HA's map_tiles integration is loaded, so the access_token WS call
+    // never goes to a core that doesn't know it.
+    const useMapTiles = mapStyle === 'maptiles';
+    const badPlaceholders = cfg.map_style?.toLowerCase() === 'custom' && cfg.custom_tile_url
+      ? unknownTilePlaceholders(cfg.custom_tile_url) : [];
+    if (badPlaceholders.length > 0) {
+      console.warn(
+        `[weather-radar-card] custom_tile_url has unsupported placeholder(s) ${badPlaceholders.map((n) => `{${n}}`).join(', ')}`
+        + ' — only {s}, {x}, {y}, {z}, {r} and {-y} are filled; put API keys in the URL itself. Showing OpenStreetMap instead.',
+      );
+    }
     const { url, subdomains, labelUrl, labelsBakedIn } = getBasemapTiles(
-      effectiveStyle, cfg.carto_api_key, cfg.custom_tile_url,
+      mapStyle, cfg.carto_api_key, cfg.custom_tile_url,
     );
-    const className = isInvertedCustomBasemap(effectiveStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
+    const className = isInvertedCustomBasemap(mapStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
 
     // token is a no-op for every other style's URL template; only
     // 'maptiles' references {token}. The layer is created synchronously
@@ -955,7 +971,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         ? 'Radar: <a href="https://www.dwd.de" target="_blank">DWD</a>'
         : 'Radar: <a href="https://rainviewer.com" target="_blank">RainViewer</a>';
     const mapCredit = mapStyle === 'custom' && this._config.custom_tile_url?.trim()
-      ? getCustomAttribution(this._config.custom_tile_url, this._config.custom_tile_attribution)
+      ? getCustomAttribution(this._config.custom_tile_url, this._config.custom_tile_attribution, window.location.href)
       : mapStyle === 'osm' || mapStyle === 'custom' || mapStyle === 'maptiles'
       ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
       : mapStyle === 'satellite'

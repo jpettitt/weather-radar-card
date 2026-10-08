@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Limite de requêtes atteinte — en attente de la réinitialisation du quota",
+    "server_error": "Erreur du serveur radar — nouvelle tentative",
     "region_warning": {
       "wildfires_us_only": "Les données sur les feux de forêt sont uniquement pour les États-Unis. Votre emplacement Home Assistant est hors des États-Unis : aucun feu ne sera affiché.",
       "noaa_us_only": "Le radar NOAA est uniquement pour les États-Unis. Votre emplacement Home Assistant est hors des États-Unis : le radar peut ne pas se charger.",
@@ -86,8 +87,22 @@
       "style_dark": "CARTO Dark (anglais uniquement)",
       "style_satellite": "Satellite (anglais uniquement)",
       "style_osm": "OpenStreetMap (localisé)",
+      "style_grey": "Esri Grey Canvas (anglais uniquement, sans clé d'API)",
+      "style_grey_dark": "Esri Grey Canvas Dark (anglais uniquement, sans clé d'API)",
+      "style_custom": "URL de tuiles personnalisée",
+      "style_maptiles": "Tuiles de carte HA (localisé, nécessite Home Assistant 2026.10+)",
+      "carto_api_key": "Clé d'API CARTO",
+      "carto_api_key_helper": "Facultatif. Supprime le filigrane « API key required » de CARTO sur les tuiles Light/Voyager/Dark/Satellite. Gratuit, sans compte CARTO. Laisser vide pour garder les tuiles actuelles (avec filigrane).",
+      "carto_api_key_link": "Obtenir une clé gratuite",
       "zoom_level": "Niveau de zoom",
-      "zoom_default": "Par défaut (5)",
+      "zoom_default": "Par défaut (7)",
+      "custom_tile_url": "URL des tuiles",
+      "custom_tile_url_helper": "Modèle Leaflet, p. ex. https://tiles.example.com/{z}/{x}/{y}.png ({s} devient a/b/c). Placez la clé d'API directement dans l'URL : les autres {variables} ne sont pas remplies et la carte revient à OpenStreetMap. Les tuiles doivent inclure les libellés. Laisser vide pour utiliser OpenStreetMap.",
+      "custom_tile_attribution": "Attribution de la carte (facultatif)",
+      "custom_tile_theme": "Couleurs des tuiles",
+      "custom_tile_theme_light": "Tuiles claires (p. ex. OSM)",
+      "custom_tile_theme_dark": "Tuiles déjà sombres (adapte seulement les couleurs de l'interface)",
+      "custom_tile_theme_invert": "Tuiles claires, affichées sombres (inversées)",
       "source_dwd": "DWD (Allemagne — résolution 5 min)"
     },
     "time_range": {
@@ -199,6 +214,7 @@
       "height": "Hauteur",
       "width": "Largeur",
       "height_helper": "ex. 400px, 50vh",
+      "height_section_locked_helper": "Contrôlée par la cellule de la grille des sections — faites glisser la poignée de redimensionnement de la carte pour changer sa hauteur.",
       "width_helper": "ex. 100%, 500px",
       "radar_opacity": "Opacité du radar",
       "radar_opacity_helper": "1.0 = entièrement opaque (par défaut), plus bas = plus transparent sur la carte de fond"

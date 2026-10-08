@@ -8,10 +8,10 @@ import { FetchTileLayer, FetchWmsTileLayer, layerSettled } from './fetch-tile-la
 import { isDarkBasemapStyle } from './basemap-styles';
 import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
-import { getEffectiveTimeRange, getSourceCaps } from './source-caps';
+import { getEffectiveTimeRange } from './source-caps';
 import { TileCachePolicy, finalUpToMs, persistUntilFor } from './tile-cache';
 import {
-  dwdIsoTime, fetchLatestRun, pinToRun, planForecastRefresh, swappableFrames,
+  dwdIsoTime, fetchLatestRun, markUnverified, pinToRun, planForecastRefresh, swappableFrames,
 } from './forecast-refresh';
 import {
   fetchNoaaFrameTimes, pickFrameTimes, NOAA_OPENGEO_WMS_URL, NOAA_OPENGEO_LAYER,
@@ -106,6 +106,8 @@ export interface RadarFrame {
   host?: string;
   /** DWD forecast run (epoch s) the frame is pinned to — see forecast-refresh.ts. */
   run?: number;
+  /** Loaded before DWD's run was known; may hold a forecast — see RunFrame. */
+  unverified?: boolean;
 }
 
 /**
@@ -366,6 +368,11 @@ export interface RadarPlayerOptions {
    * to the previous browser-locale behaviour when absent.
    */
   getHass?: () => HomeAssistant | undefined;
+  /**
+   * The basemap style actually drawn (Auto and fallbacks resolved), for the
+   * progress bar's light/dark palette. Falls back to config.map_style.
+   */
+  getMapStyle?: () => string;
 }
 
 // ── RadarPlayer ──────────────────────────────────────────────────────────────
@@ -381,6 +388,7 @@ export class RadarPlayer {
   private _shadowRoot: ShadowRoot;
   private _getConfig: () => WeatherRadarCardConfig;
   private _getHass?: () => HomeAssistant | undefined;
+  private _getMapStyle?: () => string;
   private _rainviewerLimiter: RateLimiter;
   private _noaaLimiter: RateLimiter;
   private _dwdLimiter: RateLimiter;
@@ -397,7 +405,6 @@ export class RadarPlayer {
   // the browser's per-origin connection pool. One layer, fetched once
   // per init at the newest past frame's TIME, always visible.
   private _coverageMask: FetchWmsTileLayer | null = null;
-  private _radarPaneCreated = false;
   private _dwdMaskPaneCreated = false;
   private _dwdDimRgba: [number, number, number, number] | null = null;
   private _dwdOutlineRgba: [number, number, number, number] | null = null;
@@ -607,6 +614,7 @@ export class RadarPlayer {
     this._shadowRoot = opts.shadowRoot;
     this._getConfig = opts.getConfig;
     this._getHass = opts.getHass;
+    this._getMapStyle = opts.getMapStyle;
     this._rainviewerLimiter = opts.rainviewerLimiter;
     this._noaaLimiter = opts.noaaLimiter;
     this._dwdLimiter = opts.dwdLimiter;
@@ -632,7 +640,14 @@ export class RadarPlayer {
       this._pinnedNativeZoom = newPin;
       // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
       // option on existing layers is enough, no redraw needed.
-      for (const layer of this._radarImage) {
+      // Forecast-refresh layers still loading or waiting to swap in count
+      // too, or a swapped-in frame would sit on a different native zoom.
+      const layers = [
+        ...this._radarImage,
+        ...this._forecastLoading,
+        ...[...this._stagedForecast.values()].map((s) => s.layer),
+      ];
+      for (const layer of layers) {
         if (layer) (layer.options as any).minNativeZoom = newPin;
       }
       // Keep the mask on the frames' grid so its tiles stay shared.
@@ -1704,7 +1719,7 @@ export class RadarPlayer {
       const override = isCurrent ? cfg.progress_bar_active_color : cfg.progress_bar_background_color;
       if (override) return override;
     }
-    const dark = isDarkBasemapStyle(cfg.map_style, cfg.custom_tile_theme);
+    const dark = isDarkBasemapStyle(this._getMapStyle?.() ?? cfg.map_style, cfg.custom_tile_theme);
     const map = dark
       ? { empty: '#444', loading: '#aa7700', loaded: 'steelblue', failed: '#aa1111',
           cur_empty: '#666', cur_loading: '#cc9900', cur_loaded: '#6baed6', cur_failed: '#cc3333' }
@@ -1956,7 +1971,6 @@ export class RadarPlayer {
       pane = this._map.createPane(RADAR_PANE_NAME);
       pane.style.zIndex = String(RADAR_PANE_Z_INDEX);
       pane.style.pointerEvents = 'none';
-      this._radarPaneCreated = true;
     }
     pane.style.opacity = this._activeOpacity;
   }
@@ -2277,9 +2291,9 @@ export class RadarPlayer {
   // answered them (see TileCachePolicy).
   private _tileCachePolicy(frame: RadarFrame): TileCachePolicy {
     const source = this._cfg.data_source ?? 'RainViewer';
-    const { maxPastMin } = getSourceCaps(source);
-    const finalUpTo = finalUpToMs(source, Date.now(), getEffectiveTimeRange(this._cfg).strideMin, this._dwdLatestRun);
-    return { persistUntil: persistUntilFor(frame.time * 1000, finalUpTo, maxPastMin) };
+    const { pastMin, strideMin } = getEffectiveTimeRange(this._cfg);
+    const finalUpTo = finalUpToMs(source, Date.now(), strideMin, this._dwdLatestRun);
+    return { persistUntil: persistUntilFor(frame.time * 1000, finalUpTo, pastMin) };
   }
 
   private _isDwd(): boolean {
@@ -2475,6 +2489,11 @@ export class RadarPlayer {
         pastFrames = pinToRun(pastFrames, run);
         this._lastForecastRefreshAt = Date.now();
       }
+    } else if (this._forecastRefreshMin() > 0) {
+      // No run: frames DWD may still answer with a forecast load unpinned and
+      // marked, and the first refresh with a known run refetches them.
+      const { strideMin } = getEffectiveTimeRange(this._cfg);
+      pastFrames = markUnverified(pastFrames, finalUpToMs('DWD', Date.now(), strideMin, null));
     }
     this._radarPaths = pastFrames;
     this._lastFrameRefreshAt = Date.now();
@@ -2743,10 +2762,17 @@ export class RadarPlayer {
     const latestRun = await runPromise;
     if (myGen !== this._frameGeneration) return; // torn down while fetching
     if (pastFrames.length === 0) { this._scheduleUpdate(); return; } // no frames from API
-    // A failed fetch keeps the last known run: still a valid "final up to".
-    if (latestRun !== null) this._dwdLatestRun = latestRun;
-    const refreshRun = this._forecastRefreshMin() > 0 ? latestRun : null;
-    if (refreshRun !== null) pastFrames = pinToRun(pastFrames, refreshRun);
+    // A failed fetch keeps the last known run: still a valid "final up to",
+    // and still a valid pin. Never step back to an older run — a lagging
+    // server node would otherwise re-pin observed frames to an old forecast.
+    if (latestRun !== null) this._dwdLatestRun = Math.max(this._dwdLatestRun ?? latestRun, latestRun);
+    const refreshing = this._forecastRefreshMin() > 0;
+    const refreshRun = refreshing ? this._dwdLatestRun : null;
+    if (refreshRun !== null) {
+      pastFrames = pinToRun(pastFrames, refreshRun);
+    } else if (refreshing) {
+      pastFrames = markUnverified(pastFrames, finalUpToMs('DWD', Date.now(), getEffectiveTimeRange(this._cfg).strideMin, null));
+    }
 
     // Newness guard: only shift the loop when the source actually
     // published a frame newer than what we hold. The refresh cycle
@@ -2762,8 +2788,13 @@ export class RadarPlayer {
     // comparison is exactly "did the listing gain a new entry"; for
     // DWD the computed timestamps serve the same role.
     const currentNewestTime = this._radarPaths[this._radarPaths.length - 1]?.time ?? 0;
-    const latestFrame = pastFrames[pastFrames.length - 1];
-    if (latestFrame.time <= currentNewestTime) {
+    // Every frame newer than the newest held, oldest first. DWD's frames come
+    // from the clock on a 5-min grid while this runs every 6 min, so about
+    // every fifth tick finds two; shifting in only the newest left a 10-min
+    // gap that stayed for the whole window. Listed sources can publish two
+    // between ticks as well.
+    const newFrames = pastFrames.filter((f) => f.time > currentNewestTime);
+    if (newFrames.length === 0) {
       // Nothing new published. The fetch itself succeeded, so the data
       // is verifiably current — bump the freshness clock so the
       // visibility-resume staleness heuristic doesn't trigger a full
@@ -2786,9 +2817,22 @@ export class RadarPlayer {
     // once the new frame is ready.
     this._stopLoop();
 
-    const newLayer = this._createLayer(latestFrame);
+    for (const frame of newFrames.slice(-frameCount)) this._shiftInFrame(frame, myGen);
+
+    // After the shift, so the plan sees this tick's frame indices.
+    if (refreshRun !== null) this._refreshForecast(refreshRun);
+    this._doRadarUpdate = false;
+    this._scheduleUpdate();
+  }
+
+  // Append one frame, dropping the oldest. Its tiles load in the background;
+  // the loop restarts at the newest loaded frame once they arrive.
+  private _shiftInFrame(frame: RadarFrame, myGen: number): void {
+    if (!this._map) return;
+    const frameCount = this._configFrameCount;
+    const newLayer = this._createLayer(frame);
     newLayer.addTo(this._map);
-    const newTime = this._getTimeString(latestFrame.time * 1000);
+    const newTime = this._getTimeString(frame.time * 1000);
     // The DWD coverage mask is a single shared layer — nothing to
     // create or shift on refresh; the no-data geometry doesn't change.
 
@@ -2807,7 +2851,7 @@ export class RadarPlayer {
     }
     this._radarImage[frameCount - 1] = newLayer;
     this._radarTime[frameCount - 1] = newTime;
-    this._radarPaths[frameCount - 1] = latestFrame;
+    this._radarPaths[frameCount - 1] = frame;
     this._lastFrameRefreshAt = Date.now();
     this._loadedSlots = this._loadedSlots.map(fi => fi - 1).filter(fi => fi >= 0);
     if (droppedOldest) {
@@ -2839,14 +2883,17 @@ export class RadarPlayer {
 
     newLayer.once('load', () => {
       if (myGen !== this._frameGeneration) return; // torn down before tiles finished
+      // A later shift in the same update may have moved it down a slot.
+      const fi = this._radarImage.indexOf(newLayer);
+      if (fi < 0) return;
       for (let i = 0; i < frameCount; i++) {
         const l = this._radarImage[i];
         if (l) this._setLayerZ(l, i + 1);
       }
       const newStatus: FrameStatus = newLayer._tileFailed > 0 ? 'failed' : 'loaded';
-      this._setSegment(frameCount - 1, newStatus);
+      this._setSegment(fi, newStatus);
       if (newStatus === 'loaded') {
-        this._loadedSlots.push(frameCount - 1);
+        insertSorted(this._loadedSlots, fi);
         // Snapshot the freshly loaded newest frame so its transition
         // into view picks up motion compensation from the previous
         // frame. _onLayerLoaded would handle this too on the next
@@ -2856,9 +2903,9 @@ export class RadarPlayer {
         // call in _initRadar for the gen-guard rationale.
         if (this._cfg.motion_compensation) {
           const myGenInner = myGen;
-          void this._captureFrameSnapshot(frameCount - 1).then(() => {
+          void this._captureFrameSnapshot(fi).then(() => {
             if (myGenInner !== this._frameGeneration) return;
-            this._computeMotionForFrame(frameCount - 1);
+            this._computeMotionForFrame(fi);
           });
         }
       }
@@ -2874,11 +2921,6 @@ export class RadarPlayer {
         this._startLoop();
       }
     });
-
-    // After the shift, so the plan sees this tick's frame indices.
-    if (refreshRun !== null) this._refreshForecast(refreshRun);
-    this._doRadarUpdate = false;
-    this._scheduleUpdate();
   }
 
   // Refetch frames per planForecastRefresh: forecast frames pinned to the
@@ -2894,8 +2936,8 @@ export class RadarPlayer {
     if (plan.forecast.length > 0) this._lastForecastRefreshAt = Date.now();
     const jobs: RadarFrame[] = [];
     for (const f of this._radarPaths) {
-      if (plan.observed.includes(f.time)) jobs.push({ ...f, run: undefined });
-      else if (plan.forecast.includes(f.time)) jobs.push({ ...f, run: latestRun });
+      if (plan.observed.includes(f.time)) jobs.push({ ...f, run: undefined, unverified: undefined });
+      else if (plan.forecast.includes(f.time)) jobs.push({ ...f, run: latestRun, unverified: undefined });
     }
     if (jobs.length === 0) return;
     const gen = this._frameGeneration;
@@ -2957,6 +2999,12 @@ export class RadarPlayer {
       this._radarImage[fi] = staged.layer;
       this._radarPaths[fi] = staged.frame;
       old?.remove();
+      // The frame failed to load before, so it was never in the loop; its
+      // replacement loaded, so let it play.
+      if (!this._loadedSlots.includes(fi)) {
+        this._afterFrameInserted(insertSorted(this._loadedSlots, fi));
+        this._setSegment(fi, 'loaded');
+      }
       // The frame's pixels changed: drop its snapshot and the motion vectors
       // into and out of it, then rebuild them from the new tiles.
       this._frameSnapshot[fi] = null;

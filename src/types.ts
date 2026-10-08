@@ -168,8 +168,9 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * overlay). CARTO's anonymous access still serves tiles without one,
    * just stamped with a visible "API key required" watermark. Leaving
    * this unset preserves that (watermarked but working) default — never
-   * a hard error. No effect for `map_style: OSM`, `Grey`, or `GreyDark`,
-   * none of which use CARTO tiles.
+   * a hard error. No effect for `map_style: OSM`, `Grey`, `GreyDark` or
+   * `Custom`, none of which use CARTO tiles, nor for `MapTiles` unless it
+   * falls back to Light (Home Assistant before 2026.10).
    */
   carto_api_key?: string;
   /**

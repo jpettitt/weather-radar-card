@@ -208,6 +208,11 @@ export function createFetchTile(
   const on5xx = opts.on5xx;
   const onTileRecovered = opts.onTileRecovered;
   const cache = opts.tileCache;
+  // A layer that persists needs final content: it never takes a memory copy
+  // or joins a download that a non-persisting layer started for this URL,
+  // which may be a DWD forecast under the same unpinned URL.
+  const needFinal = cache?.persistUntil !== undefined;
+  const shareKey = needFinal ? url : `${url}#provisional`;
   let attempt = 0;
 
   layer._tilePending++;
@@ -247,7 +252,7 @@ export function createFetchTile(
   const tryFetch = (): void => {
     // Joining a download that is already in flight costs no request, so it
     // skips the rate limiter.
-    const joining = !!cache && hasInflight(url);
+    const joining = !!cache && hasInflight(shareKey);
     if (!joining) {
       if (limiter && !limiter.canFetch(url)) {
         setTimeout(tryFetch, limiter.msUntilSlot());
@@ -262,7 +267,7 @@ export function createFetchTile(
     tile.__wrcAbort = ctrl;
 
     const raw = cache
-      ? sharedFetch(url, ctrl.signal, (signal) => fetchTileBlob(url, signal).then((b) => {
+      ? sharedFetch(shareKey, ctrl.signal, (signal) => fetchTileBlob(url, signal).then((b) => {
         storeTile(url, b, cache);
         return b;
       }))
@@ -316,7 +321,7 @@ export function createFetchTile(
 
   const start = (): void => {
     if (!cache) { tryFetch(); return; }
-    const hit = memoGet(url);
+    const hit = memoGet(url, needFinal);
     if (hit) { deliverCached(hit); return; }
     // IndexedDB only ever holds tiles that were final when stored, so a hit
     // is safe for any frame — even one this layer wouldn't persist (e.g.
@@ -332,7 +337,7 @@ export function createFetchTile(
       }
       // Re-check memory: another layer may have finished downloading this
       // tile while the lookup was pending.
-      const ready = stored ?? memoGet(url);
+      const ready = stored ?? memoGet(url, needFinal);
       if (ready) deliverCached(ready); else tryFetch();
     });
   };

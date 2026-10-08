@@ -10,6 +10,11 @@ const DWD_GEOSERVER = 'https://maps.dwd.de/geoserver/dwd';
 
 export const FORECAST_REFRESH_CHOICES = [5, 10, 15, 30, 60];
 
+// DWD init and every update wait for the run list, so a stalled request
+// would hold the radar blank and stop the update chain; give up and fall
+// back as if it had failed.
+const RUN_LIST_TIMEOUT_MS = 10_000;
+
 /** Epoch seconds as the ISO form DWD accepts for TIME / DIM_REFERENCE_TIME. */
 export function dwdIsoTime(epochSec: number): string {
   return new Date(epochSec * 1000).toISOString().split('.')[0] + 'Z';
@@ -32,12 +37,20 @@ export function parseLatestRun(xml: string): number | null {
 /** Newest run listed for `layerName`, or null on any failure (refresh just skips a tick). */
 export async function fetchLatestRun(layerName: string, signal?: AbortSignal): Promise<number | null> {
   const layer = encodeURIComponent(layerName.replace(/^dwd:/, ''));
+  // setTimeout rather than AbortSignal.timeout(): older tablet WebViews lack it.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), RUN_LIST_TIMEOUT_MS);
+  const onAbort = (): void => ctrl.abort();
+  signal?.addEventListener('abort', onAbort);
   try {
-    const res = await fetch(`${DWD_GEOSERVER}/${layer}/ows?service=WMS&version=1.3.0&request=GetCapabilities`, { signal });
+    const res = await fetch(`${DWD_GEOSERVER}/${layer}/ows?service=WMS&version=1.3.0&request=GetCapabilities`, { signal: ctrl.signal });
     if (!res.ok) return null;
     return parseLatestRun(await res.text());
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -45,6 +58,17 @@ export interface RunFrame {
   time: number;
   /** Run (epoch seconds) a forecast frame is pinned to; undefined for observed frames. */
   run?: number;
+  /**
+   * Loaded unpinned while the run was unknown (run list failed), so it may
+   * hold the forecast DWD served then. The next refresh with a known run
+   * refetches it, as observed or pinned.
+   */
+  unverified?: boolean;
+}
+
+/** Flag frames newer than `finalUpToMs` as unverified (see RunFrame). */
+export function markUnverified<T extends RunFrame>(frames: T[], finalUpToMs: number): T[] {
+  return frames.map((f) => (f.time * 1000 > finalUpToMs ? { ...f, unverified: true } : f));
 }
 
 /** Pin every frame the run still forecasts (time after the run) to that run. */
@@ -63,8 +87,8 @@ export interface ForecastRefreshPlan {
  * Which frames to refetch this tick. Forecast frames only when a run newer
  * than every pinned frame's exists *and* `intervalMin` has passed since the
  * last forecast refresh — so a short interval never reloads the same run.
- * Frames that crossed into observed are refetched on every tick that finds
- * them, whatever the interval.
+ * Frames that crossed into observed, or were loaded unverified, are
+ * refetched on every tick that finds them, whatever the interval.
  */
 export function planForecastRefresh(
   frames: RunFrame[],
@@ -73,7 +97,9 @@ export function planForecastRefresh(
   intervalMin: number,
   nowMs: number,
 ): ForecastRefreshPlan {
-  const observed = frames.filter((f) => f.run !== undefined && f.time <= latestRun).map((f) => f.time);
+  const observed = frames
+    .filter((f) => (f.run !== undefined || f.unverified) && f.time <= latestRun)
+    .map((f) => f.time);
   const newRun = frames.some((f) => f.time > latestRun && (f.run === undefined || f.run < latestRun));
   const due = nowMs - lastRefreshAtMs >= intervalMin * 60_000;
   const forecast = newRun && due

@@ -4,6 +4,7 @@
   },
   "ui": {
     "rate_limited": "Límite de solicitudes alcanzado — esperando restablecimiento de la cuota",
+    "server_error": "Error del servidor de radar — reintentando",
     "region_warning": {
       "wildfires_us_only": "Los datos de incendios forestales son solo para EE. UU. Su ubicación de Home Assistant está fuera de EE. UU.: no se mostrarán incendios.",
       "noaa_us_only": "El radar NOAA es solo para EE. UU. Su ubicación de Home Assistant está fuera de EE. UU.: es posible que el radar no cargue.",
@@ -86,8 +87,22 @@
       "style_dark": "CARTO Dark (solo inglés)",
       "style_satellite": "Satélite (solo inglés)",
       "style_osm": "OpenStreetMap (localizado)",
+      "style_grey": "Esri Grey Canvas (solo inglés, sin clave de API)",
+      "style_grey_dark": "Esri Grey Canvas Dark (solo inglés, sin clave de API)",
+      "style_custom": "URL de teselas personalizada",
+      "style_maptiles": "Teselas de mapa de HA (localizado, requiere Home Assistant 2026.10+)",
+      "carto_api_key": "Clave de API de CARTO",
+      "carto_api_key_helper": "Opcional. Elimina la marca de agua \"API key required\" de CARTO en las teselas Light/Voyager/Dark/Satellite. Gratis, sin cuenta de CARTO. Déjalo vacío para mantener las teselas actuales (con marca de agua).",
+      "carto_api_key_link": "Obtener una clave gratuita",
       "zoom_level": "Nivel de zoom",
-      "zoom_default": "Predeterminado (5)",
+      "zoom_default": "Predeterminado (7)",
+      "custom_tile_url": "URL de teselas",
+      "custom_tile_url_helper": "Plantilla de Leaflet, p. ej. https://tiles.example.com/{z}/{x}/{y}.png ({s} se expande a a/b/c). Pon la clave de API directamente en la URL: otros {marcadores} no se rellenan y el mapa vuelve a OpenStreetMap. Las teselas deben incluir etiquetas. Déjalo vacío para usar OpenStreetMap.",
+      "custom_tile_attribution": "Atribución del mapa (opcional)",
+      "custom_tile_theme": "Colores de las teselas",
+      "custom_tile_theme_light": "Teselas claras (p. ej. OSM)",
+      "custom_tile_theme_dark": "Las teselas ya son oscuras (solo adapta los colores de la interfaz)",
+      "custom_tile_theme_invert": "Teselas claras, mostradas oscuras (invertidas)",
       "source_dwd": "DWD (Alemania — resolución de 5 min)"
     },
     "time_range": {
@@ -199,6 +214,7 @@
       "height": "Altura",
       "width": "Anchura",
       "height_helper": "p. ej. 400px, 50vh",
+      "height_section_locked_helper": "Lo controla la celda de la cuadrícula de secciones: arrastra el control de tamaño de la tarjeta para cambiar su altura.",
       "width_helper": "p. ej. 100%, 500px",
       "radar_opacity": "Opacidad del radar",
       "radar_opacity_helper": "1.0 = totalmente opaco (predeterminado), menor = más transparente sobre el mapa base"
