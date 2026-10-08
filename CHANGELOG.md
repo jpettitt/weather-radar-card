@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking: without a CARTO key, `Auto` uses Home Assistant's map tiles** — CARTO now answers keyless requests with a blank "API KEY REQUIRED" tile instead of a watermarked map, and `Auto` picked CARTO Light/Dark, so the map was blank. Without `carto_api_key`, `Auto` now uses HA's own map tiles (2026.10+, inverted in dark mode like HA's map), or Grey/GreyDark/OSM on older cores. To keep CARTO's look, add a free key ([carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/), no account needed). Choosing a CARTO style without a key shows a banner, the editor marks those styles as needing a key, Satellite drops its CARTO labels, and `MapTiles` on an older core falls back to OSM instead of CARTO Light.
 - **History loads before the forecast** — frames load one at a time from "now"; the forecast used to come next, so a cached history loop waited behind DWD's slower forecast requests on every reload. ([#279](https://github.com/jpettitt/weather-radar-card/issues/279))
 - **RainViewer requests are capped at 250 a minute** (was 500) — its tile server allows 500 and its FAQ says 100 per IP, shared by every device behind one router.
 - **Failed NWS zone requests are logged** — one console error per batch with the count, instead of a warning per zone.
@@ -21,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Blank map without a CARTO key** — CARTO now answers keyless requests with a blank "API KEY REQUIRED" tile instead of a watermarked map, and `Auto` picked CARTO Light/Dark. Without `carto_api_key`, `Auto` now uses Home Assistant's own map tiles (2026.10+, inverted in dark mode like HA's map), or Grey/GreyDark/OSM on older cores. Choosing a CARTO style without a key shows a banner, the editor marks those styles as needing a key, Satellite drops its CARTO labels, and `MapTiles` on an older core falls back to OSM instead of CARTO Light.
 - **US wind (NWS NDFD) was about 1.9× too strong** — the NDFD coverage serves speed in knots and the card read it as m/s, so barbs, arrow colours and flow speeds overstated the wind.
 - **NWS "Extreme Heat" alerts were uncategorised** — NWS renamed Excessive Heat to Extreme Heat, and a dozen other current event types (dust storms, freezing spray, Tropical Cyclone Local Statement, Lake Wind Advisory…) were unmapped, so they showed in `other` with the fallback colour. Every event NWS issues now has its official colour.
 - **DWD's heaviest rain could be cut out** — the 45–75 mm/h colour of the default precipitation layer, and the ≥ 85 dBZ class of the dBZ layer, were read as coverage-mask pixels and removed.
