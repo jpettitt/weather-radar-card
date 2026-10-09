@@ -111,6 +111,11 @@ describe('WildfireLayer transient-failure resilience', () => {
     l._getConfig = () => ({});
     l._failureCount = 0;
     l._features = [{ id: 'existing-fire' }];
+    l._all = [];
+    l._outlineStamp = '';
+    l._outlinesAt = 0;
+    l._detail = new Map();
+    l._showDetail = vi.fn();
     l._filter = vi.fn((f: unknown[]) => f);
     l._render = vi.fn();
     l._scheduleNext = vi.fn();

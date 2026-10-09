@@ -204,6 +204,7 @@ Place this near the top of the wildfire section in the README, in a callout bloc
 - **Binary containment colour** (active red / contained grey). No gradient — keeps the visual noise low.
 - **No incident-points layer.** Perimeters only. NIFC's hotspot point feed doubles request volume for marginal benefit.
 - **Polygon simplification:** start with ArcGIS's `geometryPrecision=4` query param (server-side coordinate trimming). If profiling shows polygon rendering is still a bottleneck, add `@turf/simplify` (Douglas-Peucker) as a client-side post-process. Likely not needed initially — measure first.
+  Measured in 3.12 (2026-10-08): the feed was 13.7 MB of JSON (1.4 MB gzipped), 99.5% outlines, and refetched in full whenever any record changed (36 edits a day; the ETag covers the whole layer). The refresh now fetches attributes only (`returnGeometry=false`, ~8 KB gzipped) and refetches outlines, simplified server-side with `maxAllowableOffset=0.001` (157 KB gzipped), when `poly_DateCurrent` moves, fires come or go, or every 3 h. From zoom 11 the fires in view get their full outline by `objectIds`.
 - **`wildfire_radius_km` re-filters on `hass` change.** Tracked-marker users move the map center implicitly; the radius filter follows. Cheap to implement — just re-evaluate filter + re-render in `updateHass()`.
 
 ## To do after PR #114 (DWD) merges

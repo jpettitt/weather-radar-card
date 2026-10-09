@@ -11,26 +11,42 @@ import { mapsEqual } from './map-utils';
 
 const decisionsEqual = mapsEqual<string, 'polygon' | 'icon'>;
 
-// NIFC WFIGS Current Interagency Fire Perimeters — see docs/wildfire-feature-design.md.
-// outFields trimmed to just what the popup renders. geometryPrecision=4 keeps
-// coordinates to ~11m precision and shrinks the payload substantially without
-// any visible difference at our zoom range.
 // Anchor link to the Wildfires section of docs/overlays.md on GitHub.
 // Rendered after the popup's safety disclaimer so users can reach the
 // full caveat with one click. The hash matches GitHub's auto-generated
 // anchor for the "## Wildfires" heading.
 const DOCS_WILDFIRES_URL = 'https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#wildfires';
 
-const NIFC_URL =
+// NIFC WFIGS Current Interagency Fire Perimeters — see docs/wildfire-feature-design.md.
+// outFields trimmed to what the popup renders, plus poly_DateCurrent to tell
+// when outlines change and OBJECTID, without which ArcGIS leaves out the
+// GeoJSON feature id. geometryPrecision=4 keeps coordinates to ~11 m.
+const WFIGS_QUERY =
   'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/'
-  + 'WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query'
-  + '?where=1%3D1'
-  + '&outFields=poly_IncidentName,poly_GISAcres,attr_PercentContained,attr_FireDiscoveryDateTime,attr_POOJurisdictionalUnit'
+  + 'WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query';
+const WFIGS_FIELDS =
+  'OBJECTID,poly_IncidentName,poly_GISAcres,attr_PercentContained,attr_FireDiscoveryDateTime,attr_POOJurisdictionalUnit'
   + ',attr_IncidentShortDescription,attr_POOCounty,attr_POOState,attr_TotalIncidentPersonnel,attr_FireCause'
-  + ',poly_PolygonDateTime,attr_ModifiedOnDateTime_dt,attr_POOProtectingUnit,attr_CpxName'
-  + '&geometryPrecision=4'
-  + '&f=geojson';
-
+  + ',poly_PolygonDateTime,attr_ModifiedOnDateTime_dt,attr_POOProtectingUnit,attr_CpxName,poly_DateCurrent';
+// Outlines are 99.5% of the feed (13.7 MB of JSON on 2026-10-08) but change a
+// few times a day, while fire records are edited every few minutes and each
+// edit changes the whole feed's ETag. So the refresh fetches only attributes
+// (~8 KB gzipped) and fetches outlines when a perimeter date moves or fires
+// come or go.
+const WFIGS_ATTRIBUTES_URL = `${WFIGS_QUERY}?where=1%3D1&outFields=${WFIGS_FIELDS}&returnGeometry=false&f=geojson`;
+// Simplified to ~100 m (0.001°), finer than a pixel up to about zoom 10:
+// 157 KB gzipped instead of 1.4 MB, and no fire is dropped (the smallest
+// become 4-point rings).
+const WFIGS_OUTLINES_URL =
+  `${WFIGS_QUERY}?where=1%3D1&outFields=${WFIGS_FIELDS}&maxAllowableOffset=0.001&geometryPrecision=4&f=geojson`;
+// From this zoom the ~100 m steps would show, so fires in view get their full
+// outline (up to ~1.5 MB of JSON for the largest).
+const DETAIL_ZOOM = 11;
+const wfigsDetailUrl = (ids: string[]): string =>
+  `${WFIGS_QUERY}?objectIds=${ids.join(',')}&outFields=OBJECTID,poly_DateCurrent&geometryPrecision=4&f=geojson`;
+// Outlines are refetched at least this often in case an edit doesn't move
+// poly_DateCurrent.
+const OUTLINE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
 
 const DEFAULT_REFRESH_VISIBLE_MS = 5 * 60 * 1000;
 const DEFAULT_REFRESH_EMPTY_MS = 30 * 60 * 1000;
@@ -66,6 +82,7 @@ interface WildfireProps {
   attr_TotalIncidentPersonnel?: number;
   attr_FireCause?: string;               // Natural / Human / Undetermined
   poly_PolygonDateTime?: number;         // when the perimeter was mapped (ms)
+  poly_DateCurrent?: number;             // when the perimeter record last changed (ms)
   attr_ModifiedOnDateTime_dt?: number;   // when the incident record last changed (ms)
 }
 
@@ -77,6 +94,19 @@ export class WildfireLayer {
   private _polygonLayer: L.GeoJSON | null = null;
   private _iconLayer: L.LayerGroup | null = null;
   private _features: GeoJSON.Feature[] = [];
+  // Every fire in the feed with simplified outlines, before _filter. The
+  // attribute refresh updates their properties in place, so popups (built
+  // when opened) show the latest.
+  private _all: GeoJSON.Feature[] = [];
+  // id:poly_DateCurrent of every fire in _all, and when _all was fetched.
+  private _outlineStamp = '';
+  private _outlinesAt = 0;
+  // Full outlines by fire id, for the perimeter date they were fetched at,
+  // and the fires the last render drew with them.
+  private _detail = new Map<string, { date: number | undefined; geometry: GeoJSON.Geometry }>();
+  private _detailDrawn = new Set<string>();
+  private _detailCtrl: AbortController | null = null;
+  private _renderOnPopupClose = false;
   // Per-feature render decision from the last _render() pass — keyed by
   // featureKey(feature). Used to skip re-rendering (which would close any
   // open popup) when zoomend fires but no feature actually crossed the
@@ -101,6 +131,7 @@ export class WildfireLayer {
   // payloads we've already decided to discard via the gen check.
   private _abortCtrl: AbortController | null = null;
   private _zoomHandler: (() => void) | null = null;
+  private _moveHandler: (() => void) | null = null;
 
   constructor(
     map: L.Map,
@@ -118,6 +149,8 @@ export class WildfireLayer {
     // user zooms (e.g. via double-tap) without crossing the threshold.
     this._zoomHandler = () => this._render({ skipIfDecisionsUnchanged: true });
     this._map.on('zoomend', this._zoomHandler);
+    this._moveHandler = () => this._showDetail();
+    this._map.on('moveend', this._moveHandler);
     void this._fetch();
   }
 
@@ -130,12 +163,23 @@ export class WildfireLayer {
       this._map.off('zoomend', this._zoomHandler);
       this._zoomHandler = null;
     }
+    if (this._moveHandler) {
+      this._map.off('moveend', this._moveHandler);
+      this._moveHandler = null;
+    }
+    this._detailCtrl?.abort();
+    this._detailCtrl = null;
     if (this._polygonLayer) { this._map.removeLayer(this._polygonLayer); this._polygonLayer = null; }
     // The shared canvas renderer is deliberately NOT removed — the
     // alerts layer may still be drawing through it (map-lifetime,
     // see shared-canvas-renderer.ts).
     if (this._iconLayer) { this._map.removeLayer(this._iconLayer); this._iconLayer = null; }
     this._features = [];
+    this._all = [];
+    this._outlineStamp = '';
+    this._outlinesAt = 0;
+    this._detail.clear();
+    this._detailDrawn.clear();
     this._renderDecisions.clear();
   }
 
@@ -189,27 +233,91 @@ export class WildfireLayer {
     this._abortCtrl?.abort();
     const ctrl = new AbortController();
     this._abortCtrl = ctrl;
-    const features = await this._fetchWfigs(ctrl.signal);
+    const fires = await this._fetchWfigs(WFIGS_ATTRIBUTES_URL, ctrl.signal);
     if (myGen !== this._gen) return;   // stale — abandon
+    const needOutlines = fires !== null
+      && (outlineStamp(fires) !== this._outlineStamp || Date.now() - this._outlinesAt > OUTLINE_MAX_AGE_MS);
+    const outlines = needOutlines ? await this._fetchWfigs(WFIGS_OUTLINES_URL, ctrl.signal) : null;
+    if (myGen !== this._gen) return;
     if (this._abortCtrl === ctrl) this._abortCtrl = null;
 
-    // null = the WFIGS fetch failed (transient 503 / rate-limit). Keep
+    // null = a WFIGS fetch failed (transient 503 / rate-limit). Keep
     // the currently displayed perimeters rather than blanking every
     // fire polygon/icon for the 5-30 min until the next scheduled
     // retry. A SUCCESSFUL fetch returning [] is real data ("no active
     // fires in the feed") and replaces as before.
-    if (features !== null) {
-      this._features = this._filter(features);
-      this._failureCount = 0;
-      this._render();
-      this._scheduleNext();
-    } else {
-      // WFIGS failed (kept the displayed perimeters) — back off instead
-      // of retrying on the normal cadence, mirroring the alerts layer.
+    if (fires === null || (needOutlines && outlines === null)) {
+      // Back off instead of retrying on the normal cadence, mirroring
+      // the alerts layer.
       this._failureCount++;
       this._render();
       this._scheduleRetry();
+      return;
     }
+    this._failureCount = 0;
+    // What's drawn, read before the merge below changes those same objects.
+    // Redraw only for a change the map shows: a rebuild closes any open popup.
+    const drawn = renderSignature(this._features);
+    if (outlines) {
+      this._all = outlines.filter((f) => !!f.geometry);
+      this._outlineStamp = outlineStamp(this._all);
+      this._outlinesAt = Date.now();
+      for (const [id, d] of this._detail) {
+        const f = this._all.find((a) => featureKey(a) === id);
+        if (!f || (f.properties as WildfireProps).poly_DateCurrent !== d.date) this._detail.delete(id);
+      }
+    } else {
+      const latest = new Map(fires.map((f) => [featureKey(f), f.properties]));
+      for (const f of this._all) Object.assign(f.properties ?? {}, latest.get(featureKey(f)));
+    }
+    this._features = this._filter(this._all);
+    if (outlines || renderSignature(this._features) !== drawn) this._render();
+    this._scheduleNext();
+    this._showDetail();
+  }
+
+  // From DETAIL_ZOOM, draw the fires in view with their full outlines:
+  // redraw with ones already fetched, and fetch the rest.
+  private _showDetail(): void {
+    if (this._map.getZoom() < DETAIL_ZOOM) return;
+    const view = this._map.getBounds();
+    const inView = this._features.filter((f) => {
+      const b = geometryLngLatBounds(f.geometry);
+      return !!b && view.intersects(L.latLngBounds([b.minLat, b.minLng], [b.maxLat, b.maxLng]));
+    });
+    const have = (f: GeoJSON.Feature): boolean =>
+      this._detail.get(featureKey(f))?.date === (f.properties as WildfireProps | null)?.poly_DateCurrent;
+    if (inView.some((f) => have(f) && !this._detailDrawn.has(featureKey(f)))) this._renderUnlessPopupOpen();
+    const missing = inView.filter((f) => !have(f)).map(featureKey).filter((id) => /^\d+$/.test(id));
+    if (missing.length > 0) void this._fetchDetail(missing);
+  }
+
+  private async _fetchDetail(ids: string[]): Promise<void> {
+    this._detailCtrl?.abort();
+    const ctrl = new AbortController();
+    this._detailCtrl = ctrl;
+    const detailed = await this._fetchWfigs(wfigsDetailUrl(ids), ctrl.signal);
+    if (ctrl.signal.aborted || !detailed) return;
+    if (this._detailCtrl === ctrl) this._detailCtrl = null;
+    for (const f of detailed) {
+      if (f.geometry) this._detail.set(featureKey(f), { date: (f.properties as WildfireProps | null)?.poly_DateCurrent, geometry: f.geometry });
+    }
+    this._renderUnlessPopupOpen();
+  }
+
+  // A rebuild closes any open popup, so with one open, redraw once it closes.
+  private _renderUnlessPopupOpen(): void {
+    let open = false;
+    const check = (l: L.Layer): void => { if (l.isPopupOpen?.()) open = true; };
+    this._polygonLayer?.eachLayer(check);
+    this._iconLayer?.eachLayer(check);
+    if (!open) { this._render(); return; }
+    if (this._renderOnPopupClose) return;
+    this._renderOnPopupClose = true;
+    this._map.once('popupclose', () => {
+      this._renderOnPopupClose = false;
+      this._render();
+    });
   }
 
   /** Backoff delay for the Nth consecutive failure (1-based): 5 min
@@ -228,12 +336,15 @@ export class WildfireLayer {
   // Returns null on failure so the caller can keep the existing feature
   // set in place (avoid blowing displayed perimeters away on a transient
   // error).
-  private async _fetchWfigs(signal: AbortSignal): Promise<GeoJSON.Feature[] | null> {
+  private async _fetchWfigs(url: string, signal: AbortSignal): Promise<GeoJSON.Feature[] | null> {
     try {
-      const res = await fetch(NIFC_URL, { signal });
+      // no-cache: WFIGS allows 5 min of reuse, and outlines fetched because
+      // a perimeter changed must not come from before the change. The
+      // ETag still makes an unchanged feed a body-less 304.
+      const res = await fetch(url, { signal, cache: 'no-cache' });
       if (!res.ok) throw new Error(`NIFC fetch ${res.status}`);
       const data = await res.json() as GeoJSON.FeatureCollection;
-      return (data?.features ?? []).filter((f): f is GeoJSON.Feature => !!f?.geometry);
+      return (data?.features ?? []).filter((f): f is GeoJSON.Feature => !!f);
     } catch (err) {
       // Deliberate cancellation (teardown / superseded by a fresh fetch).
       // Not a real failure — caller's gen check will discard the result anyway.
@@ -289,6 +400,8 @@ export class WildfireLayer {
     const polygons: GeoJSON.Feature[] = [];
     const icons: { latLng: L.LatLng; feature: GeoJSON.Feature }[] = [];
     const newDecisions = new Map<string, 'polygon' | 'icon'>();
+    const zoomedIn = this._map.getZoom() >= DETAIL_ZOOM;
+    const detailDrawn = new Set<string>();
 
     for (const f of this._features) {
       const bbox = featureBboxPx(f.geometry, this._map);
@@ -296,7 +409,10 @@ export class WildfireLayer {
       const px = Math.max(bbox.width, bbox.height);
       const key = featureKey(f);
       if (px >= ICON_THRESHOLD_PX) {
-        polygons.push(f);
+        const detail = zoomedIn ? this._detail.get(key) : undefined;
+        const current = detail && detail.date === (f.properties as WildfireProps | null)?.poly_DateCurrent;
+        polygons.push(current ? { ...f, geometry: detail.geometry } : f);
+        if (current) detailDrawn.add(key);
         newDecisions.set(key, 'polygon');
       } else {
         const c = centroidLngLat(f.geometry);
@@ -311,6 +427,7 @@ export class WildfireLayer {
       return;
     }
     this._renderDecisions = newDecisions;
+    this._detailDrawn = detailDrawn;
 
     // Tear down any existing layers before re-rendering — simplest correct
     // approach for the volume we deal with (typically 50–200 features post-filter).
@@ -418,9 +535,25 @@ function isContained(props: WildfireProps | null): boolean {
   return (props?.attr_PercentContained ?? 0) >= 100;
 }
 
-// Stable identifier for a NIFC feature. ArcGIS GeoJSON usually carries an
-// OBJECTID as feature.id; fall back to name+discovery so we still get a
-// reasonable key when id isn't set.
+// Changes when a fire's outline does (poly_DateCurrent) or fires come or go.
+function outlineStamp(features: GeoJSON.Feature[]): string {
+  return features
+    .map((f) => `${featureKey(f)}:${(f.properties as WildfireProps | null)?.poly_DateCurrent ?? ''}`)
+    .sort()
+    .join(',');
+}
+
+// What the map draws for each fire besides its outline: colour and icon size.
+function renderSignature(features: GeoJSON.Feature[]): string {
+  return features.map((f) => {
+    const p = f.properties as WildfireProps | null;
+    return `${featureKey(f)}:${isContained(p) ? 1 : 0}:${iconSizeForAcres(p?.poly_GISAcres ?? 0)}`;
+  }).join(',');
+}
+
+// Stable identifier for a NIFC feature: its OBJECTID, which ArcGIS GeoJSON
+// carries as feature.id when OBJECTID is requested. Falls back to
+// name+discovery when id isn't set.
 function featureKey(f: GeoJSON.Feature): string {
   if (f.id != null) return String(f.id);
   const p = f.properties as WildfireProps | null;
