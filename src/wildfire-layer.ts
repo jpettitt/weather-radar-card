@@ -25,6 +25,8 @@ const NIFC_URL =
   + 'WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query'
   + '?where=1%3D1'
   + '&outFields=poly_IncidentName,poly_GISAcres,attr_PercentContained,attr_FireDiscoveryDateTime,attr_POOJurisdictionalUnit'
+  + ',attr_IncidentShortDescription,attr_POOCounty,attr_POOState,attr_TotalIncidentPersonnel,attr_FireCause'
+  + ',poly_PolygonDateTime,attr_ModifiedOnDateTime_dt'
   + '&geometryPrecision=4'
   + '&f=geojson';
 
@@ -59,6 +61,13 @@ interface WildfireProps {
   attr_PercentContained?: number;
   attr_FireDiscoveryDateTime?: number;   // ms since epoch from ArcGIS
   attr_POOJurisdictionalUnit?: string;   // Point-of-origin jurisdictional unit (e.g. "FLFNF") — used to build the InciWeb URL
+  attr_IncidentShortDescription?: string; // e.g. "30 Miles NW from Leavenworth, WA"; set for about 70% of fires
+  attr_POOCounty?: string;
+  attr_POOState?: string;                // e.g. "US-WA"
+  attr_TotalIncidentPersonnel?: number;
+  attr_FireCause?: string;               // Natural / Human / Undetermined
+  poly_PolygonDateTime?: number;         // when the perimeter was mapped (ms)
+  attr_ModifiedOnDateTime_dt?: number;   // when the incident record last changed (ms)
 }
 
 export class WildfireLayer {
@@ -378,9 +387,10 @@ export class WildfireLayer {
           // autoPan keeps the popup inside the visible map area when the
           // anchor is near an edge — Leaflet smoothly slides the map so the
           // popup is fully readable. autoPanPadding keeps a small inset so
-          // it never butts against the card edge.
+          // it never butts against the card edge. Built when opened, so its
+          // ages are current and it uses an InciWeb index that arrived later.
           layer.bindPopup(
-            buildPopupHtml(
+            () => buildPopupHtml(
               feature.properties as WildfireProps | null,
               this._inciwebSlugs,
               this._inciwebReady,
@@ -407,7 +417,7 @@ export class WildfireLayer {
         });
         const marker = L.marker(item.latLng, { icon });
         marker.bindPopup(
-          buildPopupHtml(props, this._inciwebSlugs, this._inciwebReady, this._hass),
+          () => buildPopupHtml(props, this._inciwebSlugs, this._inciwebReady, this._hass),
           { autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight() },
         );
         marker.addTo(this._iconLayer!);
@@ -460,8 +470,10 @@ function buildPopupHtml(
   inciwebSlugs: Set<string>,
   inciwebReady: boolean,
   hass: HomeAssistant | undefined,
+  nowMs = Date.now(),
 ): string {
   const locale = hass?.locale;
+  const lang = locale?.language ?? navigator.language;
   const name = props?.poly_IncidentName ?? localize('ui.wildfire.unknown_name');
   const acres = props?.poly_GISAcres;
   const contained = props?.attr_PercentContained;
@@ -484,6 +496,30 @@ function buildPopupHtml(
     const d = new Date(discovered);
     discoveredStr = locale ? formatDate(d, locale) : d.toLocaleDateString();
   }
+
+  // Rows WFIGS doesn't fill for every fire are left out when empty. An empty
+  // description template arrives as "null Miles null from null, " (4 of 75
+  // on 2026-10-08), so any "null" sends it to the county and state.
+  const desc = props?.attr_IncidentShortDescription?.trim();
+  const location = (desc && !/\bnull\b/i.test(desc) ? desc : '')
+    || [props?.attr_POOCounty, props?.attr_POOState?.replace(/^US-/, '')].filter(Boolean).join(', ');
+  const personnel = props?.attr_TotalIncidentPersonnel;
+  const cause = props?.attr_FireCause;
+  const causeKey = cause ? CAUSE_KEYS[cause] : undefined;
+  const mapped = props?.poly_PolygonDateTime;
+  const updated = props?.attr_ModifiedOnDateTime_dt;
+  const row = (labelKey: string, value: string): string =>
+    `<div><b>${escapeHtml(localize(labelKey))}:</b> ${escapeHtml(value)}</div>`;
+  const extraRows = [
+    typeof personnel === 'number' ? row('ui.wildfire.personnel', formatCount(personnel, lang)) : '',
+    cause ? row('ui.wildfire.cause', causeKey ? localize(causeKey) : cause) : '',
+  ].join('');
+  const ageRows = [
+    typeof mapped === 'number'
+      ? row('ui.wildfire.perimeter', localize('ui.wildfire.mapped_ago', '{time}', agoText(mapped, nowMs, lang)))
+      : '',
+    typeof updated === 'number' ? row('ui.wildfire.updated', agoText(updated, nowMs, lang)) : '',
+  ].join('');
 
   // InciWeb URL format: /incident-information/{poo-jurisdictional-unit-lower}-{name-slug}
   // e.g. flfnf-sand-drain. We only render the link when the computed slug
@@ -520,14 +556,48 @@ function buildPopupHtml(
   // outside the card's shadow root, so card CSS doesn't apply.
   return `
     <div style="font:12px/1.4 'Helvetica Neue',Arial,sans-serif;min-width:180px">
-      <div style="font-weight:bold;font-size:13px;margin-bottom:4px">${escapeHtml(name)}</div>
-      <div><b>${escapeHtml(localize('ui.wildfire.area'))}:</b> ${escapeHtml(areaStr)}</div>
+      <div style="font-weight:bold;font-size:13px">${escapeHtml(name)}</div>
+      ${location ? `<div style="color:#555">${escapeHtml(location)}</div>` : ''}
+      <div style="margin-top:4px"><b>${escapeHtml(localize('ui.wildfire.area'))}:</b> ${escapeHtml(areaStr)}</div>
       <div><b>${escapeHtml(localize('ui.wildfire.contained'))}:</b> ${escapeHtml(containedStr)}</div>
+      ${extraRows}
       <div><b>${escapeHtml(localize('ui.wildfire.discovered'))}:</b> ${escapeHtml(discoveredStr)}</div>
+      ${ageRows}
       <div style="margin-top:6px;font-size:10px;color:#666">${escapeHtml(localize('ui.wildfire.disclaimer'))} <a href="${DOCS_WILDFIRES_URL}" target="_blank" rel="noopener noreferrer" style="color:#666;text-decoration:underline">${escapeHtml(localize('ui.wildfire.see_readme'))}</a>.</div>
       ${linkHtml}
     </div>
   `;
+}
+
+// WFIGS's attr_FireCause values (2026-10-08); any other value is shown as sent.
+const CAUSE_KEYS: Record<string, string> = {
+  Natural: 'ui.wildfire.cause_natural',
+  Human: 'ui.wildfire.cause_human',
+  Undetermined: 'ui.wildfire.cause_undetermined',
+};
+
+function formatCount(n: number, lang: string): string {
+  try {
+    return new Intl.NumberFormat(lang).format(n);
+  } catch {
+    return String(n);
+  }
+}
+
+// "40 minutes ago", "5 hours ago", "30 days ago" in HA's language. Days from
+// a day up: a month-old perimeter reads as 30 days, not "last month".
+function agoText(thenMs: number, nowMs: number, lang: string): string {
+  let rtf: Intl.RelativeTimeFormat;
+  try {
+    rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'always' });
+  } catch {
+    rtf = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
+  }
+  const minutes = Math.max(1, Math.round((nowMs - thenMs) / 60_000));
+  if (minutes < 60) return rtf.format(-minutes, 'minute');
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return rtf.format(-hours, 'hour');
+  return rtf.format(-Math.round(hours / 24), 'day');
 }
 
 // Compute the on-screen pixel bounding box of a geometry at the current zoom.
