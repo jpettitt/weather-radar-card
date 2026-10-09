@@ -174,7 +174,8 @@ interface MotionVector { dx: number; dy: number; confidence: number; }
 // NCEP opengeo GeoServer (radar.weather.gov's own backend) whose
 // GetCapabilities lists actual frame times (~2-min cadence, ~2-min
 // lag) — see src/noaa-frame-list.ts. This eventdriven ImageServer
-// refuses browser metadata requests, so its frames are computed on a
+// refused browser metadata requests when this was built (it allows them
+// as of 2026-10), so its frames are computed on a
 // blind 10-min grid behind a 15-min lag (the server rejects anything
 // fresher — measured in `.dev/noaa-lag-probe.mjs`): correct but stale
 // by 15-25 min. Used when the opengeo listing can't be fetched/parsed.
@@ -2090,9 +2091,10 @@ export class RadarPlayer {
     this._stridePhaseSec = null;
   }
 
-  // Resolve the DWD WMS layer the player is currently using. Niederschlagsradar
-  // (the default) is past-only; when the user requests forecast hours, switch
-  // to the analysis+nowcast layer which carries +2h frames too.
+  // Resolve the DWD WMS layer the player is currently using: Niederschlagsradar
+  // by default, and with forecast hours the analysis+nowcast layer. Both
+  // carry the +2 h nowcast (checked 2026-10-08); forecast configs have
+  // always used the latter.
   private _dwdLayerName(): string {
     const wantsForecast = (this._cfg.forecast_minutes ?? 0) > 0;
     const autoSwap = wantsForecast && this._cfg.dwd_layer === undefined;

@@ -63,6 +63,13 @@ describe('getEffectiveTimeRange', () => {
     expect(r.pastMin).toBe(120); // RainViewer maxPastMin
   });
 
+  it('caps DWD history at 24 h, inside the 72–96 h DWD keeps', () => {
+    // A 3.5-day loop asked for frames DWD no longer had at 00:00 UTC; the
+    // first failure stopped the load, forecast included.
+    const r = getEffectiveTimeRange({ ...base, data_source: 'DWD', past_minutes: 5040 });
+    expect(r.pastMin).toBe(1440);
+  });
+
   it('caps forecast_minutes at the source max', () => {
     const r = getEffectiveTimeRange({ ...base, data_source: 'DWD', forecast_minutes: 999 });
     expect(r.forecastMin).toBe(120); // DWD maxForecastMin

@@ -122,7 +122,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   Order: land #133 first (DWD-only baseline), then this PR adds the
   source abstraction without changing the EU experience.
 
-- **Wind source registry — tiered alternatives to ICON-D2** — partially
+- **Wind source registry — tiered alternatives to ICON** — partially
   shipped. The `WindSource` registry in `src/wind-source-caps.ts` is
   live; the cache key in `WindGridFetcher` includes `source`; the editor
   has a Wind Data Source dropdown above Style/Density/Size; the cadence
@@ -139,21 +139,21 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
     speed/direction → U/V band conversion. CORS open. Auto-defaults for
     fresh installs whose `hass.config.country === 'US'` (or whose lat/lon
     falls in the CONUS / AK / HI / PR bbox if country is unset).
-  - ✅ `dwd_aicon` — DWD's AI-augmented variant of ICON-D2. Plug-compatible
+  - ✅ `dwd_aicon` — DWD's AI-augmented variant of ICON. Plug-compatible
     one-line caps-table addition (same WCS endpoint, same global 0.25°
     grid, same U/V bands). Confirmed identical-shape via DescribeCoverage.
 
   **Tier 2 — same fetcher, small adapter (~30 lines):**
 
   - `dwd__Icon_reg025_fd_pl_UV` — ICON pressure levels (250/500/700/850/925
-    hPa). Needs an `elevation` subset axis. Same 0.25° grid as ICON-D2.
+    hPa). Needs an `elevation` subset axis. Same 0.25° grid as ICON.
   - DWD wave-model winds (`dwd__Cwam_reg0013x0008_*` ~1.4 × 0.9 km North
     Sea / Baltic; `dwd__Ewam_reg005x010_fd_sl_UV10M` ~5.5 × 11 km covering
     NE Atlantic plus N Sea plus Baltic). **Marine-only** — no land
     coverage. Useful only for sailing-focused dashboards; would need a
     "this source has no land data" UX note to avoid confusing inland users.
 
-  **Tier 3 — no finer-than-ICON-D2 deterministic wind product over land
+  **Tier 3 — no finer-than-ICON deterministic wind product over land
   for Europe via DWD's public WCS.** Verified 2026-05-15:
 
   - ICON-EU (0.0625° native ~6.25 km) exposes Temp / QFF / TOTPREC but
@@ -164,7 +164,7 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
     climatology** ("Mittlere jährliche Windgeschwindigkeiten … 1981-2000"):
     static annual-mean field at 1 km for wind-turbine site planning, NOT
     a real-time forecast or observation. Unusable for the streamline overlay.
-  - Conclusion: for finer-than-ICON-D2 real-time European wind we would
+  - Conclusion: for finer-than-ICON real-time European wind we would
     have to leave DWD entirely (Météo-France AROME 1.3 km, MET Norway MEPS
     2.5 km Nordic, ECMWF HRES 0.1°). Each is ~100 lines of new fetch + parser.
 
@@ -329,8 +329,8 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - `animation.md` rewritten to match the current two-slot + delayed-fade-out model ✅ — 3.5.0
 - 11-language i18n parity sweep (100% key coverage, stale `frame_count` keys dropped) ✅ — 3.5.0
 - Lightning overlay (Blitzortung integration) — bolt + pulse for first 30 s, then a Blitzortung-style coloured + sign on a two-pane outline-vs-fill split (so dense storm clusters read clean instead of black-blob). Card-side max-age cap (default 30 min, distinct from the integration's own setting). Editor toggle disabled with tooltip when integration not loaded. ✅ — 3.6.0
-- Wind overlay — barbs / arrows / animated streamlines from DWD's ICON-D2 model. Bulk WCS fetch with 60 s coalescing cache. ✅ — 3.6.0
-- Wind source registry — `WindSource` caps table in `src/wind-source-caps.ts`; `ndfd_wind` (NWS NDFD 2.5 km CONUS/AK/HI/PR) + `dwd_aicon` (DWD AI-augmented ICON-D2). Auto-defaults `ndfd_wind` for fresh US installs. ✅ — 3.6.1
+- Wind overlay — barbs / arrows / animated streamlines from DWD's ICON model. Bulk WCS fetch with 60 s coalescing cache. ✅ — 3.6.0
+- Wind source registry — `WindSource` caps table in `src/wind-source-caps.ts`; `ndfd_wind` (NWS NDFD 2.5 km CONUS/AK/HI/PR) + `dwd_aicon` (DWD AI-augmented ICON). Auto-defaults `ndfd_wind` for fresh US installs. ✅ — 3.6.1
 - AbortController on tile + data fetches (`fetch-tile-layer`, `wildfire-layer`, `nws-alerts-layer`, `radar-player`) so superseded fetches don't complete on the wire ✅ — 3.6.2
 - `ha-textfield` → `ha-input` migration after invisible-editor-input regression on current HA ✅ — 3.6.3
 - Lightning strikes — newest renders on top within each pane (z-index by timestamp) ([#171](https://github.com/jpettitt/weather-radar-card/pull/171)) ✅ — 3.6.4

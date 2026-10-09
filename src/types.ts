@@ -194,14 +194,14 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   data_source?: string;
   /** DWD-only: ISO timestamp to anchor frames at instead of "now" — for testing with historical rain. */
   dwd_time_override?: string;
-  /** DWD-only: WMS layer name override. Default Niederschlagsradar (past-only); auto-switches to Radar_wn-product_1x1km_ger when forecast_minutes > 0 since that one carries the +2h nowcast. */
+  /** DWD-only: WMS layer name override. Default Niederschlagsradar; auto-switches to Radar_wn-product_1x1km_ger when forecast_minutes > 0 (both carry the +2 h nowcast). */
   dwd_layer?: string;
   /** @deprecated since 3.5: use forecast_minutes (source-agnostic). Auto-migrated by migrateConfig. */
   dwd_forecast_hours?: number;
   /** Wind data source for the overlay grid. Defaults to 'dwd_aicon'
-   * (DWD's AI-augmented variant of ICON-D2 — same 0.25° global grid,
+   * (DWD's AI-augmented variant of ICON — same 0.25° global grid,
    * 3-hourly steps, AI post-processing improves short-range
-   * accuracy). Set to 'dwd_icon' for the raw ICON-D2 numerical model
+   * accuracy). Set to 'dwd_icon' for the raw ICON numerical model
    * or 'ndfd_wind' for NWS NDFD (2.5 km, US regions only). Fresh
    * installs in US locations get 'ndfd_wind' auto-set by getStubConfig;
    * configs without this field resolve at runtime to DEFAULT_WIND_SOURCE

@@ -1,6 +1,6 @@
 # Wind overlay — design
 
-10 m wind overlay sourced from DWD's [ICON-D2 forecast model](https://www.dwd.de/EN/research/weatherforecasting/num_modelling/01_num_weather_prediction_modells/icon_description.html), rendered as static icons (barbs or arrows) and/or animated streamlines. The model is global at 0.25° native resolution (~28 km cells); updates every 3 hours.
+10 m wind overlay sourced from DWD's [ICON forecast model](https://www.dwd.de/EN/research/weatherforecasting/num_modelling/01_num_weather_prediction_modells/icon_description.html), rendered as static icons (barbs or arrows) and/or animated streamlines. The model is global at 0.25° native resolution (~28 km cells); a new run every 6 hours.
 
 ## Status — initial drop in v3.6.0-beta1, bulk-fetch rework in v3.6.0-beta2
 
@@ -27,7 +27,7 @@ The factor-of-60-to-290 reduction in HTTP requests is the headline number. The a
 
 ### Why WCS, not WMS
 
-DWD's GeoServer exposes the same ICON-D2 wind data via two protocols:
+DWD's GeoServer exposes the same ICON wind data via two protocols:
 
 - **WMS** (`Web Map Service`) — designed for rendered tiles; `GetFeatureInfo` is a per-pixel afterthought that returns one feature per call.
 - **WCS** (`Web Coverage Service`) — designed for raster data delivery; `GetCoverage` returns the entire bbox as a structured grid.
@@ -122,7 +122,7 @@ The streamline overlay's per-particle interpolation uses `sampleWindGridBilinear
 
 ## Refresh cadence
 
-ICON-D2 publishes new model runs every **3 hours** at 00, 03, 06, 09, 12, 15, 18, 21 UTC, typically becoming available at the WCS endpoint within 30–60 minutes of model start. Our "current" time anchor is hour-bucketed (`Math.trunc(timeMs / 3 600 000)`), so the *requested* TIME parameter only changes once per hour.
+ICON publishes new model runs every **6 hours** at 00, 06, 12, 18 UTC (the coverage's listed runs, checked 2026-10-08), typically becoming available at the WCS endpoint within 30–60 minutes of model start. Our "current" time anchor is hour-bucketed (`Math.trunc(timeMs / 3 600 000)`), so the *requested* TIME parameter only changes once per hour.
 
 Both overlays self-schedule a refresh at **HH:00:30** of each clock hour — the moment when:
 

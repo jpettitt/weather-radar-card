@@ -97,7 +97,7 @@ const MIN_PX_PER_MPS_PER_FRAME = 0.01;
 // Refresh anchored to the top of each clock hour. Our "current" time is
 // already hour-bucketed (Math.trunc(timeMs / 3_600_000)), so the displayed
 // data only changes when a new hour rolls in or DWD publishes a fresher
-// ICON-D2 run for the same hour. Top-of-hour catches both cases at the
+// ICON run for the same hour. Top-of-hour catches both cases at the
 // instant they happen — polling more often returns identical data.
 // 30 sec offset gives DWD a window to publish if a new model run lands at HH:00.
 const HOURLY_REFRESH_OFFSET_MS = 30_000;
@@ -107,7 +107,7 @@ export interface WindFlowOverlayOptions {
   timeMs?: number;
   /** Stroke for new line segments. Defaults to a neutral grey that reads on light or dark maps. */
   particleColor?: string;
-  /** Wind data source. Defaults to ICON-D2 globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
+  /** Wind data source. Defaults to ICON globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
   source?: WindSource;
   /** Keep the hourly grid refresh running while the host card is hidden — the particle animation still stops. See preload_while_hidden. */
   preloadWhileHidden?: boolean;
@@ -573,7 +573,7 @@ export class WindFlowOverlay {
     // Per-source visible-trail length cap. The ring buffer always
     // records TRAIL_LENGTH frames; the draw loop only renders the
     // freshest `drawSegments` of them. Sources with a finer native
-    // grid (NDFD at 2.5 km vs ICON-D2 at ~28 km) produce smoother
+    // grid (NDFD at 2.5 km vs ICON at ~28 km) produce smoother
     // particle paths that read as visibly longer ribbons even at the
     // same per-frame pixel velocity, so they trim here. Particle motion
     // (and therefore visual speed) is unaffected — only the rendered

@@ -17,7 +17,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 // Curated past-time presets in minutes. Editor filters to ≤ source's
 // editorMaxPastMin. 20/40 give finer-grained control at the small end
 // where users care most; the upper end skips toward larger steps.
-const PAST_PRESETS_MIN = [20, 40, 60, 120, 240, 360, 720, 1440, 2880, 4320, 5040];
+const PAST_PRESETS_MIN = [20, 40, 60, 120, 240, 360, 720, 1440];
 
 function formatDuration(min: number): string {
   if (min < 60) return `${min} min`;
@@ -1153,7 +1153,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     const caps = getSourceCaps(config.data_source);
     const range = getEffectiveTimeRange(config);
 
-    const pastOptions = this._buildPastOptions(config.past_minutes, caps.editorMaxPastMin);
+    const pastOptions = this._buildPastOptions(config.past_minutes, caps.editorMaxPastMin, caps.maxPastMin);
     const pastValue = String(config.past_minutes ?? caps.defaultPastMin);
 
     const forecastOptions = caps.maxForecastMin > 0
@@ -1286,17 +1286,19 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     return localize(`editor.wind.cadence_${caps.id}`) || caps.cadenceNote;
   }
 
-  private _buildPastOptions(rawValue: number | undefined, editorCap: number): { value: string; label: string }[] {
+  private _buildPastOptions(rawValue: number | undefined, editorCap: number, maxPast: number): { value: string; label: string }[] {
     const opts: { value: string; label: string }[] = [
       { value: '0', label: localize('editor.time_range.past_off') },
     ];
     opts.push(...PAST_PRESETS_MIN
       .filter(m => m <= editorCap)
       .map(m => ({ value: String(m), label: formatDuration(m) })));
-    if (rawValue !== undefined && rawValue !== 0 && !PAST_PRESETS_MIN.includes(rawValue)) {
+    // A YAML value the dropdown doesn't offer — a preset above the editor's
+    // cap included — gets its own entry, labelled with what the card plays.
+    if (rawValue !== undefined && rawValue !== 0 && !opts.some((o) => o.value === String(rawValue))) {
       opts.push({
         value: String(rawValue),
-        label: `${formatDuration(rawValue)} ${localize('editor.time_range.yaml_suffix')}`,
+        label: `${formatDuration(Math.min(rawValue, maxPast))} ${localize('editor.time_range.yaml_suffix')}`,
       });
     }
     return opts;

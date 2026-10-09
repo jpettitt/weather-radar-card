@@ -175,7 +175,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // user in the US automatically gets NDFD (~2.5 km regional forecast)
   // when they later turn the wind overlay on. Existing configs (which
   // never went through this code path) lack wind_source entirely and
-  // fall back at runtime to ICON-D2 globally — see DEFAULT_WIND_SOURCE.
+  // fall back at runtime to ICON globally — see DEFAULT_WIND_SOURCE.
   public static getStubConfig(hass?: HomeAssistant): Record<string, unknown> {
     const stub: Record<string, unknown> = { height: '220px' };
     if (hass?.config) {
@@ -922,7 +922,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupWindOverlay(): void {
     if (!this._map) return;
     const cfg = this._config;
-    // Wind overlay is data-source-independent: ICON-D2 (10 m wind) is a
+    // Wind overlay is data-source-independent: ICON (10 m wind) is a
     // global product, so it stacks usefully on RainViewer / NOAA radars too.
     // The dwd_time_override / forecast_minutes anchors are still honoured
     // when DWD radar is the source; for other sources the wind shows live.

@@ -1,6 +1,6 @@
 # Hazard & Layer Overlays
 
-Optional overlays that stack on top of the radar. Three are US-only and carry strong life-safety disclaimers (Wildfires, NWS Alerts, Lightning); one is global (Wind).
+Optional overlays that stack on top of the radar. Two are US-only (Wildfires, NWS Alerts); those and Lightning carry strong life-safety disclaimers. Lightning (from the Blitzortung integration) and Wind are global.
 
 For non-US instances, the card surfaces a banner reminding the user that the data is US-only when either of the US-specific overlays is enabled with `hass.config.country !== 'US'`.
 
@@ -8,9 +8,9 @@ For non-US instances, the card surfaces a banner reminding the user that the dat
 
 When `show_wildfires: true`, the card overlays active US wildfire perimeters from the National Interagency Fire Center's [WFIGS Current Interagency Fire Perimeters](https://data-nifc.opendata.arcgis.com/datasets/nifc::wfigs-current-interagency-fire-perimeters/about) feed.
 
-Active fires draw red; fires reported as 100% contained draw grey. Small incidents render as a fire icon at the centroid; larger incidents render as a polygon outline with translucent fill. Click any fire to see its name and location, area, containment, personnel, cause and discovery date, and how long ago its perimeter was mapped and its record updated (perimeters are often weeks old), with a link to the fire's InciWeb page when it has one (checked when you open the popup, so the link appears a moment later). Details a fire has no data for are left out. NIFC always reports area in acres; the popup shows it in acres or hectares — whichever matches your Home Assistant unit system — and the discovery date follows your HA locale.
+Active fires draw red; fires reported as 100% contained draw grey. Small incidents render as a fire icon at the centroid; larger incidents render as a polygon outline with translucent fill. Click any fire to see its name and location, area, containment, personnel, cause and discovery date, and how long ago its perimeter was mapped and its record updated (perimeters are often weeks old), with a link to the fire's InciWeb page when it has one (checked when you open the popup, so the link appears a moment later). Details a fire has no data for are left out. Ships in 3.12.0-beta3. NIFC always reports area in acres; the popup shows it in acres or hectares — whichever matches your Home Assistant unit system — and the discovery date follows your HA locale.
 
-The overlay refreshes every 5 minutes when fires are visible (matching NIFC's update cadence) and every 30 minutes when none are. A refresh fetches only the fires' details (a few KB); outlines, simplified to about 100 m, are fetched again only when a perimeter changes or fires come or go. Zoomed in to 11 or closer, the fires in view are drawn with their full outline. Defaults filter out incidents under 10 acres; tune with `wildfire_min_acres` or `wildfire_radius_km`.
+The overlay refreshes every 5 minutes when fires are visible (matching NIFC's update cadence) and every 30 minutes when none are. A refresh fetches only the fires' details (a few KB); outlines, simplified to about 100 m, are fetched again only when a perimeter changes or fires come or go. Zoomed in to 11 or closer, the fires in view are drawn with their full outline. Ships in 3.12.0-beta3. Defaults filter out incidents under 10 acres; tune with `wildfire_min_acres` or `wildfire_radius_km`.
 
 > [!WARNING]
 > **Wildfire data is for informational purposes only.** This overlay shows fire perimeters from NIFC's WFIGS feed, which updates approximately every 5 minutes and may be **delayed, incomplete, or inaccurate**. Reported perimeters typically lag the actual fire front by hours, and not every active incident appears in the feed.
@@ -57,7 +57,7 @@ The default filter excludes the `marine` category (most users are inland; coasta
 >
 > The National Weather Service provides alert data without warranty of accuracy, completeness, or timeliness. The card developers make no warranty that this overlay accurately reflects current NWS alerts.
 
-Both polygon-bearing alerts (most warnings) and zone-based alerts (most advisories — Wind, Frost, Heat, etc.) render. Zone shapes are fetched on demand from `api.weather.gov/zones/...` and cached for 30 days in `localStorage` (versioned key prefix `wrc-zone-v1:`), so the same zone is never re-fetched.
+Both polygon-bearing alerts (most warnings) and zone-based alerts (most advisories — Wind, Frost, Heat, etc.) render. Zone shapes are fetched on demand from `api.weather.gov/zones/...` and cached for 30 days in the browser (IndexedDB), so the same zone isn't fetched again.
 
 ### Alert knobs
 
@@ -98,11 +98,11 @@ The toggle in the editor's Hazard Overlays subpage is greyed out when the Blitzo
 
 When `dwd_wind` is set to `barbs` or `arrows`, or `dwd_wind_flow: true` is set, the card overlays 10 m wind from a forecast model. Two sources are available, picked via the `wind_source` config field (or the editor's Wind Data Source dropdown):
 
-- **`wind_source: 'dwd_aicon'`** (default for non-US) — DWD's AI-augmented variant of ICON-D2. Same 0.25° global grid (~28 km) as ICON-D2, served from the same WCS endpoint, but with 3-hourly time steps; visibly better short-range accuracy at zero behaviour cost.
-- **`wind_source: 'dwd_icon'`** — Raw DWD [ICON-D2 forecast model](https://www.dwd.de/EN/research/weatherforecasting/num_modelling/01_num_weather_prediction_modells/icon_description.html). 0.25° global grid (~28 km), new model run every 3 hours. Opt-in for users who prefer the unadjusted numerical output.
-- **`wind_source: 'ndfd_wind'`** (default for fresh installs in US locations) — NWS National Digital Forecast Database, the forecaster blend of HRRR + RAP + NAM + GFS. 2.5 km native over CONUS / AK / HI / PR; outside those regions cells are no-data and render as calm. Updates hourly, 3-hourly forecast steps out to 7+ days.
+- **`wind_source: 'dwd_aicon'`** (default for non-US) — DWD's AI-augmented variant of ICON. Same 0.25° global grid (~28 km) as ICON, served from the same WCS endpoint, but with 3-hourly time steps; visibly better short-range accuracy at zero behaviour cost.
+- **`wind_source: 'dwd_icon'`** — Raw DWD [ICON forecast model](https://www.dwd.de/EN/research/weatherforecasting/num_modelling/01_num_weather_prediction_modells/icon_description.html). 0.25° global grid (~28 km), new model run every 6 hours. Opt-in for users who prefer the unadjusted numerical output.
+- **`wind_source: 'ndfd_wind'`** (default for fresh installs in US locations) — NWS National Digital Forecast Database, the forecaster blend of HRRR + RAP + NAM + GFS. 2.5 km native over CONUS / AK / HI / PR; outside those regions cells are no-data and render as calm. Updates hourly; hourly forecast steps for about 36 hours, then 3-hourly out to about 3 days.
 
-Existing configs that don't set `wind_source` continue to use ICON-D2 — the field is purely additive, no migration runs.
+Existing configs that don't set `wind_source` continue to use ICON — the field is purely additive, no migration runs.
 
 The wind overlay is **not coupled to the radar source** — both ICON and NDFD are independent of the radar tiles, so the wind layer stacks usefully on RainViewer / NOAA / DWD radars alike. (For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time as the radar playback frame; for the other sources the wind always shows live.)
 
@@ -137,4 +137,4 @@ The streamline layer respects the OS-level `prefers-reduced-motion` setting. Whe
 Both wind overlays consume a shared `WindGrid` produced by a single bulk WCS GetCoverage request per refresh, replacing what was a 60–290-call WMS GetFeatureInfo burst per visual icon. Continental and world-scale views use the WCS Scaling extension to downsample server-side so the response stays ~2 MB max regardless of zoom. Source dispatch lives in `src/wind-source-caps.ts`: each entry supplies the WCS endpoint, coverage ID, CRS (`EPSG:4326` for ICON, `EPSG:3857` for NDFD), and band semantics (U/V for ICON, speed/direction for NDFD — converted to U/V client-side before storage). The cache key includes the source so two configs differing only by `wind_source` don't collide.
 
 > [!NOTE]
-> Both ICON-D2 and NDFD are forecast products — values represent model predictions for the snapshotted hour, not direct measurement. Surface winds in particular can differ noticeably from station observations (terrain channelling, urban canyons, etc.). Use this as a synoptic overview, not a backyard wind reading.
+> Both ICON and NDFD are forecast products — values represent model predictions for the snapshotted hour, not direct measurement. Surface winds in particular can differ noticeably from station observations (terrain channelling, urban canyons, etc.). Use this as a synoptic overview, not a backyard wind reading.

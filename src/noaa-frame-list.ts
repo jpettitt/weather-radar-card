@@ -1,7 +1,7 @@
 // NOAA frame-time discovery against the NCEP opengeo GeoServer.
 //
 // Unlike the old eventdriven ImageServer (which refused browser
-// metadata requests entirely — the reason 3.7.0-alpha2 had to quantise
+// metadata requests in 2026-06, though it allows them now — the reason 3.7.0-alpha2 had to quantise
 // blindly to a 10-min grid), opengeo's per-layer GetCapabilities is
 // small (~8 KB), CORS-open (`access-control-allow-origin: *`), and
 // lists the layer's ACTUAL frame timestamps in its WMS-T time
