@@ -1,5 +1,5 @@
 import { gzipSync } from 'zlib';
-import { readFileSync, writeFileSync } from 'fs';
+import { readdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 import typescript from 'rollup-plugin-typescript2';
@@ -50,6 +50,64 @@ const gzipBundlePlugin = () => ({
   },
 });
 
+// Licence texts for bundled packages that ship no licence file.
+const LICENCE_TEXT_OVERRIDES = {
+  // MIT per its package.json; the copyright line is its bundled file's header.
+  'leaflet.markercluster': `MIT License
+
+Copyright (c) 2012-2017, Dave Leaver, smartrak
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`,
+};
+
+const licenceText = (name, dir) => {
+  const file = readdirSync(dir).find((f) => /^(licen[cs]e|copying)(\.|$)/i.test(f));
+  if (file) return readFileSync(join(dir, file), 'utf8').trim();
+  if (LICENCE_TEXT_OVERRIDES[name]) return LICENCE_TEXT_OVERRIDES[name];
+  throw new Error(`${name} is bundled but ships no licence file: add its notice to LICENCE_TEXT_OVERRIDES in rollup.config.js`);
+};
+
+// Puts the licence texts of the third-party code in each bundle at its top,
+// which their BSD and MIT licences require in every copy: minification strips
+// the packages' own notices. Found from what the bundle actually contains, so
+// a new dependency is covered, or fails the build, without a list to keep.
+// Runs after terser, which would otherwise remove the header too.
+const thirdPartyNoticesPlugin = () => ({
+  name: 'third-party-notices',
+  renderChunk(code, chunk) {
+    const packages = new Map();
+    for (const [id, module] of Object.entries(chunk.modules)) {
+      const match = id.replace(/^\0/, '').match(/^(.*node_modules\/((?:@[^/]+\/)?[^/]+))\//);
+      if (match && module.renderedLength > 0) packages.set(match[2], match[1]);
+    }
+    if (packages.size === 0) return null;
+    // Packages with the same text share one copy.
+    const byText = new Map();
+    for (const [name, dir] of [...packages].sort(([a], [b]) => a.localeCompare(b))) {
+      const text = licenceText(name, dir);
+      byText.set(text, [...(byText.get(text) ?? []), name]);
+    }
+    const body = [...byText].map(([text, names]) => `${names.join(', ')}\n\n${text}`).join('\n\n---\n\n');
+    return `/*! Third-party notices for ${chunk.fileName}\n\n${body.replace(/\*\//g, '* /')}\n*/\n${code}`;
+  },
+});
+
 const serveopts = {
   contentBase: ['./dist'],
   host: '0.0.0.0',
@@ -78,6 +136,7 @@ const plugins = [
     compress: { passes: 2, drop_console: false },
     mangle: { keep_classnames: /^WeatherRadar/ },
   }),
+  thirdPartyNoticesPlugin(),
   // Regenerate the .gz only on full builds — watch mode would serve
   // the .js directly from rollup-plugin-serve and a stale .gz isn't
   // in the way there.
