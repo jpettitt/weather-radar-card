@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-10-09
+
+> **Stable release.** US wind now shows the current hour in the right place, at the right speed. NOAA radar covers Alaska, Hawaii, Puerto Rico and Guam, radar loops reload from the browser with DWD's forecast now included, every frame says how old it is, and wildfire popups say much more. **One breaking change:** without a CARTO key, `map_style: Auto` uses Home Assistant's map tiles (see Changed). The entries below are what changed since 3.11.0.
+
 ### Added
 
 - **Wildfire popups say more** — where the fire is, personnel, cause, and how long ago its perimeter was mapped and its record updated (most current perimeters are over a week old). Details a fire has no data for are left out. The link now says *More info → InciWeb*, where it goes, instead of NIFC.
