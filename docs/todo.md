@@ -88,11 +88,6 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
-- **Remove the 3.12.0 beta callouts once 3.12.0 goes stable** — in
-  `docs/data-sources.md`'s Tile caching section (forecast tiles) and
-  `docs/configuration.md`'s Timestamp paragraph (forecast and stale
-  cues), both #279, from 3.12.0-beta1.
-
 - **Open-Meteo as an alternate wind source for global coverage.**
   The wind overlay landing in 3.6 (PR #133) is DWD-only — Germany +
   immediate neighbours via the ICON-D2 model. To extend the feature
@@ -347,6 +342,10 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - Radar tile reuse — shared downloads, 5-min memory cache, IndexedDB once a frame is final ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)) ✅ — 3.11.0
 - `forecast_refresh_minutes` — DWD forecast frames follow newer nowcast runs ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)) ✅ — 3.11.0
 - `low_power_mode` for slow wall tablets ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)) ✅ — 3.11.0
+- `map_style: Auto` uses Home Assistant's map tiles without a CARTO key ✅ — 3.12.0
+- DWD forecast tiles survive a reload; relative times, forecast and stale-data cues ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)) ✅ — 3.12.0
+- NOAA radar in Alaska, Hawaii, Puerto Rico and Guam ✅ — 3.12.0
+- Richer wildfire popups, InciWeb links for most large fires, lighter wildfire feed ✅ — 3.12.0
 
 ## Canvas rendering for lightning + hazard layers
 
