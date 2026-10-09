@@ -54,7 +54,7 @@ export interface WindGrid {
   latMin: number;
   /** Longitude of the west edge of col 0. */
   lonMin: number;
-  /** Cell size in degrees. For native ICON-D2 fetches this is 0.25° on
+  /** Cell size in degrees. For native ICON fetches this is 0.25° on
    * both axes. Under WCS Scaling the per-axis steps may differ slightly —
    * the parser stores the lon step here as the canonical sampling step
    * since lon dominates particle horizontal motion and the resulting
@@ -75,7 +75,7 @@ export interface FetchWindGridOptions {
    * (see effectiveTimeIso). */
   timeIso?: string | null;
   /** Wind source registry id (see wind-source-caps.ts). Defaults to
-   * 'dwd_icon' (ICON-D2 10 m global). The source determines endpoint,
+   * 'dwd_icon' (ICON 10 m global). The source determines endpoint,
    * coverage id, CRS, and band semantics. */
   source?: WindSource;
   /** Override the default coverage id for the chosen source. Currently
@@ -116,7 +116,7 @@ const DEFAULT_MAX_CELLS = 50_000;
 //   …
 //
 // What axes 0/1 mean and what the bands carry depends on the source —
-// for DWD ICON-D2 axes are (lon, lat) degrees and bands are (U, V) m/s,
+// for DWD ICON axes are (lon, lat) degrees and bands are (U, V) m/s,
 // for NDFD axes are (X, Y) EPSG:3857 metres and bands are (speed knots,
 // direction °). parseRawWcsGrid extracts the geometry + raw bands
 // without interpretation; the source-specific finalizers below convert
@@ -187,7 +187,7 @@ function parseRawWcsGrid(body: string): RawWcsGrid {
   };
 }
 
-/** DWD ICON-D2 finalizer: axes are (lon, lat) degrees, bands are (U, V) m/s.
+/** DWD ICON finalizer: axes are (lon, lat) degrees, bands are (U, V) m/s.
  * Flips file rows (top-down) to bottom-up so cells[0] is the south row.
  * Kept as the public `parseWcsTextGrid` for back-compat with existing tests
  * and any downstream consumer that hard-codes the DWD source. */
@@ -594,7 +594,7 @@ export function sampleWindGridBilinear(
 //
 // Cache TTL: short enough that "pan and re-pan to the same area" still
 // gets fresh data, long enough that two overlays calling within a few
-// seconds share. 60s is the sweet spot for ICON-D2 (updates hourly).
+// seconds share. 60s is the sweet spot for ICON (hourly time steps).
 
 const CACHE_TTL_MS = 60_000;
 
@@ -660,7 +660,7 @@ export class WindGridFetcher {
 
   private _cacheKey(opts: FetchWindGridOptions): string {
     // Round bbox to native grid step so jittery viewport changes that
-    // snap to the same WCS cells share a cache entry. ICON-D2 native
+    // snap to the same WCS cells share a cache entry. ICON native
     // is 0.25° (snap to ¼°). Finer-resolution sources (NDFD ~2.5 km
     // ≈ 0.025°) snap to a tighter grid via the per-source factor.
     //

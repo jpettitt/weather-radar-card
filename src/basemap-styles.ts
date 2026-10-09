@@ -248,7 +248,7 @@ export function basemapCredits(
     case 'greydark':
       return [`${OSM_CREDIT} contributors`, '&copy; <a href="https://www.esri.com" target="_blank">Esri</a>, HERE, Garmin'];
     default:
-      return [OSM_CREDIT, '&copy; <a href="https://carto.com/attribution" target="_blank">CARTO</a>'];
+      return [`${OSM_CREDIT} contributors`, '&copy; <a href="https://carto.com/attribution" target="_blank">CARTO</a>'];
   }
 }
 

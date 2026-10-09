@@ -21,7 +21,7 @@ const MIN_ICON_PX = 10;
 const MOVE_DEBOUNCE_MS = 50;
 // Refresh anchored to the top of each clock hour. Our "current" time is
 // hour-bucketed already, so the displayed data only changes at the hour
-// rollover or when DWD publishes a fresher ICON-D2 run for the same hour
+// rollover or when DWD publishes a fresher ICON run for the same hour
 // — top-of-hour catches both. 30 sec offset gives DWD a publish window.
 const HOURLY_REFRESH_OFFSET_MS = 30_000;
 
@@ -35,7 +35,7 @@ export interface WindOverlayOptions {
   size?: number;
   /** Anchor time in epoch ms. Snapped to the hourly ICON boundary. Omit for "current". */
   timeMs?: number;
-  /** Wind data source. Defaults to ICON-D2 globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
+  /** Wind data source. Defaults to ICON globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
   source?: WindSource;
   /** Keep the hourly refresh running while the host card is hidden. See preload_while_hidden. */
   preloadWhileHidden?: boolean;

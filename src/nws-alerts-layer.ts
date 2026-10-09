@@ -29,8 +29,8 @@ const DEFAULT_MIN_SEVERITY: Severity = 'Minor';
 
 // Persistent zone-shape cache lives in IndexedDB — see src/zone-store.ts
 // for the format, compression, bounds, and the rationale for IndexedDB
-// over localStorage (the full ~8,400-zone set is ~170 MB raw, far past
-// localStorage's shared ~5 MB cap).
+// over localStorage (the full ~11,600-zone set is far past localStorage's
+// shared ~5 MB cap).
 
 // Anchor link to the NWS Watches & Warnings section of docs/overlays.md
 // on GitHub. Surfaced after the popup's life-safety disclaimer so users

@@ -71,7 +71,7 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
     // layer's ACTUAL frame timestamps (~2-min scan cadence, newest
     // ~2 min behind wall clock) and is CORS-open to browsers — see
     // src/noaa-frame-list.ts and `.dev/opengeo-noaa-research.md`.
-    // This replaced the eventdriven ImageServer flow whose metadata
+    // This replaced the eventdriven ImageServer flow whose metadata then
     // refused browsers and forced blind 10-min quantisation plus a
     // 15-min lag constant (3.7.0-alpha2's "math isn't mathing" era).
     //

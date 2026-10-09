@@ -4,21 +4,22 @@
 // per-source URL/CRS/band-mapping handling. Adding a new source is
 // largely a new entry in WIND_SOURCE_CAPS plus any URL/CRS quirks.
 //
-// 'dwd_aicon': DWD's AI-augmented variant of ICON-D2. Default for
+// 'dwd_aicon': DWD's AI-augmented variant of ICON. Default for
 //   non-US users — globally populated, visibly better short-range
 //   accuracy than the raw numerical model. Same 0.25° global lat/lon
-//   grid and U/V components as ICON-D2, served from the same WCS
-//   endpoint, but 3-hourly time steps (ICON-D2 is hourly). DescribeCoverage confirms identical
-//   CRS, axes, bands, and format support to ICON-D2.
+//   grid and U/V components as ICON, served from the same WCS
+//   endpoint, but 3-hourly time steps (ICON is hourly). DescribeCoverage confirms identical
+//   CRS, axes, bands, and format support to ICON.
 //
-// 'dwd_icon': Raw DWD ICON-D2 numerical model — same shape as AICON
+// 'dwd_icon': Raw DWD ICON numerical model — same shape as AICON
 //   but without the AI post-processing layer. Kept as an opt-in for
 //   users who prefer the unadjusted model output.
 //
 // 'ndfd_wind': NWS GeoServer hosts the National Digital Forecast
 //   Database wind forecast (NDFD = forecaster blend of HRRR, RAP, NAM,
 //   GFS) on a Web Mercator (EPSG:3857) grid, ~2.5 km native over CONUS,
-//   wind_speed / wind_direction bands, 3-hourly out to 7+ days.
+//   wind_speed / wind_direction bands, hourly for ~36 h then 3-hourly
+//   to ~+70 h (checked 2026-10-08).
 //   Default for fresh installs whose HA location is in NWS coverage.
 //   Outside CONUS / AK / HI / PR cells return fill values.
 
@@ -26,7 +27,7 @@ export type WindSource = 'dwd_icon' | 'dwd_aicon' | 'ndfd_wind';
 
 // Global default for non-US locations, and the silent fallback when a
 // config has no explicit `wind_source`. AICON is preferred over plain
-// ICON-D2 because it ships AI-augmented post-processing on the same
+// ICON because it ships AI-augmented post-processing on the same
 // 0.25° global grid (same WCS endpoint, 3-hourly steps) — visibly
 // better short-range accuracy at zero behaviour cost. Existing configs
 // without `wind_source` set silently upgrade to AICON on next reload;
@@ -67,7 +68,7 @@ export interface WindSourceCaps {
   cadenceNote: string;
   /** Per-source streamline-trail length multiplier. 1.0 = render the
    * full TRAIL_LENGTH-segment ring buffer. Sources with a finer native
-   * grid (e.g. NDFD at 2.5 km vs ICON-D2 at ~28 km) produce smoother,
+   * grid (e.g. NDFD at 2.5 km vs ICON at ~28 km) produce smoother,
    * more coherent particle paths that visually read as longer ribbons
    * even at the same per-frame pixel velocity — values < 1 trim the
    * rendered trail to compensate. */
@@ -77,14 +78,14 @@ export interface WindSourceCaps {
 export const WIND_SOURCE_CAPS: Record<WindSource, WindSourceCaps> = {
   dwd_icon: {
     id: 'dwd_icon',
-    label: 'DWD ICON-D2 (global, ~28 km)',
+    label: 'DWD ICON (global, ~28 km)',
     wcsUrl: 'https://maps.dwd.de/geoserver/dwd/wcs',
     coverageId: 'dwd__Icon_reg025_fd_sl_UV10M',
     crs: 'EPSG:4326',
     nativeStep: 0.25,
     bands: 'uv',
     timeStepHours: 1,
-    cadenceNote: 'DWD ICON-D2 numerical model. 0.25° global grid (~28 km). Hourly anchor, +48 h forecast, new model run every 3 h.',
+    cadenceNote: 'DWD ICON global numerical model. 0.25° grid (~28 km). Hourly time steps, new model run every 6 h.',
   },
   dwd_aicon: {
     id: 'dwd_aicon',
@@ -95,7 +96,7 @@ export const WIND_SOURCE_CAPS: Record<WindSource, WindSourceCaps> = {
     nativeStep: 0.25,
     bands: 'uv',
     timeStepHours: 3,
-    cadenceNote: 'DWD AICON — ICON-D2 with AI-augmented post-processing. Same 0.25° global grid (~28 km) as ICON-D2, but 3-hourly time steps; reportedly improves short-range accuracy.',
+    cadenceNote: 'DWD AICON — ICON with AI-augmented post-processing. Same 0.25° global grid (~28 km) as ICON, but 3-hourly time steps; reportedly improves short-range accuracy.',
   },
   ndfd_wind: {
     id: 'ndfd_wind',
@@ -109,8 +110,8 @@ export const WIND_SOURCE_CAPS: Record<WindSource, WindSourceCaps> = {
     // smooth-visualization use case.
     nativeStep: 1428.5714285714,
     bands: 'speed_dir',
-    cadenceNote: 'NWS NDFD forecaster blend (HRRR + RAP + NAM + GFS). 2.5 km CONUS / AK / HI / PR. Hourly updates, 3-hourly forecast steps out to 7+ days. Outside US coverage the card auto-switches to AICON so you still see global wind.',
-    // NDFD's 2.5 km grid (~10× finer than ICON-D2) produces smoother
+    cadenceNote: 'NWS NDFD forecaster blend (HRRR + RAP + NAM + GFS). 2.5 km CONUS / AK / HI / PR. Hourly updates; hourly forecast steps for about 36 h, then 3-hourly out to about 3 days. Outside US coverage the card auto-switches to AICON so you still see global wind.',
+    // NDFD's 2.5 km grid (~10× finer than ICON) produces smoother
     // particle paths that read as visibly longer ribbons; trim the
     // rendered trail to keep visual streak length comparable to ICON.
     streakLengthMultiplier: 0.33,

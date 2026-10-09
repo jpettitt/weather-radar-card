@@ -1,8 +1,9 @@
 // Persistent NWS forecast/county/fire zone-shape cache, backed by
 // IndexedDB.
 //
-// Why IndexedDB and not localStorage: the full NWS zone set is ~8,400
-// zones, ~170 MB of raw GeoJSON (a single marine zone can be 95 KB).
+// Why IndexedDB and not localStorage: the full NWS zone set is ~11,600
+// zones (2026-10-08), hundreds of MB of raw GeoJSON (a single marine zone
+// can be 95 KB).
 // localStorage's ~5 MB quota is *shared* across all of Home Assistant's
 // frontend and every custom card, so a heavy-alerts user filled it and
 // every subsequent write silently failed — the bug this module fixes.
@@ -12,7 +13,7 @@
 //
 // Geometry is still quantised to 4 dp (~11 m — finer than any visible
 // difference at the card's zoom range) and gzip-compressed: ~4× smaller
-// (~170 MB → ~31 MB for the full set), which means less disk and faster
+// (stored zones average 3.5 KB), which means less disk and faster
 // reads. Because IndexedDB stores binary, the compressed bytes go in as
 // an ArrayBuffer — no base64 (which would re-add ~33%).
 //
@@ -32,7 +33,7 @@ const DB_NAME = 'weather-radar-card';
 const STORE = 'nws-zones';
 export const TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const COORD_DP = 4;
-// Above the ~8,400-zone full set, so it only trims pathological growth.
+// Above the ~11,600-zone full set (2026-10-08), so it only trims pathological growth.
 export const MAX_ENTRIES = 12_000;
 // localStorage prefixes from prior versions, purged once on first sweep.
 const LEGACY_LS_PREFIXES = ['wrc-zone-v1:', 'wrc1z:'];

@@ -230,7 +230,7 @@ describe('basemapCredits', () => {
 
   it('lists each map provider separately, so the Sources popup can put one per line', () => {
     expect(text(basemapCredits('grey'))).toEqual(['© OpenStreetMap contributors', '© Esri, HERE, Garmin']);
-    expect(text(basemapCredits('dark'))).toEqual(['© OpenStreetMap', '© CARTO']);
+    expect(text(basemapCredits('dark'))).toEqual(['© OpenStreetMap contributors', '© CARTO']);
     expect(text(basemapCredits('osm'))).toEqual(['© OpenStreetMap contributors']);
     expect(text(basemapCredits('maptiles'))).toEqual(['© OpenStreetMap contributors']);
     expect(text(basemapCredits('satellite'))).toEqual(['© ESRI']);
