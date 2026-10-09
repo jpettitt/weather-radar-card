@@ -21,7 +21,7 @@ export interface SourceCaps {
   /**
    * UX-only cap for the editor's preset dropdown — typically lower
    * than maxPastMin to avoid the perf cost of huge ranges (DWD's
-   * 84h × 12 frames/h is the canonical example). YAML configs can
+   * 24 h × 12 frames/h is the canonical example). YAML configs can
    * still reach maxPastMin; the editor surfaces those as a
    * "(YAML)" entry at the bottom of the dropdown.
    */
@@ -94,7 +94,10 @@ export const SOURCE_CAPS: Record<string, SourceCaps> = {
   },
   DWD: {
     intervalMin: 5,
-    maxPastMin: 5040,       // GetCapabilities advertises ~84h of history
+    // DWD keeps 72–96 h (back to 00:00 UTC three days ago), but a day of
+    // 5-min frames is already more than a radar loop needs, and frames
+    // older than the archive fail and stop the rest of the loop loading.
+    maxPastMin: 1440,
     editorMaxPastMin: 720,  // 12h — beyond this, frame counts hurt; YAML escape hatch
     maxForecastMin: 120,    // Radar_wn-product_*_ger carries +2h nowcast
     defaultPastMin: 120,    // matches the DWD WarnWetter app

@@ -20,9 +20,9 @@ The card knows each source's capabilities (native frame interval, max past, max 
 | ------------ | ----------------- | ---------------- | -------------- | -------------- |
 | RainViewer   | 10 min            | 120 min          | 120 min        | 0              |
 | NOAA         | ~2 min (native); frame interval selectable 2 / 5 / 10 | 120 min          | 120 min        | 0              |
-| DWD          | 5 min             | 5040 min (84 h)  | 720 min (12 h) | 120 min        |
+| DWD          | 5 min             | 1440 min (24 h)  | 720 min (12 h) | 120 min        |
 
-NOAA's opengeo frame listing holds ~60 frames ≈ 2 h of history, hence the 120-min cap. DWD's editor cap is lower than the API cap because at 5-min intervals, 84 h × 12 frames/h = 1008 frames is impractical for tile fetching; YAML configs can still set `past_minutes` higher (and combine with `frame_stride_minutes` to keep the frame count sane).
+NOAA's opengeo frame listing holds ~60 frames ≈ 2 h of history, hence the 120-min cap. DWD keeps 72–96 h of history (back to 00:00 UTC three days ago), but the card stops at 24 h: a day of 5-minute frames is already more than a radar loop needs, and frames older than DWD's archive fail. The editor stops at 12 h (145 frames); YAML can set `past_minutes` up to 24 h, best combined with `frame_stride_minutes` to keep the frame count down.
 
 ## Tile caching
 
