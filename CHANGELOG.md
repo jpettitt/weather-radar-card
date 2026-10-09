@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Licence notices for bundled code** — the card's file now opens with the licence texts of the open-source code bundled into it (Leaflet, Leaflet.markercluster, Lit, custom-card-helpers), which their licences require and minification used to strip. About 5 KB.
 - **US wind (NWS NDFD) was about 1.9× too strong** — the NDFD coverage serves speed in knots and the card read it as m/s, so barbs, arrow colours and flow speeds overstated the wind.
 - **NWS "Extreme Heat" alerts were uncategorised** — NWS renamed Excessive Heat to Extreme Heat, and a dozen other current event types (dust storms, freezing spray, Tropical Cyclone Local Statement, Lake Wind Advisory…) were unmapped, so they showed in `other` with the fallback colour. Every event NWS issues now has its official colour.
 - **DWD's heaviest rain could be cut out** — the 45–75 mm/h colour of the default precipitation layer, and the ≥ 85 dBZ class of the dBZ layer, were read as coverage-mask pixels and removed.
