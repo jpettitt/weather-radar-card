@@ -914,6 +914,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         hass: this.hass,
         dark: mapStyle === 'maptiles-vector-dark',
         vectorStyle: cfg.vector_style,
+        labelsAbove: cfg.vector_labels?.toLowerCase() !== 'below',
         onFallback: (reason) => {
           console.warn(`[weather-radar-card] Vector map unavailable (${reason}); showing raster MapTiles.`);
           attachRaster();

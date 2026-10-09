@@ -28,6 +28,8 @@ export function createVectorLayer(opts: {
   transformRequest: (url: string) => { url: string };
   rtlPluginUrl: string;
   cssRoot: Node;
+  /** The Leaflet pane to draw in; the tile pane when unset. */
+  pane?: string;
 }): MaplibreLayer {
   addCss(opts.cssRoot);
   if (!rtlRequested) {
@@ -43,6 +45,7 @@ export function createVectorLayer(opts: {
     // CJK labels drawn with a device font, so their glyphs are never
     // requested — as HA's own map does.
     localIdeographFontFamily: 'sans-serif',
+    ...(opts.pane ? { pane: opts.pane } : {}),
   });
 }
 

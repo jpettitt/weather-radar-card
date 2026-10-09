@@ -220,6 +220,14 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           </label>
         </div>
       ` : ''}
+      ${style === 'maptilesvector' ? html`
+        <div class="side-by-side">
+          <label>
+            <ha-switch .checked=${config.vector_labels?.toLowerCase() !== 'below'} @change=${this._vectorLabelsChanged}></ha-switch>
+            <span>${localize('editor.map.vector_labels_above')}</span>
+          </label>
+        </div>
+      ` : ''}
       ${style === 'custom' ? this._renderCustomTileFields(config) : this._renderCartoKeyFields(config, style)}
     `;
   }
@@ -1399,6 +1407,16 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       };
     }
     fireEvent(this, 'config-changed', { config: this._config });
+  }
+
+  // On is the default, so it's left out of the YAML; off is vector_labels: below.
+  private _vectorLabelsChanged(ev: Event): void {
+    if (!this._config) return;
+    const config = { ...this._config };
+    if ((ev.target as HTMLInputElement).checked) delete config.vector_labels;
+    else config.vector_labels = 'below';
+    this._config = config;
+    fireEvent(this, 'config-changed', { config });
   }
 
   private _valueChangedSwitch(ev): void {

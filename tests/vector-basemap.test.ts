@@ -13,7 +13,7 @@ vi.mock('leaflet', () => {
 });
 
 import {
-  startVectorBasemap, withMapTilesToken, loadVectorStyle, instanceOrigin, _setWebGL2ForTests,
+  startVectorBasemap, withMapTilesToken, loadVectorStyle, instanceOrigin, splitLabels, _setWebGL2ForTests,
 } from '../src/vector-basemap';
 import { buildVectorStyle } from '../src/vector-styles';
 import {
@@ -109,18 +109,47 @@ describe('buildVectorStyle', () => {
   });
 });
 
+describe('splitLabels', () => {
+  it('puts the labels in a style of their own, leaving the rest and the input alone', () => {
+    const muted = buildVectorStyle('muted', URLS);
+    const before = JSON.stringify(muted);
+    const { base, labels } = splitLabels(muted);
+    expect(labels.layers.length).toBe(48);
+    expect(labels.layers.every((l: any) => l.type === 'symbol')).toBe(true);
+    expect(base.layers.some((l: any) => l.type === 'symbol')).toBe(false);
+    expect(base.layers.length + labels.layers.length).toBe(muted.layers.length);
+    expect(labels.sources).toEqual(muted.sources);
+    expect(labels.glyphs).toBe(muted.glyphs);
+    expect(JSON.stringify(muted)).toBe(before);
+  });
+});
+
 describe('startVectorBasemap', () => {
   const realFetch = global.fetch;
+  type FakeGl = { handlers: Record<string, (e?: any) => void>; setStyle: ReturnType<typeof vi.fn>; on: (ev: string, fn: (e?: any) => void) => void };
+  type FakeLayer = { addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; getMaplibreMap: () => FakeGl };
   let hass: any;
-  let gl: { handlers: Record<string, (e?: any) => void>; setStyle: ReturnType<typeof vi.fn>; on: (ev: string, fn: (e?: any) => void) => void };
-  let layer: { addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; getMaplibreMap: () => typeof gl };
+  // The basemap layer, then the label layer, in the order the code creates them.
+  let gl: FakeGl;
+  let layer: FakeLayer;
+  let labelGl: FakeGl;
+  let labelLayer: FakeLayer;
   let created: any[];
   let onFallback: ReturnType<typeof vi.fn<(reason: string) => void>>;
-  const map = { getContainer: () => ({ getRootNode: () => document }) } as any;
+  let panes: Record<string, { style: Record<string, string> }>;
+  const map = {
+    getContainer: () => ({ getRootNode: () => document }),
+    getPane: (name: string) => panes[name],
+    createPane: (name: string) => (panes[name] = { style: {} }),
+  } as any;
+  const makeLayer = (): [FakeGl, FakeLayer] => {
+    const g: FakeGl = { handlers: {}, setStyle: vi.fn(), on(ev, fn) { this.handlers[ev] = fn; } };
+    return [g, { addTo: vi.fn(), remove: vi.fn(), getMaplibreMap: () => g }];
+  };
 
   let built: string[];
   const fakeModule = () => Promise.resolve({
-    createVectorLayer: (opts: any) => { created.push(opts); return layer; },
+    createVectorLayer: (opts: any) => { created.push(opts); return created.length === 1 ? layer : labelLayer; },
     buildVectorStyle: (theme: string, urls: unknown) => { built.push(theme); return buildVectorStyle(theme, urls); },
   } as any);
   const requested = (): string[] => (global.fetch as any).mock.calls.map((c: unknown[]) => String(c[0]));
@@ -132,9 +161,10 @@ describe('startVectorBasemap', () => {
     _setWebGL2ForTests(true);
     created = [];
     built = [];
+    panes = {};
     onFallback = vi.fn<(reason: string) => void>();
-    gl = { handlers: {}, setStyle: vi.fn(), on(ev, fn) { this.handlers[ev] = fn; } };
-    layer = { addTo: vi.fn(), remove: vi.fn(), getMaplibreMap: () => gl };
+    [gl, layer] = makeLayer();
+    [labelGl, labelLayer] = makeLayer();
     let n = 0;
     hass = {
       auth: { data: { hassUrl: ORIGIN } },
@@ -291,6 +321,91 @@ describe('startVectorBasemap', () => {
     gl.handlers.error({ error: { status: 500 } });
     await flush();
     expect(gl.setStyle).toHaveBeenCalledOnce();
+  });
+
+  describe('labels over the radar', () => {
+    const LAYERED = {
+      ...STYLE,
+      layers: [{ id: 'land', type: 'background' }, { id: 'water', type: 'fill' }, { id: 'towns', type: 'symbol' }],
+    };
+    const ids = (style: any): string[] => style.layers.map((l: any) => l.id);
+    beforeEach(() => {
+      global.fetch = vi.fn(async () => new Response(JSON.stringify(LAYERED))) as unknown as typeof fetch;
+    });
+
+    it('draws the labels in a second layer, in a pane over the radar, and the rest under it', async () => {
+      start({ labelsAbove: true });
+      await flush();
+      expect(created.map((c) => ids(c.style))).toEqual([['land', 'water'], ['towns']]);
+      expect(created[0].pane).toBeUndefined();
+      expect(created[1].pane).toBe('wrcVectorLabels');
+      expect(panes.wrcVectorLabels.style).toEqual({ zIndex: '450', pointerEvents: 'none' });
+      expect(layer.addTo).toHaveBeenCalledWith(map);
+      expect(labelLayer.addTo).toHaveBeenCalledWith(map);
+    });
+
+    it("draws the labels under the radar when their layer can't start, keeping the vector map", async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      labelLayer.addTo.mockImplementation(() => { throw new Error('Failed to initialize WebGL'); });
+      start({ labelsAbove: true });
+      await flush();
+      expect(labelLayer.remove).toHaveBeenCalled();
+      expect(ids(gl.setStyle.mock.calls[0][0])).toEqual(['land', 'water', 'towns']);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Failed to initialize WebGL'));
+      expect(layer.remove).not.toHaveBeenCalled();
+      expect(onFallback).not.toHaveBeenCalled();
+    });
+
+    it('brings the labels back under the radar when their context stays lost', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      start({ labelsAbove: true });
+      await flush();
+      vi.useFakeTimers();
+      labelGl.handlers.webglcontextlost();
+      vi.advanceTimersByTime(2000);
+      expect(labelLayer.remove).toHaveBeenCalled();
+      expect(ids(gl.setStyle.mock.calls[0][0])).toEqual(['land', 'water', 'towns']);
+      expect(onFallback).not.toHaveBeenCalled();
+      // A refused request afterwards applies the full style, not the split one.
+      vi.useRealTimers();
+      gl.handlers.error({ error: { status: 403 } });
+      await flush();
+      expect(ids(gl.setStyle.mock.calls[1][0])).toEqual(['land', 'water', 'towns']);
+      expect(labelGl.setStyle).not.toHaveBeenCalled();
+    });
+
+    it('falls back to raster, removing both layers, when the basemap context stays lost', async () => {
+      start({ labelsAbove: true });
+      await flush();
+      vi.useFakeTimers();
+      gl.handlers.webglcontextlost();
+      vi.advanceTimersByTime(2000);
+      expect(onFallback).toHaveBeenCalledWith('WebGL context lost');
+      expect(layer.remove).toHaveBeenCalled();
+      expect(labelLayer.remove).toHaveBeenCalled();
+    });
+
+    it('applies both styles again after a refused request, from either layer', async () => {
+      start({ labelsAbove: true });
+      await flush();
+      labelGl.handlers.error({ error: { status: 403 } });
+      await flush();
+      expect(ids(gl.setStyle.mock.calls[0][0])).toEqual(['land', 'water']);
+      expect(ids(labelGl.setStyle.mock.calls[0][0])).toEqual(['towns']);
+      expect(created[1].transformRequest('/api/map_tiles/x').url).toContain('token=tok2');
+    });
+
+    it('removes both layers on stop(), and a lost label context afterwards does nothing', async () => {
+      const stop = start({ labelsAbove: true });
+      await flush();
+      vi.useFakeTimers();
+      stop();
+      labelGl.handlers.webglcontextlost();
+      vi.advanceTimersByTime(5000);
+      expect(layer.remove).toHaveBeenCalled();
+      expect(labelLayer.remove).toHaveBeenCalled();
+      expect(gl.setStyle).not.toHaveBeenCalled();
+    });
   });
 
   it('calls onFallback at most once, and never after stop()', async () => {

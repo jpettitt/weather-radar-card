@@ -25,6 +25,14 @@ const CONTEXT_RESTORE_GRACE_MS = 2000;
 // A refused request (stale token, proxy restarting) leaves MapLibre's source
 // dead until the style is applied again: at most one retry per this long.
 const RECOVERY_THROTTLE_MS = 30_000;
+// The labels' own pane: over the radar (240), the wind flow (250), DWD's
+// coverage wash (350) and hazard overlays (400), so every name stays
+// readable; under lightning (500), markers and popups. Clicks pass through
+// to the warnings below: the pane is pointer-events: none, and nothing in it
+// turns them back on (MapLibre only does for controls and popups, and this
+// map has neither).
+const LABEL_PANE = 'wrcVectorLabels';
+const LABEL_PANE_Z_INDEX = 450;
 
 type GlLayer = L.Layer & { getMaplibreMap(): any };
 
@@ -100,6 +108,46 @@ function prepareStyle(style: any, origin: string): any {
   return style;
 }
 
+/**
+ * A style split in two: everything but the labels, drawn under the radar,
+ * and the labels alone (no background, so the rest shows through), drawn
+ * over it.
+ */
+export function splitLabels(style: any): { base: any; labels: any } {
+  const part = (keep: (layer: any) => boolean): any => {
+    const copy = structuredClone(style);
+    copy.layers = copy.layers.filter(keep);
+    return copy;
+  };
+  return { base: part((l) => l.type !== 'symbol'), labels: part((l) => l.type === 'symbol') };
+}
+
+// Calls onGone once a lost WebGL context stays lost for the grace period.
+// Backgrounding the page drops contexts too, and they come back on return.
+// Returns stop().
+function watchContext(gl: any, onGone: () => void): () => void {
+  let active = true;
+  let lost = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const schedule = (): void => {
+    clearTimeout(timer);
+    if (active && !document.hidden) timer = setTimeout(onGone, CONTEXT_RESTORE_GRACE_MS);
+  };
+  const onVisibility = (): void => { if (lost) schedule(); };
+  gl.on('webglcontextlost', () => { lost = true; schedule(); });
+  gl.on('webglcontextrestored', () => { lost = false; clearTimeout(timer); });
+  document.addEventListener('visibilitychange', onVisibility);
+  return () => {
+    active = false;
+    clearTimeout(timer);
+    document.removeEventListener('visibilitychange', onVisibility);
+  };
+}
+
+const removeLayer = (layer: GlLayer | undefined): void => {
+  try { layer?.remove(); } catch { /* the map may already be gone */ }
+};
+
 // The MapLibre file's content hash, filled in by the build.
 const MAPLIBRE_FILE_HASH = '__MAPLIBRE_FILE_HASH__';
 
@@ -112,9 +160,13 @@ function loadMaplibreFile(): Promise<typeof import('./vector-basemap-layer')> {
 
 /**
  * Starts the vector basemap on `map`. Map setup stays synchronous (the
- * #110 rule, see map-tiles-token.ts): the layer goes on the map once the
+ * #110 rule, see map-tiles-token.ts): the layers go on the map once the
  * MapLibre file, the style and a token have all arrived, unless stop() ran
  * first. onFallback runs at most once, and never after stop().
+ *
+ * With labelsAbove the labels are a second MapLibre layer over the radar, a
+ * second WebGL context. If that one can't run, the basemap draws its labels
+ * again, under the radar, rather than giving up the vector map.
  *
  * Returns stop(), for teardown.
  */
@@ -124,6 +176,8 @@ export function startVectorBasemap(opts: {
   dark: boolean;
   /** The card's vector_style. */
   vectorStyle?: string;
+  /** Labels over the radar instead of under it. */
+  labelsAbove?: boolean;
   onFallback: (reason: string) => void;
   /** Injected in tests; the real one splits MapLibre into its own file. */
   loadLayerModule?: () => Promise<typeof import('./vector-basemap-layer')>;
@@ -135,12 +189,15 @@ export function startVectorBasemap(opts: {
   }
   const origin = instanceOrigin(hass);
   let stopped = false;
-  let layer: GlLayer | undefined;
+  let base: GlLayer | undefined;
+  let labels: GlLayer | undefined;
   let token: string | undefined;
-  let contextLost = false;
-  let graceTimer: ReturnType<typeof setTimeout> | undefined;
   let lastRecovery = 0;
-  let style: any;
+  // full is drawn while the labels have no layer of their own; base and
+  // labels while they do.
+  let styles: { full: any; base?: any; labels?: any } | undefined;
+  let stopBaseWatch = (): void => { /* not started */ };
+  let stopLabelWatch = (): void => { /* not started */ };
 
   let gotToken!: () => void;
   const firstToken = new Promise<void>((resolve) => { gotToken = resolve; });
@@ -151,30 +208,30 @@ export function startVectorBasemap(opts: {
   const cleanup = (): void => {
     stopped = true;
     stopToken();
-    clearTimeout(graceTimer);
-    document.removeEventListener('visibilitychange', onVisibility);
-    if (layer) {
-      try { layer.remove(); } catch { /* the map may already be gone */ }
-      layer = undefined;
-    }
+    stopBaseWatch();
+    stopLabelWatch();
+    removeLayer(labels);
+    removeLayer(base);
+    labels = undefined;
+    base = undefined;
   };
   const fallback = (reason: string): void => {
     if (stopped) return;
     cleanup();
     opts.onFallback(reason);
   };
-
-  // Backgrounding drops the context too, and it comes back on return.
-  const scheduleFallback = (): void => {
-    clearTimeout(graceTimer);
-    if (!stopped && !document.hidden) graceTimer = setTimeout(() => fallback('WebGL context lost'), CONTEXT_RESTORE_GRACE_MS);
+  const labelsGone = (reason: string): void => {
+    if (stopped || !styles?.labels) return;
+    console.warn(`[weather-radar-card] Vector labels can't go over the radar (${reason}); drawing them under it.`);
+    stopLabelWatch();
+    removeLayer(labels);
+    labels = undefined;
+    styles = { full: styles.full };
+    base?.getMaplibreMap()?.setStyle(styles.full);
   };
-  function onVisibility(): void {
-    if (contextLost) scheduleFallback();
-  }
 
   // 403 is a stale token, 404 the proxy not registered yet after a restart,
-  // no status a network failure: a fresh token and the style again recover
+  // no status a network failure: a fresh token and the styles again recover
   // all three.
   const onError = (event: any): void => {
     const status = event?.error?.status;
@@ -183,9 +240,10 @@ export function startVectorBasemap(opts: {
     lastRecovery = Date.now();
     hass.callWS<{ token: string }>({ type: 'map_tiles/access_token' })
       .then(({ token: t }) => {
-        if (stopped || !layer) return;
+        if (stopped || !base || !styles) return;
         token = t;
-        layer.getMaplibreMap()?.setStyle(style);
+        base.getMaplibreMap()?.setStyle(styles.base ?? styles.full);
+        if (styles.labels) labels?.getMaplibreMap()?.setStyle(styles.labels);
       })
       .catch(() => { /* the next refused request tries again */ });
   };
@@ -210,30 +268,45 @@ export function startVectorBasemap(opts: {
   Promise.all([loadLayerModule(), defaultStyle, firstToken])
     .then(async ([mod, loadedStyle]) => {
       if (stopped) return;
-      style = loadedStyle ?? await buildStyle(mod);
+      const full = loadedStyle ?? await buildStyle(mod);
       if (stopped) return;
+      styles = opts.labelsAbove ? { full, ...splitLabels(full) } : { full };
+      const create = (style: any, pane?: string): GlLayer => mod.createVectorLayer({
+        L, style, transformRequest, pane, rtlPluginUrl: origin + RTL_PLUGIN_PATH, cssRoot: map.getContainer().getRootNode(),
+      });
       try {
-        layer = mod.createVectorLayer({
-          L,
-          style,
-          transformRequest,
-          rtlPluginUrl: origin + RTL_PLUGIN_PATH,
-          cssRoot: map.getContainer().getRootNode(),
-        });
+        base = create(styles.base ?? styles.full);
         // Adding it builds the WebGL map, which throws when the browser
         // refuses a context.
-        layer.addTo(map);
+        base.addTo(map);
       } catch (err) {
         fallback(`could not start: ${(err as Error)?.message ?? err}`);
         return;
       }
-      const gl = layer.getMaplibreMap();
-      gl.on('webglcontextlost', () => { contextLost = true; scheduleFallback(); });
-      gl.on('webglcontextrestored', () => { contextLost = false; clearTimeout(graceTimer); });
-      gl.on('error', onError);
-      document.addEventListener('visibilitychange', onVisibility);
+      const baseGl = base.getMaplibreMap();
+      stopBaseWatch = watchContext(baseGl, () => fallback('WebGL context lost'));
+      baseGl.on('error', onError);
+      if (!styles.labels) return;
+      try {
+        ensureLabelPane(map);
+        labels = create(styles.labels, LABEL_PANE);
+        labels.addTo(map);
+      } catch (err) {
+        labelsGone(`could not start: ${(err as Error)?.message ?? err}`);
+        return;
+      }
+      const labelGl = labels.getMaplibreMap();
+      stopLabelWatch = watchContext(labelGl, () => labelsGone('WebGL context lost'));
+      labelGl.on('error', onError);
     })
     .catch((err) => fallback(`could not load: ${(err as Error)?.message ?? err}`));
 
   return cleanup;
+}
+
+function ensureLabelPane(map: L.Map): void {
+  if (map.getPane(LABEL_PANE)) return;
+  const pane = map.createPane(LABEL_PANE);
+  pane.style.zIndex = String(LABEL_PANE_Z_INDEX);
+  pane.style.pointerEvents = 'none';
 }

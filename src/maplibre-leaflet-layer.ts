@@ -51,8 +51,10 @@ export function defineMaplibreLayer(
         L.DomEvent.off(this._map._proxy, L.DomUtil.TRANSITION_END, this._transitionEnd, this);
       }
       map.getPane(this.getPaneName()).removeChild(this._container);
-      // Frees the WebGL context: browsers keep only about 16.
-      this._glMap.remove();
+      // Frees the WebGL context: browsers keep only about 16. Absent when the
+      // browser refused one; throwing here would stop Leaflet detaching this
+      // layer's move and zoom handlers.
+      this._glMap?.remove();
       this._glMap = null;
     },
 

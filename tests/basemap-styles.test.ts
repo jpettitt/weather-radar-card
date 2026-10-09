@@ -339,7 +339,7 @@ describe("the editor's map style list", () => {
       ...MAP_STYLE_CHOICES.flatMap((c) => [c.label, c.desc].filter((k): k is string => !!k)),
       ...VECTOR_STYLES.map((v) => `vector_style_${v}`),
       ...['auto', 'light', 'dark'].map((m) => `theme_mode_${m}`),
-      'vector_style', 'theme_mode', 'needs_map_tiles', 'key_required',
+      'vector_style', 'vector_labels_above', 'theme_mode', 'needs_map_tiles', 'key_required',
     ];
     for (const file of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
       const map = JSON.parse(readFileSync(join(dir, file), 'utf8')).editor.map;

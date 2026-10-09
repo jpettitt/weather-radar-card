@@ -125,6 +125,7 @@
       "vector_style_muted": "Muted",
       "vector_style_gray": "Gray",
       "vector_style_toner": "Toner",
+      "vector_labels_above": "Labels above the radar",
       "theme_mode": "Map theme",
       "theme_mode_auto": "Auto",
       "theme_mode_light": "Light",

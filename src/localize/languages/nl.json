@@ -124,6 +124,7 @@
       "vector_style_muted": "Gedempt",
       "vector_style_gray": "Grijs",
       "vector_style_toner": "Toner",
+      "vector_labels_above": "Labels boven de radar",
       "theme_mode": "Kaartthema",
       "theme_mode_auto": "Automatisch",
       "theme_mode_light": "Licht",

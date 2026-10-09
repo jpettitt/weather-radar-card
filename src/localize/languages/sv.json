@@ -124,6 +124,7 @@
       "vector_style_muted": "Dämpad",
       "vector_style_gray": "Grå",
       "vector_style_toner": "Toner",
+      "vector_labels_above": "Etiketter ovanför radarn",
       "theme_mode": "Karttema",
       "theme_mode_auto": "Automatiskt",
       "theme_mode_light": "Ljust",
