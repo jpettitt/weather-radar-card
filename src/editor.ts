@@ -8,7 +8,9 @@ import { localize } from './localize/localize';
 import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-categories';
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { isMapTilesLoaded } from './map-tiles-token';
-import { extraLabelsApply, showsCartoKeyField } from './basemap-styles';
+import {
+  extraLabelsApply, MAP_STYLE_CHOICES, showsCartoKeyField, themeModeApplies, VECTOR_STYLES, vectorStyleName,
+} from './basemap-styles';
 import { isSectionHeightPinned } from './card-layout';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
 import { FORECAST_REFRESH_CHOICES } from './forecast-refresh';
@@ -153,8 +155,137 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     return this._renderMainView(this._config);
   }
 
+  // The map style and everything that depends on it: what the chosen style
+  // is, its own options, then its key or tile fields.
+  private _renderMapStyleFields(config: WeatherRadarCardConfig): TemplateResult {
+    const style = (config.map_style || 'Auto').toLowerCase();
+    const choice = MAP_STYLE_CHOICES.find((c) => c.value.toLowerCase() === style);
+    const mapTilesLoaded = isMapTilesLoaded(this.hass);
+    const hasKey = !!config.carto_api_key?.trim();
+    const options = MAP_STYLE_CHOICES.map((c) => {
+      let label = localize(`editor.map.${c.label}`);
+      if (c.mapTiles && !mapTilesLoaded) label += ` · ${localize('editor.map.needs_map_tiles')}`;
+      else if (c.cartoKey && !hasKey) label += ` · ${localize('editor.map.key_required')}`;
+      return { value: c.value, label, disabled: !!c.mapTiles && !mapTilesLoaded };
+    });
+    const vectorPicker = style === 'maptilesvector' ? html`
+      <ha-selector
+        .hass=${this.hass}
+        .selector=${{
+          select: {
+            mode: 'dropdown',
+            options: VECTOR_STYLES.map((name) => ({ value: name, label: localize(`editor.map.vector_style_${name}`) })),
+          },
+        }}
+        .value=${vectorStyleName(config.vector_style)}
+        .label=${localize('editor.map.vector_style')}
+        .configValue=${'vector_style'}
+        .required=${false}
+        @value-changed=${this._handleSelectorChanged}
+      ></ha-selector>
+    ` : '';
+    const themePicker = themeModeApplies(style) ? html`
+      <ha-selector
+        .hass=${this.hass}
+        .selector=${{
+          select: {
+            mode: 'dropdown',
+            options: ['auto', 'light', 'dark'].map((mode) => ({ value: mode, label: localize(`editor.map.theme_mode_${mode}`) })),
+          },
+        }}
+        .value=${config.theme_mode || 'auto'}
+        .label=${localize('editor.map.theme_mode')}
+        .configValue=${'theme_mode'}
+        .required=${false}
+        @value-changed=${this._handleSelectorChanged}
+      ></ha-selector>
+    ` : '';
+    return html`
+      <ha-selector
+        .hass=${this.hass}
+        .selector=${{ select: { mode: 'dropdown', options } }}
+        .value=${choice?.value ?? config.map_style}
+        .label=${localize('editor.map.map_style')}
+        .configValue=${'map_style'}
+        .required=${false}
+        @value-changed=${this._handleSelectorChanged}
+      ></ha-selector>
+      ${choice?.desc ? html`<div class="section-description">${localize(`editor.map.${choice.desc}`)}</div>` : ''}
+      ${vectorPicker || themePicker ? html`<div class="side-by-side">${vectorPicker}${themePicker}</div>` : ''}
+      ${extraLabelsApply(style) ? html`
+        <div class="side-by-side">
+          <label>
+            <ha-switch .checked=${config.extra_labels === true} .configValue=${'extra_labels'} @change=${this._valueChangedSwitch}></ha-switch>
+            <span>${localize('editor.display.extra_labels')}</span>
+          </label>
+        </div>
+      ` : ''}
+      ${style === 'custom' ? this._renderCustomTileFields(config) : this._renderCartoKeyFields(config, style)}
+    `;
+  }
+
+  private _renderCustomTileFields(config: WeatherRadarCardConfig): TemplateResult {
+    return html`
+      <ha-input
+        label=${localize('editor.map.custom_tile_url')}
+        .value=${config.custom_tile_url || ''}
+        .configValue=${'custom_tile_url'}
+        @input=${this._valueChangedString}
+      ></ha-input>
+      <div class="section-description">${localize('editor.map.custom_tile_url_helper')}</div>
+      <ha-input
+        label=${localize('editor.map.custom_tile_attribution')}
+        .value=${config.custom_tile_attribution || ''}
+        .configValue=${'custom_tile_attribution'}
+        @input=${this._valueChangedString}
+      ></ha-input>
+      <ha-selector
+        .hass=${this.hass}
+        .selector=${{
+          select: {
+            options: [
+              { value: 'light', label: localize('editor.map.custom_tile_theme_light') },
+              { value: 'dark', label: localize('editor.map.custom_tile_theme_dark') },
+              { value: 'invert', label: localize('editor.map.custom_tile_theme_invert') },
+            ],
+          },
+        }}
+        .value=${config.custom_tile_theme || 'light'}
+        .label=${localize('editor.map.custom_tile_theme')}
+        .configValue=${'custom_tile_theme'}
+        @value-changed=${this._handleSelectorChanged}
+      ></ha-selector>
+    `;
+  }
+
+  // The key field only where a key does something (CARTO's styles,
+  // Satellite's labels, Auto) or one is set, so it can be cleared.
+  private _renderCartoKeyFields(config: WeatherRadarCardConfig, style: string): TemplateResult | string {
+    if (!showsCartoKeyField(style, config.carto_api_key)) return '';
+    // Without a key CARTO's tiles are blank placeholders (Satellite just
+    // loses its labels), so say so before the user wonders why.
+    const keyless = ['light', 'voyager', 'dark', 'satellite'].includes(style) && !config.carto_api_key?.trim();
+    return html`
+      ${keyless ? html`
+        <div class="section-description" style="color: var(--warning-color, #ff9800)">
+          ${localize('editor.map.carto_key_required')}
+        </div>
+      ` : ''}
+      <ha-input
+        label=${localize('editor.map.carto_api_key')}
+        type="password"
+        .value=${config.carto_api_key || ''}
+        .configValue=${'carto_api_key'}
+        @input=${this._valueChangedString}
+      ></ha-input>
+      <div class="section-description">
+        ${localize('editor.map.carto_api_key_helper')}
+        <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">${localize('editor.map.carto_api_key_link')}</a>
+      </div>
+    `;
+  }
+
   private _renderMainView(config: WeatherRadarCardConfig): TemplateResult {
-    const cartoKeySuffix = config.carto_api_key?.trim() ? '' : ` · ${localize('editor.map.key_required')}`;
     return html`
       <div class="values">
 
@@ -177,125 +308,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           @value-changed=${this._handleSelectorChanged}
         ></ha-selector>
         ${this._renderTimeRangeFields(config)}
-        <div class="side-by-side">
-          <ha-selector
-            .hass=${this.hass}
-            .selector=${{
-              select: {
-                options: [
-                  { value: 'Auto', label: localize('editor.map.style_auto') },
-                  { value: 'Light', label: localize('editor.map.style_light') + cartoKeySuffix },
-                  { value: 'Voyager', label: localize('editor.map.style_voyager') + cartoKeySuffix },
-                  { value: 'Dark', label: localize('editor.map.style_dark') + cartoKeySuffix },
-                  { value: 'Satellite', label: localize('editor.map.style_satellite') },
-                  { value: 'OSM', label: localize('editor.map.style_osm') },
-                  { value: 'Grey', label: localize('editor.map.style_grey') },
-                  { value: 'GreyDark', label: localize('editor.map.style_grey_dark') },
-                  { value: 'Custom', label: localize('editor.map.style_custom') },
-                  {
-                    value: 'MapTiles',
-                    label: localize('editor.map.style_maptiles'),
-                    disabled: !isMapTilesLoaded(this.hass),
-                  },
-                  {
-                    value: 'MapTilesVector',
-                    label: localize('editor.map.style_maptiles_vector'),
-                    disabled: !isMapTilesLoaded(this.hass),
-                  },
-                ],
-              },
-            }}
-            .value=${config.map_style || 'Auto'}
-            .label=${localize('editor.map.map_style')}
-            .configValue=${'map_style'}
-            @value-changed=${this._handleSelectorChanged}
-          ></ha-selector>
-          <ha-selector
-            .hass=${this.hass}
-            .selector=${{
-              select: {
-                options: [
-                  { value: '', label: localize('editor.map.zoom_default') },
-                  { value: '3', label: '3' },
-                  { value: '4', label: '4' },
-                  { value: '5', label: '5' },
-                  { value: '6', label: '6' },
-                  { value: '7', label: '7' },
-                  { value: '8', label: '8' },
-                  { value: '9', label: '9' },
-                  { value: '10', label: '10' },
-                ],
-              },
-            }}
-            .value=${config.zoom_level?.toString() || ''}
-            .label=${localize('editor.map.zoom_level')}
-            .configValue=${'zoom_level'}
-            @value-changed=${this._handleSelectorNumberChanged}
-          ></ha-selector>
-        </div>
-        ${(() => {
-          // CARTO key only does anything for the CARTO-backed styles
-          // (Light/Voyager/Dark/Satellite's label overlay) — hide it for
-          // OSM/Grey/GreyDark where it would be a no-op. Auto counts as
-          // "show it": Auto usually resolves to a CARTO-backed style, so
-          // hiding the field there would be wrong more often than not.
-          const style = (config.map_style || 'Auto').toLowerCase();
-          if (style === 'custom') {
-            return html`
-              <ha-input
-                label=${localize('editor.map.custom_tile_url')}
-                .value=${config.custom_tile_url || ''}
-                .configValue=${'custom_tile_url'}
-                @input=${this._valueChangedString}
-              ></ha-input>
-              <div class="section-description">${localize('editor.map.custom_tile_url_helper')}</div>
-              <ha-input
-                label=${localize('editor.map.custom_tile_attribution')}
-                .value=${config.custom_tile_attribution || ''}
-                .configValue=${'custom_tile_attribution'}
-                @input=${this._valueChangedString}
-              ></ha-input>
-              <ha-selector
-                .hass=${this.hass}
-                .selector=${{
-                  select: {
-                    options: [
-                      { value: 'light', label: localize('editor.map.custom_tile_theme_light') },
-                      { value: 'dark', label: localize('editor.map.custom_tile_theme_dark') },
-                      { value: 'invert', label: localize('editor.map.custom_tile_theme_invert') },
-                    ],
-                  },
-                }}
-                .value=${config.custom_tile_theme || 'light'}
-                .label=${localize('editor.map.custom_tile_theme')}
-                .configValue=${'custom_tile_theme'}
-                @value-changed=${this._handleSelectorChanged}
-              ></ha-selector>
-            `;
-          }
-          const cartoApplies = showsCartoKeyField(style, config.carto_api_key);
-          // Without a key CARTO's tiles are blank placeholders (Satellite just
-          // loses its labels), so say so before the user wonders why.
-          const keyless = ['light', 'voyager', 'dark', 'satellite'].includes(style) && !config.carto_api_key?.trim();
-          return cartoApplies ? html`
-            ${keyless ? html`
-              <div class="section-description" style="color: var(--warning-color, #ff9800)">
-                ${localize('editor.map.carto_key_required')}
-              </div>
-            ` : ''}
-            <ha-input
-              label=${localize('editor.map.carto_api_key')}
-              type="password"
-              .value=${config.carto_api_key || ''}
-              .configValue=${'carto_api_key'}
-              @input=${this._valueChangedString}
-            ></ha-input>
-            <div class="section-description">
-              ${localize('editor.map.carto_api_key_helper')}
-              <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">${localize('editor.map.carto_api_key_link')}</a>
-            </div>
-          ` : '';
-        })()}
+        ${this._renderMapStyleFields(config)}
 
         <!-- LOCATION -->
         <h3 class="section-header">${localize('editor.section.location')}</h3>
@@ -315,6 +328,29 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             hint=${localize('editor.location.number_or_entity')}
           ></ha-input>
         </div>
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${{
+            select: {
+              options: [
+                { value: '', label: localize('editor.map.zoom_default') },
+                { value: '3', label: '3' },
+                { value: '4', label: '4' },
+                { value: '5', label: '5' },
+                { value: '6', label: '6' },
+                { value: '7', label: '7' },
+                { value: '8', label: '8' },
+                { value: '9', label: '9' },
+                { value: '10', label: '10' },
+              ],
+            },
+          }}
+          .value=${config.zoom_level?.toString() || ''}
+          .label=${localize('editor.map.zoom_level')}
+          .configValue=${'zoom_level'}
+          .required=${false}
+          @value-changed=${this._handleSelectorNumberChanged}
+        ></ha-selector>
 
         <!-- MARKERS AND OVERLAYS -->
         <h3 class="section-header">${localize('editor.section.markers_and_overlays')}</h3>
@@ -372,18 +408,6 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             <ha-switch .checked=${config.show_range === true} .configValue=${'show_range'} @change=${this._valueChangedSwitch}></ha-switch>
             <span>${localize('editor.display.show_range')}</span>
           </label>
-          ${(() => {
-            // No effect on the vector map; greyed out rather than hidden so
-            // the setting doesn't seem to vanish when switching styles.
-            const labelsApply = extraLabelsApply(config.map_style);
-            return html`
-              <label class=${labelsApply ? '' : 'disabled-row'}
-                     title=${labelsApply ? '' : localize('editor.display.extra_labels_disabled_helper')}>
-                <ha-switch .checked=${config.extra_labels === true} .disabled=${!labelsApply} .configValue=${'extra_labels'} @change=${this._valueChangedSwitch}></ha-switch>
-                <span>${localize('editor.display.extra_labels')}</span>
-              </label>
-            `;
-          })()}
         </div>
         <div class="side-by-side">
           <label>
@@ -1341,7 +1365,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     if (!this._config || !configValue) return;
     if (this._config[configValue] === value) return;
 
-    if (value === '' || value === null) {
+    if (value === '' || value == null) {
       const newConfig = { ...this._config };
       delete newConfig[configValue];
       this._config = newConfig;
@@ -1360,7 +1384,8 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
 
     if (!this._config || !configValue) return;
 
-    const numValue = value === '' || value === null ? null : Number(value);
+    // A cleared optional dropdown sends undefined.
+    const numValue = value === '' || value == null ? null : Number(value);
     if (this._config[configValue] === numValue) return;
 
     if (numValue === null) {

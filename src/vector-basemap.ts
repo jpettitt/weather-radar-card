@@ -2,10 +2,10 @@
 import * as L from 'leaflet';
 import type { HomeAssistant } from 'custom-card-helpers';
 import { startMapTilesToken } from './map-tiles-token';
-import { CARD_VERSION } from './const';
+import { vectorStyleName } from './basemap-styles';
 
 // map_style: MapTilesVector (experimental, opt-in): HA 2026.10's vector map,
-// drawn with HA's own light/dark style from OSM Shortbread tiles that core's
+// drawn in one of HA's styles from OSM Shortbread tiles that core's
 // map_tiles integration proxies, as a MapLibre layer under the radar — the
 // way HA's Leaflet maps do it (frontend src/common/map/base-layer.ts).
 // Whatever stops it — no WebGL2, the MapLibre file or the style failing to
@@ -15,6 +15,8 @@ import { CARD_VERSION } from './const';
 // HA serves these from the frontend build, not an API; a moved file is a
 // failed load, which falls back to raster.
 const STYLE_PATH = { light: '/static/map/light.json', dark: '/static/map/dark.json' };
+// Glyph and sprite URLs for the styles built in the browser.
+const URLS_PATH = '/static/map/urls.json';
 const RTL_PLUGIN_PATH = '/static/map/mapbox-gl-rtl-text.js';
 const PROXY_PATH = '/api/map_tiles/';
 // Browsers keep about 16 WebGL contexts and drop the oldest; one lost for
@@ -80,9 +82,16 @@ export function withMapTilesToken(url: string, origin: string, token: string | u
  * 2026-10-08), and its projection check reads pixels back every frame.
  */
 export async function loadVectorStyle(origin: string, dark: boolean): Promise<any> {
-  const res = await fetch(origin + (dark ? STYLE_PATH.dark : STYLE_PATH.light));
+  return prepareStyle(await fetchJson(origin + (dark ? STYLE_PATH.dark : STYLE_PATH.light)), origin);
+}
+
+async function fetchJson(url: string): Promise<any> {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`style ${res.status}`);
-  const style = await res.json();
+  return res.json();
+}
+
+function prepareStyle(style: any, origin: string): any {
   style.projection = { type: 'mercator' };
   delete style.sky;
   const absolute = (u: string): string => new URL(u, origin).href;
@@ -91,11 +100,13 @@ export async function loadVectorStyle(origin: string, dark: boolean): Promise<an
   return style;
 }
 
+// The MapLibre file's content hash, filled in by the build.
+const MAPLIBRE_FILE_HASH = '__MAPLIBRE_FILE_HASH__';
+
 // The MapLibre file, built separately (rollup.config.js) and installed next to
-// the card. A computed URL, so rollup leaves it alone; the version busts
-// caches when the card updates.
+// the card. A computed URL, so rollup leaves it alone.
 function loadMaplibreFile(): Promise<typeof import('./vector-basemap-layer')> {
-  const url = new URL(`./weather-radar-card-maplibre.js?v=${CARD_VERSION}`, import.meta.url).href;
+  const url = new URL(`./weather-radar-card-maplibre.js?v=${MAPLIBRE_FILE_HASH}`, import.meta.url).href;
   return import(/* computed: not bundled */ url);
 }
 
@@ -111,6 +122,8 @@ export function startVectorBasemap(opts: {
   map: L.Map;
   hass: HomeAssistant;
   dark: boolean;
+  /** The card's vector_style. */
+  vectorStyle?: string;
   onFallback: (reason: string) => void;
   /** Injected in tests; the real one splits MapLibre into its own file. */
   loadLayerModule?: () => Promise<typeof import('./vector-basemap-layer')>;
@@ -177,11 +190,28 @@ export function startVectorBasemap(opts: {
       .catch(() => { /* the next refused request tries again */ });
   };
 
+  // HA serves Default ready-made; the other styles are built from urls.json
+  // with the builder in the MapLibre file. Either download runs alongside
+  // the file's. A style that won't build falls back to Default.
+  const vectorStyle = vectorStyleName(opts.vectorStyle);
+  const defaultStyle = vectorStyle === 'default' ? loadVectorStyle(origin, dark) : undefined;
+  const urls = defaultStyle ? undefined : fetchJson(origin + URLS_PATH);
+  urls?.catch(() => { /* reported by buildStyle */ });
+  const buildStyle = async (mod: typeof import('./vector-basemap-layer')): Promise<any> => {
+    try {
+      return prepareStyle(mod.buildVectorStyle(dark ? `${vectorStyle}-dark` : vectorStyle, await urls), origin);
+    } catch (err) {
+      if (!stopped) console.warn(`[weather-radar-card] Vector style ${vectorStyle} unavailable (${(err as Error)?.message ?? err}); using Default.`);
+      return loadVectorStyle(origin, dark);
+    }
+  };
+
   const loadLayerModule = opts.loadLayerModule ?? loadMaplibreFile;
-  Promise.all([loadLayerModule(), loadVectorStyle(origin, dark), firstToken])
-    .then(([mod, loadedStyle]) => {
+  Promise.all([loadLayerModule(), defaultStyle, firstToken])
+    .then(async ([mod, loadedStyle]) => {
       if (stopped) return;
-      style = loadedStyle;
+      style = loadedStyle ?? await buildStyle(mod);
+      if (stopped) return;
       try {
         layer = mod.createVectorLayer({
           L,

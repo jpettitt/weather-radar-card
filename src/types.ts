@@ -162,6 +162,18 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   name?: string;
   map_style?: string;
   /**
+   * `map_style: MapTilesVector` only: one of Home Assistant's vector map
+   * styles — `default`, `colorful`, `natural`, `muted`, `gray` or `toner`.
+   * Unset or unknown is `default`. Light or dark per `theme_mode`.
+   */
+  vector_style?: string;
+  /**
+   * `auto` (default), `light` or `dark`, as on HA's map card: forces the
+   * light or dark version of MapTilesVector, Auto and MapTiles (inverted).
+   * `auto` follows HA's dark mode, except MapTiles, which stays light.
+   */
+  theme_mode?: string;
+  /**
    * Free CARTO API key (no account needed — carto.com/basemaps/apikey),
    * appended as `?key=<value>` to CARTO basemap tile requests (the
    * Light/Dark/Voyager base + label tiles, and Satellite's label

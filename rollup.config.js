@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { gzipSync } from 'zlib';
 import { readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
@@ -22,6 +23,13 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // stuck at 3.7.0 through four later releases). Runs at the renderChunk
 // stage so substitution happens after TS / babel and before terser,
 // regardless of mangling.
+// __MAPLIBRE_FILE_HASH__ versions the card's URL for the MapLibre file by
+// its content (the file is built first, below): HA's service worker caches
+// /local by full URL, so a rebuild under the same card version would
+// otherwise keep serving the old file.
+const MAPLIBRE_FILE = 'dist/weather-radar-card-maplibre.js';
+const maplibreFileHash = () => createHash('sha256').update(readFileSync(MAPLIBRE_FILE)).digest('hex').slice(0, 10);
+
 const buildStampPlugin = () => {
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
   return {
@@ -29,7 +37,8 @@ const buildStampPlugin = () => {
     renderChunk(code) {
       return code
         .replace(/__BUILD_TIMESTAMP__/g, stamp)
-        .replace(/__CARD_VERSION__/g, pkg.version);
+        .replace(/__CARD_VERSION__/g, pkg.version)
+        .replace(/__MAPLIBRE_FILE_HASH__/g, maplibreFileHash);
     },
   };
 };
@@ -87,23 +96,24 @@ const makePlugins = () => [
 ];
 
 export default [
-  {
-    input: 'src/weather-radar-card.ts',
-    output: {
-      dir: 'dist',
-      format: 'es',
-    },
-    plugins: makePlugins(),
-  },
   // MapLibre for map_style: MapTilesVector, a separate build the card loads
   // from next to itself only when that style is used (vector-basemap.ts).
   // Separate rather than split off with import(): rollup would share code
   // (even its CommonJS helper) between the two, moving the card's own code
   // out of weather-radar-card.js and making every install need two files.
+  // First, so the card's build can hash it. rollup -c builds in order.
   {
     input: 'src/vector-basemap-layer.ts',
     output: {
-      file: 'dist/weather-radar-card-maplibre.js',
+      file: MAPLIBRE_FILE,
+      format: 'es',
+    },
+    plugins: makePlugins(),
+  },
+  {
+    input: 'src/weather-radar-card.ts',
+    output: {
+      dir: 'dist',
       format: 'es',
     },
     plugins: makePlugins(),

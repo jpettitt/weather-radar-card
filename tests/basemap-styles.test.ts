@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as L from 'leaflet';
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 import {
   basemapCredits,
   cartoKeyMissing,
@@ -13,6 +15,10 @@ import {
   unknownTilePlaceholders,
   showsCartoKeyField,
   extraLabelsApply,
+  effectiveBasemapStyle,
+  themeModeApplies,
+  MAP_STYLE_CHOICES,
+  VECTOR_STYLES,
 } from '../src/basemap-styles';
 
 describe('getBasemapTiles', () => {
@@ -266,6 +272,80 @@ describe('resolveAutoBasemap', () => {
     expect(auto(false, true, 'k', true)).toBe('light');
     expect(auto(true, false, 'k', true)).toBe('dark');
     expect(auto(false, false, 'k', true)).toBe('osm');
+  });
+});
+
+describe('effectiveBasemapStyle and theme_mode', () => {
+  const style = (cfg: Parameters<typeof effectiveBasemapStyle>[0], haDark: boolean, mapTilesLoaded = true): string =>
+    effectiveBasemapStyle(cfg, { haDark, english: true, mapTilesLoaded });
+
+  it('auto (or unset, or unknown) follows HA for the vector map and Auto, as before', () => {
+    for (const theme_mode of [undefined, 'auto', 'Auto', 'sepia']) {
+      const cfg = theme_mode ? { theme_mode } : {};
+      expect(style({ ...cfg, map_style: 'MapTilesVector' }, true)).toBe('maptiles-vector-dark');
+      expect(style({ ...cfg, map_style: 'MapTilesVector' }, false)).toBe('maptiles-vector');
+      expect(style(cfg, true)).toBe('maptiles-dark');
+      expect(style({ ...cfg, carto_api_key: 'k' }, true)).toBe('dark');
+    }
+  });
+
+  it('auto keeps MapTiles light in dark mode, as before', () => {
+    expect(style({ map_style: 'MapTiles' }, true)).toBe('maptiles');
+    expect(style({ map_style: 'MapTiles', theme_mode: 'auto' }, true)).toBe('maptiles');
+  });
+
+  it('light forces the light version in HA dark mode', () => {
+    expect(style({ map_style: 'MapTilesVector', theme_mode: 'light' }, true)).toBe('maptiles-vector');
+    expect(style({ theme_mode: 'light' }, true)).toBe('maptiles');
+    expect(style({ theme_mode: 'light', carto_api_key: 'k' }, true)).toBe('light');
+    expect(style({ theme_mode: 'light' }, true, false)).toBe('grey');
+    expect(style({ map_style: 'MapTiles', theme_mode: 'light' }, true)).toBe('maptiles');
+  });
+
+  it('dark forces the dark version in HA light mode, inverting MapTiles', () => {
+    expect(style({ map_style: 'MapTilesVector', theme_mode: 'Dark' }, false)).toBe('maptiles-vector-dark');
+    expect(style({ theme_mode: 'dark' }, false)).toBe('maptiles-dark');
+    expect(style({ theme_mode: 'dark', carto_api_key: 'k' }, false)).toBe('dark');
+    expect(style({ theme_mode: 'dark' }, false, false)).toBe('greydark');
+    expect(style({ map_style: 'MapTiles', theme_mode: 'dark' }, false)).toBe('maptiles-dark');
+    // Without map_tiles, MapTiles falls back to OSM whatever the theme.
+    expect(style({ map_style: 'MapTiles', theme_mode: 'dark' }, false, false)).toBe('osm');
+  });
+
+  it("doesn't change styles with only one version", () => {
+    for (const map_style of ['Light', 'Voyager', 'Dark', 'OSM', 'Grey', 'GreyDark', 'Satellite']) {
+      expect(style({ map_style, theme_mode: 'dark' }, false)).toBe(map_style.toLowerCase());
+      expect(style({ map_style, theme_mode: 'light' }, true)).toBe(map_style.toLowerCase());
+    }
+    expect(style({ map_style: 'Custom', custom_tile_url: 'https://t.example/{z}/{x}/{y}.png', theme_mode: 'dark' }, false)).toBe('custom');
+  });
+
+  it('is offered in the editor only for those styles', () => {
+    for (const s of [undefined, 'Auto', 'MapTiles', 'MapTilesVector']) expect(themeModeApplies(s)).toBe(true);
+    for (const s of ['Light', 'Voyager', 'Dark', 'OSM', 'Grey', 'GreyDark', 'Satellite', 'Custom']) expect(themeModeApplies(s)).toBe(false);
+  });
+});
+
+describe("the editor's map style list", () => {
+  it("offers every style, Auto first, then HA's own maps", () => {
+    expect(MAP_STYLE_CHOICES.map((c) => c.value)).toEqual([
+      'Auto', 'MapTiles', 'MapTilesVector', 'OSM', 'Satellite', 'Light', 'Voyager', 'Dark', 'Grey', 'GreyDark', 'Custom',
+    ]);
+  });
+
+  it('has every label and description it shows in every language', () => {
+    const dir = join(process.cwd(), 'src/localize/languages');
+    const keys = [
+      ...MAP_STYLE_CHOICES.flatMap((c) => [c.label, c.desc].filter((k): k is string => !!k)),
+      ...VECTOR_STYLES.map((v) => `vector_style_${v}`),
+      ...['auto', 'light', 'dark'].map((m) => `theme_mode_${m}`),
+      'vector_style', 'theme_mode', 'needs_map_tiles', 'key_required',
+    ];
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+      const map = JSON.parse(readFileSync(join(dir, file), 'utf8')).editor.map;
+      const missing = keys.filter((k) => typeof map[k] !== 'string' || !map[k].trim());
+      expect({ file, missing }).toEqual({ file, missing: [] });
+    }
   });
 });
 

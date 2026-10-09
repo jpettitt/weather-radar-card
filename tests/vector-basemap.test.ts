@@ -15,12 +15,17 @@ vi.mock('leaflet', () => {
 import {
   startVectorBasemap, withMapTilesToken, loadVectorStyle, instanceOrigin, _setWebGL2ForTests,
 } from '../src/vector-basemap';
-import { resolveBasemapStyle, isDarkBasemapStyle, isInvertedBasemap, basemapCredits } from '../src/basemap-styles';
+import { buildVectorStyle } from '../src/vector-styles';
+import {
+  resolveBasemapStyle, isDarkBasemapStyle, isInvertedBasemap, basemapCredits, vectorStyleName,
+} from '../src/basemap-styles';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const ORIGIN = 'http://ha.local:8123';
 const STYLE = { version: 8, sprite: [{ id: 'base', url: '/static/map/sprites/base?v=1' }], sources: {}, layers: [] };
+// HA 2026.10's /static/map/urls.json.
+const URLS = { base: '', glyphsPattern: '/api/map_tiles/fonts/{fontstack}/{range}.pbf', sprite: [{ id: 'base', url: '/static/map/sprites/base?v=2' }] };
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe('vector basemap URLs and style', () => {
@@ -71,6 +76,39 @@ describe('vector basemap URLs and style', () => {
   });
 });
 
+// The real VersaTiles builder. HA's Default style comes out of the same
+// steps, and on 2026.10 this output's source and all 48 label expressions
+// matched HA's light.json exactly (checked 2026-10-08).
+describe('buildVectorStyle', () => {
+  const muted = buildVectorStyle('muted', URLS);
+  const symbol = (id: string): any => muted.layers.find((l: any) => l.id === id);
+
+  it("points the one tile source at map_tiles' TileJSON", () => {
+    expect(muted.sources).toEqual({ 'versatiles-shortbread': { type: 'vector', url: '/api/map_tiles/tilejson.json' } });
+    expect(muted.glyphs).toBe(URLS.glyphsPattern);
+  });
+
+  it('is flat, without sky', () => {
+    expect(muted.projection).toEqual({ type: 'mercator' });
+    expect(muted.sky).toBeUndefined();
+  });
+
+  it('adds English to non-Latin names: below for points, in brackets along lines', () => {
+    const point = symbol('poi-amenity').layout['text-field'];
+    const line = symbol('label-street-track').layout['text-field'];
+    expect(point.slice(0, 5)).toEqual(['case', ['<', ['get', 'name'], '\u0250'], ['get', 'name'], ['!', ['has', 'name_en']], ['get', 'name']]);
+    expect(point[5]).toEqual(['format', ['get', 'name'], {}, '\n', {}, ['get', 'name_en'], { 'font-scale': 0.8 }]);
+    expect(line[5]).toEqual(['concat', ['get', 'name'], ' (', ['get', 'name_en'], ')']);
+    // Labels that aren't just the name (house numbers, refs) stay as they are.
+    expect(muted.layers.filter((l: any) => l.type === 'symbol' && JSON.stringify(l.layout?.['text-field']) === '["get","name"]')).toEqual([]);
+  });
+
+  it('builds a dark variant of each style', () => {
+    const background = (s: any): unknown => s.layers.find((l: any) => l.type === 'background').paint['background-color'];
+    expect(background(buildVectorStyle('muted-dark', URLS))).not.toEqual(background(muted));
+  });
+});
+
 describe('startVectorBasemap', () => {
   const realFetch = global.fetch;
   let hass: any;
@@ -80,9 +118,12 @@ describe('startVectorBasemap', () => {
   let onFallback: ReturnType<typeof vi.fn<(reason: string) => void>>;
   const map = { getContainer: () => ({ getRootNode: () => document }) } as any;
 
+  let built: string[];
   const fakeModule = () => Promise.resolve({
     createVectorLayer: (opts: any) => { created.push(opts); return layer; },
+    buildVectorStyle: (theme: string, urls: unknown) => { built.push(theme); return buildVectorStyle(theme, urls); },
   } as any);
+  const requested = (): string[] => (global.fetch as any).mock.calls.map((c: unknown[]) => String(c[0]));
   const start = (overrides: Record<string, unknown> = {}) => startVectorBasemap({
     map, hass, dark: false, onFallback, loadLayerModule: fakeModule, ...overrides,
   });
@@ -90,6 +131,7 @@ describe('startVectorBasemap', () => {
   beforeEach(() => {
     _setWebGL2ForTests(true);
     created = [];
+    built = [];
     onFallback = vi.fn<(reason: string) => void>();
     gl = { handlers: {}, setStyle: vi.fn(), on(ev, fn) { this.handlers[ev] = fn; } };
     layer = { addTo: vi.fn(), remove: vi.fn(), getMaplibreMap: () => gl };
@@ -99,13 +141,14 @@ describe('startVectorBasemap', () => {
       callWS: vi.fn(async () => ({ token: `tok${++n}` })),
       connection: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
     };
-    global.fetch = vi.fn(async () => new Response(JSON.stringify(STYLE))) as unknown as typeof fetch;
+    global.fetch = vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith('/urls.json') ? URLS : STYLE))) as unknown as typeof fetch;
   });
 
   afterEach(() => {
     global.fetch = realFetch;
     _setWebGL2ForTests(undefined);
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('falls back to raster at once without WebGL2, fetching nothing', () => {
@@ -123,6 +166,58 @@ describe('startVectorBasemap', () => {
     expect(created[0].style.sprite[0].url).toBe(`${ORIGIN}/static/map/sprites/base?v=1`);
     expect(created[0].transformRequest('/api/map_tiles/tilejson.json').url).toBe(`${ORIGIN}/api/map_tiles/tilejson.json?token=tok1`);
     expect(layer.addTo).toHaveBeenCalledWith(map);
+    expect(onFallback).not.toHaveBeenCalled();
+  });
+
+  it("loads HA's ready-made style for Default, and for an unknown vector_style", async () => {
+    start({ vectorStyle: 'sepia' });
+    await flush();
+    expect(requested()).toEqual([`${ORIGIN}/static/map/light.json`]);
+    expect(built).toEqual([]);
+    expect(created).toHaveLength(1);
+  });
+
+  it("builds the other styles from urls.json, in HA's dark variant in dark mode", async () => {
+    start({ vectorStyle: 'Toner', dark: true });
+    await flush();
+    expect(requested()).toEqual([`${ORIGIN}/static/map/urls.json`]);
+    expect(built).toEqual(['toner-dark']);
+    expect(created[0].style.sources['versatiles-shortbread'].url).toBe('/api/map_tiles/tilejson.json');
+    expect(created[0].style.sprite[0].url).toBe(`${ORIGIN}/static/map/sprites/base?v=2`);
+    expect(layer.addTo).toHaveBeenCalledWith(map);
+  });
+
+  it("falls back to HA's Default style when the chosen one can't be built", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    global.fetch = vi.fn(async (url: string) => (String(url).endsWith('/urls.json')
+      ? new Response('gone', { status: 404 })
+      : new Response(JSON.stringify(STYLE)))) as unknown as typeof fetch;
+    start({ vectorStyle: 'muted' });
+    await flush();
+    expect(requested()).toEqual([`${ORIGIN}/static/map/urls.json`, `${ORIGIN}/static/map/light.json`]);
+    expect(created[0].style.sprite[0].url).toBe(`${ORIGIN}/static/map/sprites/base?v=1`);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Vector style muted unavailable (style 404)'));
+    expect(onFallback).not.toHaveBeenCalled();
+  });
+
+  it('falls back to raster when neither the chosen style nor Default loads', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    global.fetch = vi.fn(async () => new Response('down', { status: 502 })) as unknown as typeof fetch;
+    start({ vectorStyle: 'gray' });
+    await flush();
+    expect(created).toEqual([]);
+    expect(onFallback).toHaveBeenCalledWith('could not load: style 502');
+  });
+
+  it('never adds the layer if stopped while the chosen style is building', async () => {
+    let resolveUrls!: (r: Response) => void;
+    global.fetch = vi.fn(() => new Promise<Response>((r) => { resolveUrls = r; })) as unknown as typeof fetch;
+    const stop = start({ vectorStyle: 'natural' });
+    await flush(); // MapLibre and the token are in; urls.json is still loading
+    stop();
+    resolveUrls(new Response(JSON.stringify(URLS)));
+    await flush();
+    expect(created).toEqual([]);
     expect(onFallback).not.toHaveBeenCalled();
   });
 
@@ -210,6 +305,12 @@ describe('startVectorBasemap', () => {
 });
 
 describe('MapTilesVector style resolution', () => {
+  it('reads vector_style case-insensitively; unset or unknown is Default', () => {
+    expect(vectorStyleName('Muted')).toBe('muted');
+    expect(vectorStyleName(undefined)).toBe('default');
+    expect(vectorStyleName('sepia')).toBe('default');
+  });
+
   it("follows HA's dark mode, and needs map_tiles like MapTiles", () => {
     expect(resolveBasemapStyle('maptilesvector', { mapTilesLoaded: true, dark: false })).toBe('maptiles-vector');
     expect(resolveBasemapStyle('maptilesvector', { mapTilesLoaded: true, dark: true })).toBe('maptiles-vector-dark');

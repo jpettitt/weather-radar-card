@@ -64,7 +64,7 @@ export function resolveBasemapStyle(
   opts: { mapTilesLoaded: boolean; customTileUrl?: string; dark?: boolean },
 ): string {
   if ((mapStyle === 'maptiles' || mapStyle === 'maptilesvector') && !opts.mapTilesLoaded) return 'osm';
-  // The vector map follows HA's dark mode with HA's own dark style.
+  // The vector map has HA's own dark style for a dark theme.
   if (mapStyle === 'maptilesvector') return opts.dark ? 'maptiles-vector-dark' : 'maptiles-vector';
   if (mapStyle === 'custom') {
     const url = opts.customTileUrl?.trim();
@@ -201,7 +201,6 @@ export function isInvertedBasemap(
 /** CARTO styles whose tiles are blank without a key (Satellite only loses its labels). */
 const CARTO_STYLES = new Set(['light', 'voyager', 'dark']);
 
-/** True when a CARTO style is chosen without a key, so its tiles will be blank. */
 /** Styles the CARTO key changes: CARTO's own, Satellite's labels, and Auto (a key switches it to CARTO). */
 const CARTO_KEY_STYLES = new Set(['auto', 'light', 'voyager', 'dark', 'satellite']);
 
@@ -215,8 +214,42 @@ export function extraLabelsApply(mapStyle: string | undefined): boolean {
   return (mapStyle || 'auto').toLowerCase() !== 'maptilesvector';
 }
 
+/** True when a CARTO style is chosen without a key, so its tiles will be blank. */
 export function cartoKeyMissing(mapStyle: string | undefined, cartoApiKey?: string): boolean {
   return CARTO_STYLES.has(mapStyle?.toLowerCase() ?? '') && !cartoApiKey?.trim();
+}
+
+/**
+ * The editor's map style list: Auto, HA's own maps, then the online ones.
+ * `label` and `desc` (the line under the list for the chosen style) are
+ * editor.map locale keys; `mapTiles` needs HA's map_tiles integration,
+ * `cartoKey` a CARTO key.
+ */
+export const MAP_STYLE_CHOICES: ReadonlyArray<{
+  value: string; label: string; desc?: string; mapTiles?: boolean; cartoKey?: boolean;
+}> = [
+  { value: 'Auto', label: 'style_auto', desc: 'style_desc_auto' },
+  { value: 'MapTiles', label: 'style_maptiles', desc: 'style_desc_maptiles', mapTiles: true },
+  { value: 'MapTilesVector', label: 'style_maptiles_vector', desc: 'style_desc_maptiles_vector', mapTiles: true },
+  { value: 'OSM', label: 'style_osm', desc: 'style_desc_osm' },
+  { value: 'Satellite', label: 'style_satellite', desc: 'style_desc_satellite' },
+  { value: 'Light', label: 'style_light', desc: 'style_desc_carto', cartoKey: true },
+  { value: 'Voyager', label: 'style_voyager', desc: 'style_desc_carto', cartoKey: true },
+  { value: 'Dark', label: 'style_dark', desc: 'style_desc_carto', cartoKey: true },
+  { value: 'Grey', label: 'style_grey', desc: 'style_desc_esri' },
+  { value: 'GreyDark', label: 'style_grey_dark', desc: 'style_desc_esri' },
+  // Its own fields carry the help.
+  { value: 'Custom', label: 'style_custom' },
+];
+
+/** HA's vector map styles, as its map card offers them. */
+export const VECTOR_STYLES = ['default', 'colorful', 'natural', 'muted', 'gray', 'toner'] as const;
+export type VectorStyle = typeof VECTOR_STYLES[number];
+
+/** `vector_style` as one of VECTOR_STYLES: unset or unknown is Default. */
+export function vectorStyleName(value: string | undefined): VectorStyle {
+  const name = (value ?? '').toLowerCase();
+  return (VECTOR_STYLES as readonly string[]).includes(name) ? name as VectorStyle : 'default';
 }
 
 /**
@@ -235,6 +268,35 @@ export function resolveAutoBasemap(opts: {
   if (opts.cartoApiKey?.trim()) return opts.dark ? 'dark' : opts.english ? 'light' : 'osm';
   if (opts.mapTilesLoaded) return opts.dark ? 'maptiles-dark' : 'maptiles';
   return opts.dark ? 'greydark' : opts.english ? 'grey' : 'osm';
+}
+
+/** Styles theme_mode changes: those with light and dark versions. */
+const THEMED_STYLES = new Set(['auto', 'maptiles', 'maptilesvector']);
+
+/** Whether the editor shows theme_mode for this map_style. */
+export function themeModeApplies(mapStyle: string | undefined): boolean {
+  return THEMED_STYLES.has((mapStyle || 'auto').toLowerCase());
+}
+
+/**
+ * The basemap drawn for the card's config. theme_mode `light` or `dark`
+ * overrides HA's dark mode for the styles with both versions; `auto` (or
+ * unset) keeps each style's usual behaviour.
+ */
+export function effectiveBasemapStyle(
+  cfg: { map_style?: string; theme_mode?: string; custom_tile_url?: string; carto_api_key?: string },
+  env: { haDark: boolean; english: boolean; mapTilesLoaded: boolean },
+): string {
+  const mode = cfg.theme_mode?.toLowerCase();
+  const dark = mode === 'dark' || (mode !== 'light' && env.haDark);
+  const configured = cfg.map_style?.toLowerCase();
+  if (configured && configured !== 'auto') {
+    // Only when forced: MapTiles has always stayed light in HA's dark mode,
+    // and auto-updated cards shouldn't change.
+    if (configured === 'maptiles' && mode === 'dark' && env.mapTilesLoaded) return 'maptiles-dark';
+    return resolveBasemapStyle(configured, { mapTilesLoaded: env.mapTilesLoaded, customTileUrl: cfg.custom_tile_url, dark });
+  }
+  return resolveAutoBasemap({ dark, english: env.english, cartoApiKey: cfg.carto_api_key, mapTilesLoaded: env.mapTilesLoaded });
 }
 
 const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';

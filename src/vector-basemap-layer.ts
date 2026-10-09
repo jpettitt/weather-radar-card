@@ -1,14 +1,15 @@
-// The part of the vector basemap that needs MapLibre (1 MB minified, 276 KB
-// gzipped), loaded by vector-basemap.ts with import() so rollup splits it
-// into its own file: only cards with map_style: MapTilesVector download it.
-// It must not import anything the card's main file also uses (Leaflet
-// included): rollup would then move that code out of weather-radar-card.js
-// into a shared file, and the card would no longer be one file.
+// The part of the vector basemap that needs MapLibre and VersaTiles' style
+// builder, built as its own file (rollup.config.js) and loaded by
+// vector-basemap.ts from a URL: only cards with map_style: MapTilesVector
+// download it. It must not import Leaflet: Leaflet is passed in, so the card
+// and this file never hold two copies.
 import * as maplibreModule from 'maplibre-gl';
 // @ts-expect-error — rollup-plugin-string imports *.css as text
 import maplibreCss from 'maplibre-gl/dist/maplibre-gl.css';
 import type * as Leaflet from 'leaflet';
 import { defineMaplibreLayer, type MaplibreLayer } from './maplibre-leaflet-layer';
+
+export { buildVectorStyle } from './vector-styles';
 
 // maplibre-gl ships as UMD; rollup's CommonJS interop may put it under default.
 const maplibre = ((maplibreModule as unknown as { default?: typeof maplibreModule }).default ?? maplibreModule);

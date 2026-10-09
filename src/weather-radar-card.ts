@@ -24,8 +24,7 @@ import {
   isDarkBasemapStyle,
   cartoKeyMissing,
   isInvertedBasemap,
-  resolveAutoBasemap,
-  resolveBasemapStyle,
+  effectiveBasemapStyle,
   unknownTilePlaceholders,
 } from './basemap-styles';
 import { attachMapTilesLayer, isMapTilesLoaded } from './map-tiles-token';
@@ -262,19 +261,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const isDark = typeof haDark === 'boolean'
       ? haDark
       : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const configured = this._config?.map_style?.toLowerCase();
-    if (configured && configured !== 'auto') {
-      return resolveBasemapStyle(configured, {
-        mapTilesLoaded: isMapTilesLoaded(this.hass),
-        customTileUrl: this._config?.custom_tile_url,
-        dark: isDark,
-      });
-    }
-    const isEnglish = (this.hass?.language ?? 'en').startsWith('en');
-    return resolveAutoBasemap({
-      dark: isDark,
-      english: isEnglish,
-      cartoApiKey: this._config?.carto_api_key,
+    return effectiveBasemapStyle(this._config ?? {}, {
+      haDark: isDark,
+      english: (this.hass?.language ?? 'en').startsWith('en'),
       mapTilesLoaded: isMapTilesLoaded(this.hass),
     });
   }
@@ -924,6 +913,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         map: this._map,
         hass: this.hass,
         dark: mapStyle === 'maptiles-vector-dark',
+        vectorStyle: cfg.vector_style,
         onFallback: (reason) => {
           console.warn(`[weather-radar-card] Vector map unavailable (${reason}); showing raster MapTiles.`);
           attachRaster();
@@ -1664,12 +1654,13 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
          has to close the popup to interact with the controls again,
          which is the expected modal-ish UX for these popups. */
       .leaflet-popup-pane { z-index: 1100; }
-      /* custom_tile_theme: invert — light custom tiles shown as a dark map.
-         Same filter as ha-map-card's theme_mode: dark, so both cards match
-         on one dashboard. hue-rotate undoes most of invert()'s hue flip;
-         saturate(0.3) mutes the basemap so the radar colours stand out. */
+      /* Light tiles shown as a dark map (Auto/MapTiles dark, custom_tile_theme:
+         invert). ha-map-card's theme_mode: dark filter, but greyer: at its
+         saturate(0.3) forests stay green and roads pink, competing with the
+         radar; at 0 the sea turns lighter than the land. hue-rotate undoes
+         most of invert()'s hue flip. */
       .${unsafeCSS(CUSTOM_INVERT_CLASS)} {
-        filter: invert(0.9) hue-rotate(170deg) brightness(1.5) contrast(1.2) saturate(0.3);
+        filter: invert(0.9) hue-rotate(170deg) brightness(1.5) contrast(1.2) saturate(0.15);
       }
       .loading-spinner {
         position: absolute; top: 50%; left: 50%;
