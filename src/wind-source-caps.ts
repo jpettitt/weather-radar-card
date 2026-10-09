@@ -60,8 +60,8 @@ export interface WindSourceCaps {
   /** Spacing of the coverage's time slices, in hours. A WCS `time` subset
    * that doesn't land on a slice makes GeoServer silently return the
    * OLDEST slice rather than an error, so requested times must be floored
-   * to this step (wind-grid-fetcher's effectiveTimeIso does). Omit for
-   * sources whose un-timed request already means "current" (NDFD). */
+   * to this step (wind-grid-fetcher's effectiveTimeIso does). Omitted for
+   * NDFD, whose slice comes from its own time list (ndfdTimeIso). */
   timeStepHours?: number;
   /** Short cadence note for the editor's helper line. English; the i18n
    * key 'editor.wind.cadence_<id>' wins when present. */

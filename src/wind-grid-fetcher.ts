@@ -17,6 +17,7 @@
 
 import {
   type WindSource,
+  type WindSourceCaps,
   DEFAULT_WIND_SOURCE,
   getWindSourceCaps,
   bboxInUsCoverage,
@@ -297,13 +298,34 @@ export function parseNdfdWcsGrid(body: string): WindGrid {
     cells.push(row);
   }
 
+  // The rows above are evenly spaced in Mercator metres, but WindGrid's are
+  // evenly spaced in latitude (its samplers step by `step` degrees). Used as
+  // they came, every row sat north of where it belongs, more so further
+  // north: 0.6° at 28°N on a grid from 23°N, which put Hurricane Isaias's
+  // centre 65 km north of its radar eye. Resample onto rows `step` apart.
+  const rowMetres = (raw.axisMax[1] - yMin) / raw.rows;
+  const latMax = mercatorYToLat(raw.axisMax[1]);
+  const rows = Math.max(1, Math.round((latMax - latMin) / stepLon));
+  const resampled: { u: number; v: number }[][] = [];
+  for (let k = 0; k < rows; k++) {
+    // Fractional source row of this row's centre, 0 = the southern row's centre.
+    const fr = (latToMercatorY(latMin + (k + 0.5) * stepLon) - yMin) / rowMetres - 0.5;
+    const r0 = Math.max(0, Math.min(raw.rows - 1, Math.floor(fr)));
+    const r1 = Math.min(raw.rows - 1, r0 + 1);
+    const t = Math.max(0, Math.min(1, fr - r0));
+    resampled.push(cells[r0].map((a, c) => {
+      const b = cells[r1][c];
+      return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
+    }));
+  }
+
   return {
-    rows: raw.rows,
+    rows,
     cols: raw.cols,
     latMin,
     lonMin,
     step: stepLon,
-    cells,
+    cells: resampled,
   };
 }
 
@@ -344,6 +366,58 @@ function parseBand(body: string, header: string, rows: number, cols: number): nu
 // log line.
 let _fallbackLogged = false;
 
+// NDFD's coverage runs from the next forecast hour to about six days out.
+// Asked for no time it answers with a slice about 15 hours ahead (live
+// 2026-10-09: tomorrow 09Z at 17:32Z, so Hurricane Isaias's circulation sat
+// over Alabama while radar showed it in the Gulf), and a time it doesn't
+// hold gets an exception, not the nearest slice. So requests name a slice
+// from the coverage's own time list, re-read every 15 minutes.
+const NDFD_TIMES_TTL_MS = 15 * 60_000;
+let ndfdTimes: { expiresAt: number; times: Promise<number[]> } | undefined;
+
+/** @internal */
+export function _resetNdfdTimesForTests(): void {
+  ndfdTimes = undefined;
+}
+
+function loadNdfdTimes(caps: WindSourceCaps, f: typeof fetch, nowMs: number): Promise<number[]> {
+  if (ndfdTimes && ndfdTimes.expiresAt > nowMs) return ndfdTimes.times;
+  const params = new URLSearchParams({
+    service: 'WCS', version: '2.0.1', request: 'DescribeCoverage', coverageId: caps.coverageId,
+  });
+  const times = f(`${caps.wcsUrl}?${params}`)
+    .then((res) => (res.ok ? res.text() : ''))
+    .then((xml) => [...xml.matchAll(/<gml:timePosition>([^<]+)<\/gml:timePosition>/g)]
+      .map((m) => Date.parse(m[1]))
+      .filter(Number.isFinite));
+  const entry = { expiresAt: nowMs + NDFD_TIMES_TTL_MS, times };
+  ndfdTimes = entry;
+  // A list that failed or came back empty isn't kept: the next fetch asks again.
+  const forget = (): void => { if (ndfdTimes === entry) ndfdTimes = undefined; };
+  times.then((t) => { if (t.length === 0) forget(); }, forget);
+  return times;
+}
+
+/** The NDFD slice to request: the one nearest `targetMs` in the coverage's
+ * time list, or the next whole hour (where the list starts) without one. */
+export async function ndfdTimeIso(
+  targetMs: number,
+  nowMs: number,
+  f: typeof fetch,
+  caps = getWindSourceCaps('ndfd_wind'),
+): Promise<string> {
+  let times: number[] = [];
+  try {
+    times = await loadNdfdTimes(caps, f, nowMs);
+  } catch {
+    // Falls back to the next hour below.
+  }
+  const pick = times.length > 0
+    ? times.reduce((best, t) => (Math.abs(t - targetMs) < Math.abs(best - targetMs) ? t : best))
+    : Math.ceil(targetMs / 3_600_000) * 3_600_000;
+  return new Date(pick).toISOString().split('.')[0] + 'Z';
+}
+
 export async function fetchWindGrid(opts: FetchWindGridOptions): Promise<WindGrid> {
   const configured = opts.source ?? DEFAULT_WIND_SOURCE;
   const source = resolveSourceForBbox(opts);
@@ -354,9 +428,15 @@ export async function fetchWindGrid(opts: FetchWindGridOptions): Promise<WindGri
     );
   }
   const caps = getWindSourceCaps(source);
-  const url = buildWindGridUrl({ ...opts, source }, caps);
-
   const f = opts.fetchImpl ?? fetch;
+  let timeIso = opts.timeIso;
+  if (source === 'ndfd_wind') {
+    const now = Date.now();
+    const target = Date.parse(opts.timeIso ?? '');
+    timeIso = await ndfdTimeIso(Number.isFinite(target) ? target : now, now, f, caps);
+  }
+  const url = buildWindGridUrl({ ...opts, source, timeIso }, caps);
+
   const res = await f(url);
   if (!res.ok) throw new Error(`fetchWindGrid: HTTP ${res.status}`);
   const body = await res.text();
@@ -406,9 +486,9 @@ export function resolveSourceForBbox(opts: FetchWindGridOptions): WindSource {
  * history (verified live 2026-09-23, issue #262: a day-old wind field
  * that flips direction as the real wind turns). So DWD sources always
  * get a time: the caller's if given, else now, floored to `timeStepHours`
- * (ICON hourly, AICON 3-hourly). NDFD has no `timeStepHours`: its window
- * starts at the latest published step, so un-timed already means current
- * and its caller-supplied time passes through unchanged.
+ * (ICON hourly, AICON 3-hourly). NDFD has no `timeStepHours`: it passes
+ * through here unchanged, and fetchWindGrid picks its slice from the
+ * coverage's own time list (ndfdTimeIso).
  *
  * Resolves the source from the bbox so an NDFD config that fell back to
  * AICON outside the US is timed too. */

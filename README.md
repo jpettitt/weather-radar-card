@@ -19,17 +19,17 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 
 [![Watch the demo on YouTube](https://img.youtube.com/vi/xfbZRElOi0o/maxresdefault.jpg)](https://youtu.be/xfbZRElOi0o)
 
-## Coming in 3.12 (beta)
+## What's new in 3.12 (current stable)
 
-3.12 is in beta: to try it, turn on **Show beta versions** for this card in HACS.
+US wind now shows the current hour in the right place, NOAA radar reaches Alaska, Hawaii, Puerto Rico and Guam, and radar loops reload from the browser, forecast included.
 
 - **⚠️ Without a CARTO key, `map_style: Auto` now uses Home Assistant's map tiles** — CARTO serves blank tiles without a key. Add a free `carto_api_key` to keep CARTO's look. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2))
-- **DWD forecast tiles survive a reload**, and every frame says how old or how far ahead it is. ([3.12.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta1))
+- **Radar loops reload from the browser, forecast included** — the tile cache now keeps DWD's forecast frames too, so a reload plays the stored loop and fetches only the newest frames. Every frame also says how old or how far ahead it is. ([3.12.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta1))
 - **NOAA radar in Alaska, Hawaii, Puerto Rico and Guam**, and steady 5- and 10-minute NOAA loops. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2))
-- **US wind speeds corrected** — they were about 1.9× too strong. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2))
+- **US wind fixed** — it showed the forecast for about 15 hours ahead, a little too far north, and about 1.9× too strong. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2), [3.12.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0))
 - **Wildfire popups** with location, personnel and cause, InciWeb links for many more fires, and a much lighter data feed. ([3.12.0-beta3](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta3))
 
-## What's new in 3.11 (current stable)
+## What's new in 3.11
 
 Home Assistant 2026.10 added its own map tiles, and the card can now use them. Radar loops also load from the browser instead of the network, and a new low power mode suits old wall tablets.
 
@@ -41,16 +41,9 @@ Home Assistant 2026.10 added its own map tiles, and the card can now use them. R
 
 For the full release history see [CHANGELOG](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md).
 
-## What's new in 3.10
-
-The wind overlays no longer show a stale wind field outside the US, and there's a new option to stop the mouse wheel hijacking dashboard scrolling.
-
-- **Fixed wind arrows/barbs/flow showing a day-old wind field** (sometimes looking reversed) outside the US — DWD's server returns its oldest slice for a missing or off-step time, and the card now always requests the current one. ([3.9.1-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.9.1-beta1))
-- **`disable_wheel_zoom` option (YAML-only)** — the mouse wheel scrolls the dashboard instead of zooming the map, while the +/- buttons, pinch and drag keep working (unlike `static_map`). ([3.10.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.10.0-beta1))
-
 ## Roadmap
 
-Active threads, no specific version commitment — with 3.11 shipped, these target 3.12 or later. See [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md) for the full backlog with status per item.
+Active threads, no specific version commitment — with 3.12 shipped, these target a later release. See [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md) for the full backlog with status per item.
 
 - **Real-time per-user layer visibility control panel** — UI for toggling individual overlays in real time. Persistence framework already shipped (3.6.5); first consumer shipped (playback speed in 3.7.0-alpha1); the on-map panel itself is the remaining piece. Full design in [docs/layer-control-design.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/layer-control-design.md).
 - **Additional wind sources** — Open-Meteo for global coverage, ICON pressure levels for upper-air wind, regional finer-than-ICON-D2 sources (AROME, MEPS, HRRR). Tiers and trade-offs documented in [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md).
