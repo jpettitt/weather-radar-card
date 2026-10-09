@@ -88,6 +88,7 @@ Download the files from the [latest release](https://github.com/jpettitt/weather
     └── community
         └── weather-radar-card
             └── weather-radar-card.js
+            └── weather-radar-card-maplibre.js
             └── home-circle-dark.svg
             └── home-circle-light.svg
             └── pause.png
@@ -100,6 +101,8 @@ Download the files from the [latest release](https://github.com/jpettitt/weather
             └── skip-back.png
             └── skip-next.png
 ```
+
+Copy the `.js.gz` files too if you have them: HA serves the compressed copy when one sits next to the file. `weather-radar-card-maplibre.js` is only loaded for `map_style: MapTilesVector`; without it that style shows `MapTiles` instead.
 
 > **Upgrading from v2?** Delete `leaflet.js`, `leaflet.css`, `leaflet.toolbar.min.js`, and `leaflet.toolbar.min.css` from `www/community/weather-radar-card/` — they are bundled into `weather-radar-card.js` in v3 and the old files are no longer used.
 

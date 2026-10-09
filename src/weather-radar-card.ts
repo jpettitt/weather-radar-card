@@ -24,8 +24,11 @@ import {
   isDarkBasemapStyle,
   cartoKeyMissing,
   isInvertedBasemap,
+  configWord,
   effectiveBasemapStyle,
+  extraLabelsApply,
   unknownTilePlaceholders,
+  vectorLabelsAbove,
 } from './basemap-styles';
 import { attachMapTilesLayer, isMapTilesLoaded } from './map-tiles-token';
 import { startVectorBasemap } from './vector-basemap';
@@ -762,7 +765,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // For map_style: auto, reinit the map when the OS colour scheme changes so
     // the basemap tiles and scale-control styling swap. Chrome (footer, links)
     // follows HA theme variables and updates automatically.
-    const isAuto = !cfg.map_style || cfg.map_style.toLowerCase() === 'auto';
+    const isAuto = (configWord(cfg.map_style) || 'auto') === 'auto';
     if (isAuto) {
       this._darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
       // Re-init directly: a bare requestUpdate() is dropped by shouldUpdate()
@@ -872,14 +875,17 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupBasemap(mapStyle: string): void {
     if (!this._map) return;
     const cfg = this._config;
-    const tileSize = cfg.extra_labels ? 128 : 256;
-    const zoomOffset = cfg.extra_labels ? 1 : 0;
+    // Not for the vector map, whose editor hides the switch, even when it
+    // falls back to raster: a leftover extra_labels couldn't be turned off.
+    const extraLabels = cfg.extra_labels === true && extraLabelsApply(cfg.map_style);
+    const tileSize = extraLabels ? 128 : 256;
+    const zoomOffset = extraLabels ? 1 : 0;
     // mapStyle is already resolved (_effectiveMapStyle): 'maptiles' only
     // when HA's map_tiles integration is loaded, so the access_token WS call
     // never goes to a core that doesn't know it.
     const useVector = mapStyle === 'maptiles-vector' || mapStyle === 'maptiles-vector-dark';
     const useMapTiles = mapStyle === 'maptiles' || mapStyle === 'maptiles-dark' || useVector;
-    const badPlaceholders = cfg.map_style?.toLowerCase() === 'custom' && cfg.custom_tile_url
+    const badPlaceholders = configWord(cfg.map_style) === 'custom' && cfg.custom_tile_url
       ? unknownTilePlaceholders(cfg.custom_tile_url) : [];
     if (badPlaceholders.length > 0) {
       console.warn(
@@ -914,7 +920,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         hass: this.hass,
         dark: mapStyle === 'maptiles-vector-dark',
         vectorStyle: cfg.vector_style,
-        labelsAbove: cfg.vector_labels?.toLowerCase() !== 'below',
+        labelsAbove: vectorLabelsAbove(cfg.vector_labels),
         onFallback: (reason) => {
           console.warn(`[weather-radar-card] Vector map unavailable (${reason}); showing raster MapTiles.`);
           attachRaster();

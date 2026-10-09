@@ -60,6 +60,23 @@ const gzipBundlePlugin = () => ({
   },
 });
 
+// The licence notices the MapLibre file's bundled code requires in every
+// copy. MapLibre's own @license line survives minification, but not its full
+// text; the others don't survive at all: rollup drops the adapter's notice
+// with the type-only imports it sits on.
+const maplibreFileBanner = () => {
+  const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+  const adapter = read('./src/maplibre-leaflet-layer.ts').match(/\/\*!([\s\S]*?)\*\//)[1]
+    .split('\n').map((l) => l.replace(/^ \* ?/, '')).join('\n');
+  const notices = [
+    ['MapLibre GL JS (maplibre-gl)', read('./node_modules/maplibre-gl/LICENSE.txt')],
+    ['@versatiles/style', read('./node_modules/@versatiles/style/LICENSE.md')],
+    ['', adapter],
+  ];
+  const text = notices.map(([name, body]) => `${name}\n\n${body.trim()}`.trim()).join('\n\n---\n\n');
+  return `/*! Third-party notices for weather-radar-card-maplibre.js\n\n${text}\n*/`;
+};
+
 const serveopts = {
   contentBase: ['./dist'],
   host: '0.0.0.0',
@@ -84,7 +101,9 @@ const makePlugins = () => [
   buildStampPlugin(),
   // Minify production builds; skip in watch mode for fast iteration.
   !dev && terser({
-    format: { comments: false },
+    // 'some' keeps licence notices (/*! */, @license, @preserve), which the
+    // BSD, MIT and ISC licences of what's bundled require in every copy.
+    format: { comments: 'some' },
     compress: { passes: 2, drop_console: false },
     mangle: { keep_classnames: /^WeatherRadar/ },
   }),
@@ -107,6 +126,7 @@ export default [
     output: {
       file: MAPLIBRE_FILE,
       format: 'es',
+      banner: maplibreFileBanner,
     },
     plugins: makePlugins(),
   },

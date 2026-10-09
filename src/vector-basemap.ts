@@ -22,9 +22,14 @@ const PROXY_PATH = '/api/map_tiles/';
 // Browsers keep about 16 WebGL contexts and drop the oldest; one lost for
 // this long is treated as gone. HA's maps use the same grace.
 const CONTEXT_RESTORE_GRACE_MS = 2000;
-// A refused request (stale token, proxy restarting) leaves MapLibre's source
-// dead until the style is applied again: at most one retry per this long.
+// A refused request (stale token, proxy restarting) leaves what it was for
+// failed until the style is reloaded: at most one token fetch per this long.
 const RECOVERY_THROTTLE_MS = 30_000;
+// MapLibre's statuses for a map_tiles request that a fresh token or a
+// reload can fix: 0 is a network failure (HA restarting), 401/403 a stale
+// token, 404 the proxy not registered yet. A 404 tile fails silently (MapLibre
+// draws it empty), so only the TileJSON's 404 gets here.
+const RECOVERABLE_STATUS = new Set([0, 401, 403, 404]);
 // The labels' own pane: over the radar (240), the wind flow (250), DWD's
 // coverage wash (350) and hazard overlays (400), so every name stays
 // readable; under lightning (500), markers and popups. Clicks pass through
@@ -153,7 +158,9 @@ const MAPLIBRE_FILE_HASH = '__MAPLIBRE_FILE_HASH__';
 
 // The MapLibre file, built separately (rollup.config.js) and installed next to
 // the card. A computed URL, so rollup leaves it alone.
-function loadMaplibreFile(): Promise<typeof import('./vector-basemap-layer')> {
+// Async so a bad base URL rejects, and falls back, rather than throwing out
+// of startVectorBasemap with the token refresh already running.
+async function loadMaplibreFile(): Promise<typeof import('./vector-basemap-layer')> {
   const url = new URL(`./weather-radar-card-maplibre.js?v=${MAPLIBRE_FILE_HASH}`, import.meta.url).href;
   return import(/* computed: not bundled */ url);
 }
@@ -193,21 +200,54 @@ export function startVectorBasemap(opts: {
   let labels: GlLayer | undefined;
   let token: string | undefined;
   let lastRecovery = 0;
+  let needsReload = false;
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   // full is drawn while the labels have no layer of their own; base and
   // labels while they do.
   let styles: { full: any; base?: any; labels?: any } | undefined;
   let stopBaseWatch = (): void => { /* not started */ };
   let stopLabelWatch = (): void => { /* not started */ };
 
+  // A map whose WebGL context is lost has no style: MapLibre re-applies the
+  // one it had when the context returns, so a new style waits for that.
+  const applyStyle = (layer: GlLayer | undefined, style: any): void => {
+    const gl = layer?.getMaplibreMap();
+    if (!gl) return;
+    if (gl.style) gl.setStyle(style);
+    else gl.once('webglcontextrestored', () => { if (!stopped) gl.setStyle(style); });
+  };
+
+  // A full reload: setStyle with the style already applied diffs to nothing,
+  // and failed tiles and a failed TileJSON are only fetched again this way.
+  // A map with its context lost reloads by itself when it comes back.
+  const reload = (): void => {
+    if (stopped || !base || !styles) return;
+    needsReload = false;
+    const reloadMap = (layer: GlLayer | undefined, style: any): void => {
+      const gl = layer?.getMaplibreMap();
+      if (gl?.style) gl.setStyle(style, { diff: false });
+    };
+    reloadMap(base, styles.base ?? styles.full);
+    if (styles.labels) reloadMap(labels, styles.labels);
+  };
+
   let gotToken!: () => void;
   const firstToken = new Promise<void>((resolve) => { gotToken = resolve; });
-  const stopToken = startMapTilesToken(hass, (t) => { token = t; gotToken(); });
+  // Every new token also finishes a pending reload: that covers a token
+  // fetch that failed, and HA restarting (the socket reconnects, and a
+  // token follows).
+  const stopToken = startMapTilesToken(hass, (t) => {
+    token = t;
+    gotToken();
+    if (needsReload) reload();
+  });
 
   const transformRequest = (url: string): { url: string } => ({ url: withMapTilesToken(url, origin, token) });
 
   const cleanup = (): void => {
     stopped = true;
     stopToken();
+    clearTimeout(recoveryTimer);
     stopBaseWatch();
     stopLabelWatch();
     removeLayer(labels);
@@ -227,25 +267,32 @@ export function startVectorBasemap(opts: {
     removeLayer(labels);
     labels = undefined;
     styles = { full: styles.full };
-    base?.getMaplibreMap()?.setStyle(styles.full);
+    applyStyle(base, styles.full);
   };
 
-  // 403 is a stale token, 404 the proxy not registered yet after a restart,
-  // no status a network failure: a fresh token and the styles again recover
-  // all three.
-  const onError = (event: any): void => {
-    const status = event?.error?.status;
-    if (status !== undefined && status !== 403 && status !== 404) return;
-    if (Date.now() - lastRecovery < RECOVERY_THROTTLE_MS) return;
+  const recover = (): void => {
+    recoveryTimer = undefined;
     lastRecovery = Date.now();
     hass.callWS<{ token: string }>({ type: 'map_tiles/access_token' })
       .then(({ token: t }) => {
-        if (stopped || !base || !styles) return;
+        if (stopped) return;
         token = t;
-        base.getMaplibreMap()?.setStyle(styles.base ?? styles.full);
-        if (styles.labels) labels?.getMaplibreMap()?.setStyle(styles.labels);
+        reload();
       })
-      .catch(() => { /* the next refused request tries again */ });
+      .catch(() => { /* the next token from startMapTilesToken reloads */ });
+  };
+  // Only map_tiles requests: a missing sprite or a style warning isn't
+  // something a token fixes. Within the throttle the retry is put off, not
+  // dropped: a reload that failed again (HA still starting) would otherwise
+  // leave a map nobody pans broken until the next token, 20 minutes on.
+  const onError = (event: any): void => {
+    const err = event?.error;
+    if (!String(err?.url ?? '').includes(PROXY_PATH) || !RECOVERABLE_STATUS.has(err?.status)) return;
+    needsReload = true;
+    if (recoveryTimer !== undefined) return;
+    const wait = lastRecovery + RECOVERY_THROTTLE_MS - Date.now();
+    if (wait <= 0) recover();
+    else recoveryTimer = setTimeout(recover, wait);
   };
 
   // HA serves Default ready-made; the other styles are built from urls.json

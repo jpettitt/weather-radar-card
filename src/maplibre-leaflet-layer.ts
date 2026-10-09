@@ -5,22 +5,24 @@
 // made rollup move the card's own code out of weather-radar-card.js into a
 // shared file, so the card depended on a second file; this way only the
 // on-demand MapLibre file depends on anything. Left out: the adapter's
-// attribution juggling (the card shows its own credits).
-//
-// Copyright (c) 2021 MapLibre contributors
-// Copyright (c) 2014, Mapbox
-//
-// Permission to use, copy, modify, and/or distribute this software for any
-// purpose with or without fee is hereby granted, provided that the above
-// copyright notice and this permission notice appear in all copies.
-//
-// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-// WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-// MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-// ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-// WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-// ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-// OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+// attribution juggling (the card shows its own credits). The notice below is
+// copied into the built file's header by rollup.config.js.
+/*! maplibre-leaflet-layer: ported from @maplibre/maplibre-gl-leaflet 0.1.4 (ISC)
+ * Copyright (c) 2021 MapLibre contributors
+ * Copyright (c) 2014, Mapbox
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
 import type * as Leaflet from 'leaflet';
 import type * as Maplibre from 'maplibre-gl';
 
@@ -176,6 +178,9 @@ export function defineMaplibreLayer(
         const center = this._map.getCenter();
         const offset = this._map.latLngToContainerPoint(this._map.getBounds().getNorthWest());
         this._resizeContainer();
+        // Now, as upstream does: MapLibre's own resize observer waits up to
+        // 50 ms, leaving the canvas its old size and out of line meanwhile.
+        this._glMap.resize();
         L.DomUtil.setTransform(this._glMap._actualCanvas, offset, 1);
         this._glMap.once('moveend', L.Util.bind(function (this: any) { this._zoomEnd(); }, this));
         this._glMap.jumpTo({ center, zoom: zoom - 1 });

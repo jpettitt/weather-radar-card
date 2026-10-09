@@ -201,22 +201,47 @@ export function isInvertedBasemap(
 /** CARTO styles whose tiles are blank without a key (Satellite only loses its labels). */
 const CARTO_STYLES = new Set(['light', 'voyager', 'dark']);
 
+/**
+ * A config value as a lowercase word. YAML hands over a boolean or a number
+ * where a word was meant (`vector_labels: false`), and calling string methods
+ * on those threw while the map was being built.
+ */
+export function configWord(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+/** vector_labels: over the radar unless `below`, or `false`. */
+export function vectorLabelsAbove(value: unknown): boolean {
+  return value !== false && configWord(value) !== 'below';
+}
+
+/** theme_mode as auto, light or dark: anything else is auto. */
+export function themeModeName(value: unknown): 'auto' | 'light' | 'dark' {
+  const mode = configWord(value);
+  return mode === 'light' || mode === 'dark' ? mode : 'auto';
+}
+
 /** Styles the CARTO key changes: CARTO's own, Satellite's labels, and Auto (a key switches it to CARTO). */
 const CARTO_KEY_STYLES = new Set(['auto', 'light', 'voyager', 'dark', 'satellite']);
 
-/** Whether the editor shows the CARTO key field: where a key does something, or when one is set (so it can be cleared). */
-export function showsCartoKeyField(mapStyle: string | undefined, cartoApiKey?: string): boolean {
-  return CARTO_KEY_STYLES.has((mapStyle || 'auto').toLowerCase()) || !!cartoApiKey?.trim();
+/**
+ * Whether the editor shows the CARTO key field: where a key does something,
+ * or when one is set (so it can be cleared). An unknown style counts: the
+ * card draws CARTO Light for it.
+ */
+export function showsCartoKeyField(mapStyle: unknown, cartoApiKey?: string): boolean {
+  const style = configWord(mapStyle) || 'auto';
+  return CARTO_KEY_STYLES.has(style) || !MAP_STYLE_CHOICES.some((c) => c.value.toLowerCase() === style) || !!cartoApiKey?.trim();
 }
 
 /** extra_labels draws raster tiles a zoom level higher at half size; the vector map has no tiles to resize. */
-export function extraLabelsApply(mapStyle: string | undefined): boolean {
-  return (mapStyle || 'auto').toLowerCase() !== 'maptilesvector';
+export function extraLabelsApply(mapStyle: unknown): boolean {
+  return configWord(mapStyle) !== 'maptilesvector';
 }
 
 /** True when a CARTO style is chosen without a key, so its tiles will be blank. */
-export function cartoKeyMissing(mapStyle: string | undefined, cartoApiKey?: string): boolean {
-  return CARTO_STYLES.has(mapStyle?.toLowerCase() ?? '') && !cartoApiKey?.trim();
+export function cartoKeyMissing(mapStyle: unknown, cartoApiKey?: string): boolean {
+  return CARTO_STYLES.has(configWord(mapStyle)) && !cartoApiKey?.trim();
 }
 
 /**
@@ -247,8 +272,8 @@ export const VECTOR_STYLES = ['default', 'colorful', 'natural', 'muted', 'gray',
 export type VectorStyle = typeof VECTOR_STYLES[number];
 
 /** `vector_style` as one of VECTOR_STYLES: unset or unknown is Default. */
-export function vectorStyleName(value: string | undefined): VectorStyle {
-  const name = (value ?? '').toLowerCase();
+export function vectorStyleName(value: unknown): VectorStyle {
+  const name = configWord(value);
   return (VECTOR_STYLES as readonly string[]).includes(name) ? name as VectorStyle : 'default';
 }
 
@@ -274,8 +299,8 @@ export function resolveAutoBasemap(opts: {
 const THEMED_STYLES = new Set(['auto', 'maptiles', 'maptilesvector']);
 
 /** Whether the editor shows theme_mode for this map_style. */
-export function themeModeApplies(mapStyle: string | undefined): boolean {
-  return THEMED_STYLES.has((mapStyle || 'auto').toLowerCase());
+export function themeModeApplies(mapStyle: unknown): boolean {
+  return THEMED_STYLES.has(configWord(mapStyle) || 'auto');
 }
 
 /**
@@ -284,12 +309,12 @@ export function themeModeApplies(mapStyle: string | undefined): boolean {
  * unset) keeps each style's usual behaviour.
  */
 export function effectiveBasemapStyle(
-  cfg: { map_style?: string; theme_mode?: string; custom_tile_url?: string; carto_api_key?: string },
+  cfg: { map_style?: unknown; theme_mode?: unknown; custom_tile_url?: string; carto_api_key?: string },
   env: { haDark: boolean; english: boolean; mapTilesLoaded: boolean },
 ): string {
-  const mode = cfg.theme_mode?.toLowerCase();
-  const dark = mode === 'dark' || (mode !== 'light' && env.haDark);
-  const configured = cfg.map_style?.toLowerCase();
+  const mode = themeModeName(cfg.theme_mode);
+  const dark = mode === 'dark' || (mode === 'auto' && env.haDark);
+  const configured = configWord(cfg.map_style);
   if (configured && configured !== 'auto') {
     // Only when forced: MapTiles has always stayed light in HA's dark mode,
     // and auto-updated cards shouldn't change.

@@ -15,7 +15,7 @@ vi.mock('leaflet', () => {
 import {
   startVectorBasemap, withMapTilesToken, loadVectorStyle, instanceOrigin, splitLabels, _setWebGL2ForTests,
 } from '../src/vector-basemap';
-import { buildVectorStyle } from '../src/vector-styles';
+import { buildVectorStyle, finishForHa } from '../src/vector-styles';
 import {
   resolveBasemapStyle, isDarkBasemapStyle, isInvertedBasemap, basemapCredits, vectorStyleName,
 } from '../src/basemap-styles';
@@ -103,9 +103,32 @@ describe('buildVectorStyle', () => {
     expect(muted.layers.filter((l: any) => l.type === 'symbol' && JSON.stringify(l.layout?.['text-field']) === '["get","name"]')).toEqual([]);
   });
 
-  it('builds a dark variant of each style', () => {
+  it('leaves labels that aren\'t just the name, and everything that isn\'t a label, alone', () => {
+    const raw = buildVectorStyle('muted', URLS); // already finished: run the step on a fresh copy
+    const fresh = structuredClone(raw);
+    const housenumber = fresh.layers.find((l: any) => l.id === 'label-address-housenumber');
+    const before = JSON.stringify(housenumber.layout['text-field']);
+    const fill = fresh.layers.find((l: any) => l.type === 'fill');
+    finishForHa(fresh);
+    expect(JSON.stringify(housenumber.layout['text-field'])).toBe(before);
+    expect(fill.layout?.['text-field']).toBeUndefined();
+  });
+
+  it("drops VersaTiles' own tile URLs and zoom range for map_tiles' TileJSON", () => {
+    const style = {
+      sources: { osm: { type: 'vector', url: 'https://tiles.versatiles.org/tiles/osm.json', tiles: ['x'], attribution: 'a', bounds: [0, 0, 1, 1], minzoom: 0, maxzoom: 14, scheme: 'xyz' } },
+      layers: [],
+    };
+    expect(finishForHa(style).sources).toEqual({ osm: { type: 'vector', url: '/api/map_tiles/tilejson.json' } });
+  });
+
+  it('refuses a style with more than one tile source, which it would repoint wrongly', () => {
+    expect(() => finishForHa({ sources: { a: {}, b: {} }, layers: [] })).toThrow('expected one tile source, got 2');
+  });
+
+  it.each(['colorful', 'natural', 'muted', 'gray', 'toner'])('builds a dark variant of %s', (theme) => {
     const background = (s: any): unknown => s.layers.find((l: any) => l.type === 'background').paint['background-color'];
-    expect(background(buildVectorStyle('muted-dark', URLS))).not.toEqual(background(muted));
+    expect(background(buildVectorStyle(`${theme}-dark`, URLS))).not.toEqual(background(buildVectorStyle(theme, URLS)));
   });
 });
 
@@ -126,7 +149,15 @@ describe('splitLabels', () => {
 
 describe('startVectorBasemap', () => {
   const realFetch = global.fetch;
-  type FakeGl = { handlers: Record<string, (e?: any) => void>; setStyle: ReturnType<typeof vi.fn>; on: (ev: string, fn: (e?: any) => void) => void };
+  type FakeGl = {
+    handlers: Record<string, (e?: any) => void>;
+    once: (ev: string, fn: () => void) => void;
+    onceHandlers: Record<string, () => void>;
+    // MapLibre's map.style: null while its WebGL context is lost.
+    style: object | null;
+    setStyle: ReturnType<typeof vi.fn>;
+    on: (ev: string, fn: (e?: any) => void) => void;
+  };
   type FakeLayer = { addTo: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; getMaplibreMap: () => FakeGl };
   let hass: any;
   // The basemap layer, then the label layer, in the order the code creates them.
@@ -143,7 +174,11 @@ describe('startVectorBasemap', () => {
     createPane: (name: string) => (panes[name] = { style: {} }),
   } as any;
   const makeLayer = (): [FakeGl, FakeLayer] => {
-    const g: FakeGl = { handlers: {}, setStyle: vi.fn(), on(ev, fn) { this.handlers[ev] = fn; } };
+    const g: FakeGl = {
+      handlers: {}, onceHandlers: {}, style: {}, setStyle: vi.fn(),
+      on(ev, fn) { this.handlers[ev] = fn; },
+      once(ev, fn) { this.onceHandlers[ev] = fn; },
+    };
     return [g, { addTo: vi.fn(), remove: vi.fn(), getMaplibreMap: () => g }];
   };
 
@@ -153,6 +188,7 @@ describe('startVectorBasemap', () => {
     buildVectorStyle: (theme: string, urls: unknown) => { built.push(theme); return buildVectorStyle(theme, urls); },
   } as any);
   const requested = (): string[] => (global.fetch as any).mock.calls.map((c: unknown[]) => String(c[0]));
+  const tileError = (status: number, path = '/api/map_tiles/vector/6/16/26.mvt?token=tok1') => ({ error: { status, url: `${ORIGIN}${path}` } });
   const start = (overrides: Record<string, unknown> = {}) => startVectorBasemap({
     map, hass, dark: false, onFallback, loadLayerModule: fakeModule, ...overrides,
   });
@@ -309,18 +345,122 @@ describe('startVectorBasemap', () => {
     expect(layer.remove).toHaveBeenCalled();
   });
 
-  it('after a refused request, fetches a fresh token and applies the style again, at most every 30 s', async () => {
+  it('after a refused request, fetches a fresh token and reloads the style in full, at most every 30 s', async () => {
     start();
     await flush();
-    gl.handlers.error({ error: { status: 403 } });
+    gl.handlers.error(tileError(403));
     await flush();
     expect(hass.callWS).toHaveBeenCalledTimes(2); // the first token, then the fresh one
-    expect(gl.setStyle).toHaveBeenCalledOnce();
+    // A diffed setStyle with the same style changes nothing; only a full one refetches.
+    expect(gl.setStyle).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ version: 8 }), { diff: false });
     expect(created[0].transformRequest('/api/map_tiles/x').url).toContain('token=tok2');
-    gl.handlers.error({ error: { status: 403 } });
-    gl.handlers.error({ error: { status: 500 } });
+    gl.handlers.error(tileError(403));
+    await flush();
+    expect(hass.callWS).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries when the throttle ends, rather than dropping an error that came too soon', async () => {
+    start();
+    await flush();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    gl.handlers.error(tileError(0));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(gl.setStyle).toHaveBeenCalledTimes(1);
+    // The reload's own requests fail too: HA isn't back yet.
+    vi.advanceTimersByTime(10_000);
+    gl.handlers.error(tileError(0));
+    gl.handlers.error(tileError(0));
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(gl.setStyle).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(hass.callWS).toHaveBeenCalledTimes(3);
+    expect(gl.setStyle).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a pending retry on stop()', async () => {
+    const stop = start();
+    await flush();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    gl.handlers.error(tileError(0));
+    await vi.advanceTimersByTimeAsync(0);
+    gl.handlers.error(tileError(0));
+    stop();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(hass.callWS).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['a network failure', 0, '/api/map_tiles/vector/6/16/26.mvt'],
+    ['a stale token', 401, '/api/map_tiles/vector/6/16/26.mvt'],
+    ['a TileJSON not served yet', 404, '/api/map_tiles/tilejson.json'],
+  ])('recovers from %s', async (_name, status, path) => {
+    start();
+    await flush();
+    gl.handlers.error(tileError(status, path));
     await flush();
     expect(gl.setStyle).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['a server error', 500, '/api/map_tiles/vector/6/16/26.mvt'],
+    ['a sprite from HA, not map_tiles', 404, '/static/map/sprites/base@2x.json'],
+    ['an error with no request', undefined, ''],
+  ])('ignores %s', async (_name, status, path) => {
+    start();
+    await flush();
+    gl.handlers.error(path ? tileError(status as number, path) : { error: new Error('style warning') });
+    await flush();
+    expect(hass.callWS).toHaveBeenCalledOnce();
+    expect(gl.setStyle).not.toHaveBeenCalled();
+  });
+
+  it('reloads with the next token when fetching a fresh one fails, e.g. after HA restarts', async () => {
+    let onReady!: () => void;
+    hass.connection.addEventListener = vi.fn((ev: string, fn: () => void) => { if (ev === 'ready') onReady = fn; });
+    start();
+    await flush();
+    hass.callWS.mockRejectedValueOnce(new Error('not connected'));
+    gl.handlers.error(tileError(0));
+    await flush();
+    expect(gl.setStyle).not.toHaveBeenCalled();
+    onReady(); // the socket reconnects; startMapTilesToken fetches a token
+    await flush();
+    expect(gl.setStyle).toHaveBeenCalledExactlyOnceWith(expect.anything(), { diff: false });
+  });
+
+  it('waits for a token before adding the layer', async () => {
+    let giveToken!: (t: { token: string }) => void;
+    hass.callWS = vi.fn(() => new Promise((r) => { giveToken = r; }));
+    start();
+    await flush();
+    expect(created).toEqual([]);
+    giveToken({ token: 'late' });
+    await flush();
+    expect(created).toHaveLength(1);
+    expect(created[0].transformRequest('/api/map_tiles/tilejson.json').url).toContain('token=late');
+  });
+
+  it('stops refreshing the token on stop()', async () => {
+    const stop = start();
+    await flush();
+    stop();
+    expect(hass.connection.removeEventListener).toHaveBeenCalledWith('ready', expect.any(Function));
+  });
+
+  it("doesn't fall back while the page is hidden, which drops contexts too; only once it's back and still lost", async () => {
+    start();
+    await flush();
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    gl.handlers.webglcontextlost();
+    vi.advanceTimersByTime(60_000);
+    expect(onFallback).not.toHaveBeenCalled();
+    hidden.mockReturnValue(false);
+    document.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(1999);
+    expect(onFallback).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(onFallback).toHaveBeenCalledWith('WebGL context lost');
   });
 
   describe('labels over the radar', () => {
@@ -368,7 +508,7 @@ describe('startVectorBasemap', () => {
       expect(onFallback).not.toHaveBeenCalled();
       // A refused request afterwards applies the full style, not the split one.
       vi.useRealTimers();
-      gl.handlers.error({ error: { status: 403 } });
+      gl.handlers.error(tileError(403));
       await flush();
       expect(ids(gl.setStyle.mock.calls[1][0])).toEqual(['land', 'water', 'towns']);
       expect(labelGl.setStyle).not.toHaveBeenCalled();
@@ -388,11 +528,37 @@ describe('startVectorBasemap', () => {
     it('applies both styles again after a refused request, from either layer', async () => {
       start({ labelsAbove: true });
       await flush();
-      labelGl.handlers.error({ error: { status: 403 } });
+      labelGl.handlers.error(tileError(403));
       await flush();
       expect(ids(gl.setStyle.mock.calls[0][0])).toEqual(['land', 'water']);
       expect(ids(labelGl.setStyle.mock.calls[0][0])).toEqual(['towns']);
+      expect(labelGl.setStyle.mock.calls[0][1]).toEqual({ diff: false });
       expect(created[1].transformRequest('/api/map_tiles/x').url).toContain('token=tok2');
+    });
+
+    it('gives the labels back to a basemap whose context is lost only once it returns', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      start({ labelsAbove: true });
+      await flush();
+      vi.useFakeTimers();
+      gl.style = null; // MapLibre drops the style with the context
+      labelGl.handlers.webglcontextlost();
+      vi.advanceTimersByTime(2000);
+      // Set now, it would be overwritten by the style MapLibre restores.
+      expect(gl.setStyle).not.toHaveBeenCalled();
+      gl.style = {};
+      gl.onceHandlers.webglcontextrestored();
+      expect(ids(gl.setStyle.mock.calls[0][0])).toEqual(['land', 'water', 'towns']);
+    });
+
+    it('leaves a map with its context lost out of a reload: it reloads itself when the context returns', async () => {
+      start({ labelsAbove: true });
+      await flush();
+      gl.style = null;
+      labelGl.handlers.error(tileError(403));
+      await flush();
+      expect(gl.setStyle).not.toHaveBeenCalled();
+      expect(labelGl.setStyle).toHaveBeenCalledOnce();
     });
 
     it('removes both layers on stop(), and a lost label context afterwards does nothing', async () => {

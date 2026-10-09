@@ -19,6 +19,9 @@ import {
   themeModeApplies,
   MAP_STYLE_CHOICES,
   VECTOR_STYLES,
+  vectorLabelsAbove,
+  vectorStyleName,
+  themeModeName,
 } from '../src/basemap-styles';
 
 describe('getBasemapTiles', () => {
@@ -320,9 +323,35 @@ describe('effectiveBasemapStyle and theme_mode', () => {
     expect(style({ map_style: 'Custom', custom_tile_url: 'https://t.example/{z}/{x}/{y}.png', theme_mode: 'dark' }, false)).toBe('custom');
   });
 
+  it('shows the CARTO key field for a style it doesn\'t know, which draws CARTO Light', () => {
+    expect(showsCartoKeyField('Voyger')).toBe(true);
+    expect(showsCartoKeyField('OSM')).toBe(false);
+  });
+
   it('is offered in the editor only for those styles', () => {
     for (const s of [undefined, 'Auto', 'MapTiles', 'MapTilesVector']) expect(themeModeApplies(s)).toBe(true);
     for (const s of ['Light', 'Voyager', 'Dark', 'OSM', 'Grey', 'GreyDark', 'Satellite', 'Custom']) expect(themeModeApplies(s)).toBe(false);
+  });
+});
+
+describe('config values YAML can give the wrong type', () => {
+  // Each of these threw a TypeError while the map was being built.
+  it('reads vector_labels: false as below, and anything but below as above', () => {
+    expect(vectorLabelsAbove(false)).toBe(false);
+    expect(vectorLabelsAbove('Below')).toBe(false);
+    expect(vectorLabelsAbove(true)).toBe(true);
+    expect(vectorLabelsAbove(undefined)).toBe(true);
+    expect(vectorLabelsAbove('above')).toBe(true);
+  });
+
+  it('treats a boolean or number style or theme as unset', () => {
+    expect(vectorStyleName(false)).toBe('default');
+    expect(themeModeName(true)).toBe('auto');
+    expect(themeModeName(' DARK ')).toBe('dark');
+    expect(effectiveBasemapStyle({ map_style: true, theme_mode: 1 }, { haDark: true, english: true, mapTilesLoaded: true })).toBe('maptiles-dark');
+    expect(themeModeApplies(true)).toBe(true);
+    expect(extraLabelsApply(false)).toBe(true);
+    expect(showsCartoKeyField(true)).toBe(true);
   });
 });
 

@@ -169,9 +169,9 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   vector_style?: string;
   /**
    * `map_style: MapTilesVector` only: `above` (default) draws place names
-   * over the radar, in a second WebGL context; `below` under it.
+   * over the radar, in a second WebGL context; `below` (or `false`) under it.
    */
-  vector_labels?: string;
+  vector_labels?: string | boolean;
   /**
    * `auto` (default), `light` or `dark`, as on HA's map card: forces the
    * light or dark version of MapTilesVector, Auto and MapTiles (inverted).

@@ -9,7 +9,8 @@ import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-cate
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { isMapTilesLoaded } from './map-tiles-token';
 import {
-  extraLabelsApply, MAP_STYLE_CHOICES, showsCartoKeyField, themeModeApplies, VECTOR_STYLES, vectorStyleName,
+  configWord, extraLabelsApply, MAP_STYLE_CHOICES, showsCartoKeyField, themeModeApplies, themeModeName,
+  VECTOR_STYLES, vectorLabelsAbove, vectorStyleName,
 } from './basemap-styles';
 import { isSectionHeightPinned } from './card-layout';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
@@ -158,7 +159,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
   // The map style and everything that depends on it: what the chosen style
   // is, its own options, then its key or tile fields.
   private _renderMapStyleFields(config: WeatherRadarCardConfig): TemplateResult {
-    const style = (config.map_style || 'Auto').toLowerCase();
+    const style = configWord(config.map_style) || 'auto';
     const choice = MAP_STYLE_CHOICES.find((c) => c.value.toLowerCase() === style);
     const mapTilesLoaded = isMapTilesLoaded(this.hass);
     const hasKey = !!config.carto_api_key?.trim();
@@ -193,7 +194,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             options: ['auto', 'light', 'dark'].map((mode) => ({ value: mode, label: localize(`editor.map.theme_mode_${mode}`) })),
           },
         }}
-        .value=${config.theme_mode || 'auto'}
+        .value=${themeModeName(config.theme_mode)}
         .label=${localize('editor.map.theme_mode')}
         .configValue=${'theme_mode'}
         .required=${false}
@@ -223,7 +224,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       ${style === 'maptilesvector' ? html`
         <div class="side-by-side">
           <label>
-            <ha-switch .checked=${config.vector_labels?.toLowerCase() !== 'below'} @change=${this._vectorLabelsChanged}></ha-switch>
+            <ha-switch .checked=${vectorLabelsAbove(config.vector_labels)} @change=${this._vectorLabelsChanged}></ha-switch>
             <span>${localize('editor.map.vector_labels_above')}</span>
           </label>
         </div>

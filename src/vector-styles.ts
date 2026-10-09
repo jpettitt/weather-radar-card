@@ -15,7 +15,11 @@ const FIRST_NON_LATIN = 'ɐ';
  * the reason in loadVectorStyle.
  */
 export function buildVectorStyle(theme: string, urls: unknown): any {
-  const style: any = osm({ theme, urls, projection: 'mercator', sky: false } as Parameters<typeof osm>[0]);
+  return finishForHa(osm({ theme, urls, projection: 'mercator', sky: false } as Parameters<typeof osm>[0]));
+}
+
+/** HA's finalizeMapStyle steps, on a VersaTiles style, in place. */
+export function finishForHa(style: any): any {
   useMapTiles(style);
   for (const layer of style.layers) {
     const layout = layer.layout;
