@@ -9,6 +9,8 @@ import {
   buildWindGridUrl,
   resolveSourceForBbox,
   effectiveTimeIso,
+  ndfdTimeIso,
+  _resetNdfdTimesForTests,
   DEFAULT_WIND_COVERAGE,
   type WindGrid,
   type FetchWindGridOptions,
@@ -677,6 +679,7 @@ describe('fetchWindGrid', () => {
   });
 
   it('runs speed/direction sources through the NDFD converter', async () => {
+    _resetNdfdTimesForTests();
     const fakeFetch = vi.fn(async () => new Response(NDFD_FIXTURE_3x3, { status: 200 })) as any;
     const g = await fetchWindGrid({
       south: 38, west: -98, north: 39, east: -97, source: 'ndfd_wind', fetchImpl: fakeFetch,
@@ -998,8 +1001,9 @@ describe('buildWindGridUrl', () => {
 
 // NDFD bounds order is (xMin, yMin) then (xMax, yMax). Mercator Y is
 // positive northward so yMax > yMin. Three columns × 1428.6 m step =
-// 4286 m span; same for rows.
-const NDFD_FIXTURE_3x3 = `Grid bounds: GeneralBounds[(-10800000.0, 4495714.0), (-10795714.0, 4500000.0)]
+// 4286 m span; same for rows. On the equator, where Mercator rows and
+// rows of latitude coincide, so resampling leaves the cells as they are.
+const NDFD_FIXTURE_3x3 = `Grid bounds: GeneralBounds[(-10800000.0, 0.0), (-10795714.0, 4286.0)]
 Grid CRS: PROJCS["WGS 84 / Pseudo-Mercator", AUTHORITY["EPSG","3857"]]
 Grid range: GridEnvelope2D[0..2, 0..2]
 Grid to world: PARAM_MT["Affine",
@@ -1008,7 +1012,7 @@ Grid to world: PARAM_MT["Affine",
   PARAMETER["elt_0_0", 1428.6666666666667],
   PARAMETER["elt_0_2", -10799285.71428571],
   PARAMETER["elt_1_1", -1428.6666666666667],
-  PARAMETER["elt_1_2", 4499285.71428571]]
+  PARAMETER["elt_1_2", 4286.0]]
 Contents:
 Band 0:
 10.0 10.0 10.0
@@ -1077,10 +1081,42 @@ describe('parseNdfdWcsGrid', () => {
   });
 
   it('decodes Mercator metres → lat/lon degrees', () => {
+    const kansas = parseNdfdWcsGrid(NDFD_FIXTURE_3x3.replace('(-10800000.0, 0.0), (-10795714.0, 4286.0)', '(-10800000.0, 4495714.0), (-10795714.0, 4500000.0)'));
     // X = -10800000m → lon ≈ -97° (US Plains region; Wichita-ish)
-    expect(grid.lonMin).toBeCloseTo(-97.0, 1);
+    expect(kansas.lonMin).toBeCloseTo(-97.0, 1);
     // Y = 4495714m → lat ≈ 37.4°
-    expect(grid.latMin).toBeCloseTo(37.4, 1);
+    expect(kansas.latMin).toBeCloseTo(37.4, 1);
+  });
+
+  // Rows 64.8 km tall from 20°N to 40°N, all 5 kt from the north except a
+  // band of three rows centred on 35°N, at 50 kt. Placed at a constant
+  // degree step (the old parser) the band sat at 37.2°N, 2° too far north.
+  it('places each row at its own latitude: Mercator rows are not evenly spaced in degrees', () => {
+    const R = 6378137;
+    const y = (lat: number): number => R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+    const rows = 40;
+    const cell = (y(40) - y(20)) / rows;
+    const marked = Math.floor((y(35) - y(20)) / cell); // counted from the south
+    const band = (value: (fileRow: number) => string): string => Array.from({ length: rows }, (_, f) => `${value(f)} ${value(f)}`).join('\n');
+    const body = `Grid bounds: GeneralBounds[(-10000000.0, ${y(20)}), (${-10000000 + 2 * cell}, ${y(40)})]
+Grid CRS: PROJCS["WGS 84 / Pseudo-Mercator", AUTHORITY["EPSG","3857"]]
+Grid to world: PARAM_MT["Affine",
+  PARAMETER["elt_0_0", ${cell}],
+  PARAMETER["elt_1_1", ${-cell}]]
+Contents:
+Band 0:
+${band((f) => (Math.abs(rows - 1 - f - marked) <= 1 ? '50.0' : '5.0'))}
+Band 1:
+${band(() => '0.0')}
+`;
+    const g = parseNdfdWcsGrid(body);
+    const lon = g.lonMin + g.step;
+    const markedLat = (2 * Math.atan(Math.exp((y(20) + (marked + 0.5) * cell) / R)) - Math.PI / 2) * 180 / Math.PI;
+    expect(markedLat).toBeCloseTo(35.15, 1);
+    expect(sampleWindGridBilinear(g, markedLat, lon).v).toBeCloseTo(-50 * 0.514444, 0);
+    // Where the old parser put it.
+    expect(sampleWindGridBilinear(g, 20 + (marked + 0.5) * g.step, lon).v).toBeCloseTo(-5 * 0.514444, 1);
+    expect(g.latMin + g.rows * g.step).toBeCloseTo(40, 0);
   });
 
   it('flips file rows so cells[0] is the SOUTH row', () => {
@@ -1099,8 +1135,10 @@ describe('parseNdfdWcsGrid', () => {
     // Middle file row has speed 0, dir 90. After row-flip cells[1] is
     // the middle row. u = -0 × sin(π/2), v = -0 × cos(π/2). Use
     // toBeCloseTo because Math produces -0 here and Object.is(-0, 0) === false.
-    expect(grid.cells[1][0].u).toBeCloseTo(0, 10);
-    expect(grid.cells[1][0].v).toBeCloseTo(0, 10);
+    // 5 places, not 10: rows are resampled from Mercator to latitude, which
+    // on the equator blends in ~1e-8 of the neighbouring rows' 10/20 kt.
+    expect(grid.cells[1][0].u).toBeCloseTo(0, 5);
+    expect(grid.cells[1][0].v).toBeCloseTo(0, 5);
   });
 
   it('north wind (direction=0°, meteorological "from north"): u=0, v<0', () => {
@@ -1461,5 +1499,72 @@ describe('WindGridFetcher default time', () => {
     await fetcher.fetch(eu);
     expect(upstream).toHaveBeenCalledTimes(2);
     expect(upstream.mock.calls[1][0].timeIso).toBe('2026-09-23T16:00:00Z');
+  });
+});
+
+// ── NDFD time slice ────────────────────────────────────────────────────────
+// Asked for no time, NDFD answers with a slice ~15 h ahead (live 2026-10-09:
+// tomorrow 09Z at 17:32Z); asked for one it doesn't hold, an exception. So
+// the card picks from the coverage's own time list.
+describe('ndfdTimeIso', () => {
+  const NOW = Date.parse('2026-10-09T17:32:00Z');
+  const describeXml = (times: string[]): string => `<?xml version="1.0"?><wcs:CoverageDescriptions>${
+    times.map((t) => `<gml:TimeInstant><gml:timePosition>${t}</gml:timePosition></gml:TimeInstant>`).join('')}</wcs:CoverageDescriptions>`;
+  const SLICES = ['2026-10-09T18:00:00.000Z', '2026-10-09T19:00:00.000Z', '2026-10-09T20:00:00.000Z', '2026-10-10T09:00:00.000Z'];
+  const listing = (times = SLICES) => vi.fn(async () => new Response(describeXml(times))) as any;
+
+  beforeEach(() => _resetNdfdTimesForTests());
+
+  it('asks the coverage for its time list', async () => {
+    const f = listing();
+    await ndfdTimeIso(NOW, NOW, f);
+    expect(String(f.mock.calls[0][0])).toContain('request=DescribeCoverage');
+    expect(String(f.mock.calls[0][0])).toContain('coverageId=ndfd__wind');
+  });
+
+  it('picks the slice nearest the target: the next hour for now, the nearest for a given time', async () => {
+    expect(await ndfdTimeIso(NOW, NOW, listing())).toBe('2026-10-09T18:00:00Z');
+    expect(await ndfdTimeIso(Date.parse('2026-10-09T19:20:00Z'), NOW, listing())).toBe('2026-10-09T19:00:00Z');
+  });
+
+  it.each([
+    ['the request fails', () => vi.fn(async () => { throw new Error('offline'); })],
+    ['the server errors', () => vi.fn(async () => new Response('', { status: 503 }))],
+    ['the list is empty', () => vi.fn(async () => new Response(describeXml([])))],
+  ])('falls back to the next whole hour when %s', async (_name, make) => {
+    expect(await ndfdTimeIso(NOW, NOW, make() as any)).toBe('2026-10-09T18:00:00Z');
+  });
+
+  it('reads the list once per 15 minutes', async () => {
+    const f = listing();
+    await ndfdTimeIso(NOW, NOW, f);
+    await ndfdTimeIso(NOW, NOW + 14 * 60_000, f);
+    expect(f).toHaveBeenCalledOnce();
+    await ndfdTimeIso(NOW, NOW + 15 * 60_000, f);
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it("doesn't keep a list that failed, so the next fetch asks again", async () => {
+    const failing = vi.fn(async () => new Response('', { status: 503 })) as any;
+    await ndfdTimeIso(NOW, NOW, failing);
+    const f = listing();
+    expect(await ndfdTimeIso(Date.parse('2026-10-09T19:10:00Z'), NOW + 1000, f)).toBe('2026-10-09T19:00:00Z');
+    expect(f).toHaveBeenCalledOnce();
+  });
+
+  it('puts the chosen slice in the GetCoverage request', async () => {
+    const urls: string[] = [];
+    const f = vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(url.includes('DescribeCoverage') ? describeXml(SLICES) : NDFD_FIXTURE_3x3);
+    }) as any;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      await fetchWindGrid({ south: 38, west: -98, north: 39, east: -97, source: 'ndfd_wind', fetchImpl: f });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(decodeURIComponent(urls[1])).toContain('subset=time("2026-10-09T18:00:00Z")');
   });
 });
