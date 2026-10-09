@@ -1,6 +1,6 @@
 import { gzipSync } from 'zlib';
 import { readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 
 import typescript from 'rollup-plugin-typescript2';
 import commonjs from '@rollup/plugin-commonjs';
@@ -44,7 +44,8 @@ const gzipBundlePlugin = () => ({
   writeBundle(opts, bundle) {
     for (const fileName of Object.keys(bundle)) {
       if (!fileName.endsWith('.js')) continue;
-      const jsPath = join(opts.dir, fileName);
+      // opts.file for a single-file output (the MapLibre build).
+      const jsPath = join(opts.dir ?? dirname(opts.file), fileName);
       writeFileSync(jsPath + '.gz', gzipSync(readFileSync(jsPath)));
     }
   },
@@ -60,7 +61,7 @@ const serveopts = {
   },
 };
 
-const plugins = [
+const makePlugins = () => [
   // Import *.css files as raw strings (for unsafeCSS() in LitElement)
   string({ include: ['**/*.css'] }),
   nodeResolve(),
@@ -92,6 +93,19 @@ export default [
       dir: 'dist',
       format: 'es',
     },
-    plugins: [...plugins],
+    plugins: makePlugins(),
+  },
+  // MapLibre for map_style: MapTilesVector, a separate build the card loads
+  // from next to itself only when that style is used (vector-basemap.ts).
+  // Separate rather than split off with import(): rollup would share code
+  // (even its CommonJS helper) between the two, moving the card's own code
+  // out of weather-radar-card.js and making every install need two files.
+  {
+    input: 'src/vector-basemap-layer.ts',
+    output: {
+      file: 'dist/weather-radar-card-maplibre.js',
+      format: 'es',
+    },
+    plugins: makePlugins(),
   },
 ];

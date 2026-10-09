@@ -8,6 +8,7 @@ import { localize } from './localize/localize';
 import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-categories';
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { isMapTilesLoaded } from './map-tiles-token';
+import { extraLabelsApply, showsCartoKeyField } from './basemap-styles';
 import { isSectionHeightPinned } from './card-layout';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
 import { FORECAST_REFRESH_CHOICES } from './forecast-refresh';
@@ -196,6 +197,11 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
                     label: localize('editor.map.style_maptiles'),
                     disabled: !isMapTilesLoaded(this.hass),
                   },
+                  {
+                    value: 'MapTilesVector',
+                    label: localize('editor.map.style_maptiles_vector'),
+                    disabled: !isMapTilesLoaded(this.hass),
+                  },
                 ],
               },
             }}
@@ -267,7 +273,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
               ></ha-selector>
             `;
           }
-          const cartoApplies = !['osm', 'grey', 'greydark', 'maptiles'].includes(style);
+          const cartoApplies = showsCartoKeyField(style, config.carto_api_key);
           // Without a key CARTO's tiles are blank placeholders (Satellite just
           // loses its labels), so say so before the user wonders why.
           const keyless = ['light', 'voyager', 'dark', 'satellite'].includes(style) && !config.carto_api_key?.trim();
@@ -366,10 +372,18 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             <ha-switch .checked=${config.show_range === true} .configValue=${'show_range'} @change=${this._valueChangedSwitch}></ha-switch>
             <span>${localize('editor.display.show_range')}</span>
           </label>
-          <label>
-            <ha-switch .checked=${config.extra_labels === true} .configValue=${'extra_labels'} @change=${this._valueChangedSwitch}></ha-switch>
-            <span>${localize('editor.display.extra_labels')}</span>
-          </label>
+          ${(() => {
+            // No effect on the vector map; greyed out rather than hidden so
+            // the setting doesn't seem to vanish when switching styles.
+            const labelsApply = extraLabelsApply(config.map_style);
+            return html`
+              <label class=${labelsApply ? '' : 'disabled-row'}
+                     title=${labelsApply ? '' : localize('editor.display.extra_labels_disabled_helper')}>
+                <ha-switch .checked=${config.extra_labels === true} .disabled=${!labelsApply} .configValue=${'extra_labels'} @change=${this._valueChangedSwitch}></ha-switch>
+                <span>${localize('editor.display.extra_labels')}</span>
+              </label>
+            `;
+          })()}
         </div>
         <div class="side-by-side">
           <label>

@@ -29,6 +29,7 @@ import {
   unknownTilePlaceholders,
 } from './basemap-styles';
 import { attachMapTilesLayer, isMapTilesLoaded } from './map-tiles-token';
+import { startVectorBasemap } from './vector-basemap';
 import { CreditsPopup } from './credits-popup';
 import { isWheelZoomEnabled } from './map-interaction';
 import { WindOverlay } from './wind-overlay';
@@ -201,6 +202,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _townLayer: FetchTileLayer | null = null;
   private _basemapTileLayer?: FetchTileLayer;
   private _stopMapTilesToken?: () => void;
+  private _stopVectorBasemap?: () => void;
   private _windOverlay: WindOverlay | null = null;
   private _windFlow: WindFlowOverlay | null = null;
   private _toolbar: RadarToolbar | null = null;
@@ -253,14 +255,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   private _effectiveMapStyle(): string {
-    const configured = this._config?.map_style?.toLowerCase();
-    if (configured && configured !== 'auto') {
-      return resolveBasemapStyle(configured, {
-        mapTilesLoaded: isMapTilesLoaded(this.hass),
-        customTileUrl: this._config?.custom_tile_url,
-      });
-    }
-    const isEnglish = (this.hass?.language ?? 'en').startsWith('en');
     // Follow HA's dark-mode flag when available — the user can set it directly
     // or have HA follow the browser. Fall back to OS prefs only if HA hasn't
     // exposed a value yet.
@@ -268,6 +262,15 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const isDark = typeof haDark === 'boolean'
       ? haDark
       : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const configured = this._config?.map_style?.toLowerCase();
+    if (configured && configured !== 'auto') {
+      return resolveBasemapStyle(configured, {
+        mapTilesLoaded: isMapTilesLoaded(this.hass),
+        customTileUrl: this._config?.custom_tile_url,
+        dark: isDark,
+      });
+    }
+    const isEnglish = (this.hass?.language ?? 'en').startsWith('en');
     return resolveAutoBasemap({
       dark: isDark,
       english: isEnglish,
@@ -855,6 +858,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._lightningLayer = null;
     if (this._clusterGroup) { this._clusterGroup.clearLayers(); this._clusterGroup = null; }
     this._clusterSpiderfied = false;
+    // Before the map goes: removing the vector layer frees its WebGL context.
+    this._stopVectorBasemap?.();
+    this._stopVectorBasemap = undefined;
     if (this._map) { this._map.remove(); this._map = null; }
     this._currentMapStyle = null;
     this._townLayer = null;
@@ -882,7 +888,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // mapStyle is already resolved (_effectiveMapStyle): 'maptiles' only
     // when HA's map_tiles integration is loaded, so the access_token WS call
     // never goes to a core that doesn't know it.
-    const useMapTiles = mapStyle === 'maptiles' || mapStyle === 'maptiles-dark';
+    const useVector = mapStyle === 'maptiles-vector' || mapStyle === 'maptiles-vector-dark';
+    const useMapTiles = mapStyle === 'maptiles' || mapStyle === 'maptiles-dark' || useVector;
     const badPlaceholders = cfg.map_style?.toLowerCase() === 'custom' && cfg.custom_tile_url
       ? unknownTilePlaceholders(cfg.custom_tile_url) : [];
     if (badPlaceholders.length > 0) {
@@ -905,8 +912,25 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       subdomains, detectRetina: false, tileSize, zoomOffset, className, token: '',
     } as any).setZIndex(Z_BASEMAP);
 
-    if (useMapTiles) {
-      this._stopMapTilesToken = attachMapTilesLayer(this.hass, this._basemapTileLayer as any, () => this._map);
+    // The vector map starts with no basemap shown and uses the raster MapTiles
+    // layer only if it can't run; low power mode always uses raster.
+    const attachRaster = (): void => {
+      if (this._map && this._basemapTileLayer) {
+        this._stopMapTilesToken = attachMapTilesLayer(this.hass, this._basemapTileLayer as any, () => this._map);
+      }
+    };
+    if (useVector && !cfg.low_power_mode) {
+      this._stopVectorBasemap = startVectorBasemap({
+        map: this._map,
+        hass: this.hass,
+        dark: mapStyle === 'maptiles-vector-dark',
+        onFallback: (reason) => {
+          console.warn(`[weather-radar-card] Vector map unavailable (${reason}); showing raster MapTiles.`);
+          attachRaster();
+        },
+      });
+    } else if (useMapTiles) {
+      attachRaster();
     } else {
       this._basemapTileLayer.addTo(this._map);
     }

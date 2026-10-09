@@ -7,6 +7,8 @@
 # JPGs) ARE tracked — they're canonical source, not build output.
 dist/weather-radar-card.js
 dist/weather-radar-card.js.gz
+dist/weather-radar-card-maplibre.js
+dist/weather-radar-card-maplibre.js.gz
 
 # OS files
 .DS_Store

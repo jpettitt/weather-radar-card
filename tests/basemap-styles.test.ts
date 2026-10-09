@@ -11,6 +11,8 @@ import {
   isInvertedBasemap,
   resolveBasemapStyle,
   unknownTilePlaceholders,
+  showsCartoKeyField,
+  extraLabelsApply,
 } from '../src/basemap-styles';
 
 describe('getBasemapTiles', () => {
@@ -287,5 +289,34 @@ describe('cartoKeyMissing', () => {
   it("leaves Satellite's CARTO labels off without a key", () => {
     expect(getBasemapTiles('satellite').labelUrl).toBe('');
     expect(getBasemapTiles('satellite', 'k').labelUrl).toContain('voyager_only_labels');
+  });
+});
+
+// Editor rules: the CARTO key field only where a key does something, and
+// extra_labels greyed out where it has no effect.
+describe('editor rules for map styles', () => {
+  it('shows the CARTO key field for the styles a key changes', () => {
+    for (const style of ['Auto', undefined, 'Light', 'Voyager', 'Dark', 'Satellite']) {
+      expect(showsCartoKeyField(style, '')).toBe(true);
+    }
+  });
+
+  it('hides an empty CARTO key field where no CARTO tiles are used', () => {
+    for (const style of ['OSM', 'Grey', 'GreyDark', 'Custom', 'MapTiles', 'MapTilesVector']) {
+      expect(showsCartoKeyField(style, '')).toBe(false);
+      expect(showsCartoKeyField(style, '   ')).toBe(false);
+    }
+  });
+
+  it('keeps showing a CARTO key that is set, so it can be cleared', () => {
+    expect(showsCartoKeyField('MapTilesVector', 'abc123')).toBe(true);
+  });
+
+  it('greys out extra labels only for the vector map', () => {
+    expect(extraLabelsApply('MapTilesVector')).toBe(false);
+    expect(extraLabelsApply('maptilesvector')).toBe(false);
+    for (const style of ['MapTiles', 'OSM', 'Light', 'Custom', 'Satellite', undefined]) {
+      expect(extraLabelsApply(style)).toBe(true);
+    }
   });
 });
