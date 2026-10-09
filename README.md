@@ -27,7 +27,7 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 - **DWD forecast tiles survive a reload**, and every frame says how old or how far ahead it is. ([3.12.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta1))
 - **NOAA radar in Alaska, Hawaii, Puerto Rico and Guam**, and steady 5- and 10-minute NOAA loops. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2))
 - **US wind speeds corrected** — they were about 1.9× too strong. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2))
-- **Wildfire popups** with location, personnel and cause, InciWeb links for many more fires, and a much lighter data feed. (3.12.0-beta3)
+- **Wildfire popups** with location, personnel and cause, InciWeb links for many more fires, and a much lighter data feed. ([3.12.0-beta3](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta3))
 
 ## What's new in 3.11 (current stable)
 
