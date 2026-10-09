@@ -5,7 +5,8 @@ import { FIRE_PATH } from './marker-icon';
 import { localize } from './localize/localize';
 import { centroidLngLat, geometryLngLatBounds, haversineKm, formatArea } from './geo-utils';
 import { sharedCanvasRenderer } from './shared-canvas-renderer';
-import { escapeHtml, slugify } from './string-utils';
+import { escapeHtml } from './string-utils';
+import { findInciwebPage, inciwebCandidates, inciwebUrl, knownInciwebPage } from './inciweb';
 import { mapsEqual } from './map-utils';
 
 const decisionsEqual = mapsEqual<string, 'polygon' | 'icon'>;
@@ -26,14 +27,10 @@ const NIFC_URL =
   + '?where=1%3D1'
   + '&outFields=poly_IncidentName,poly_GISAcres,attr_PercentContained,attr_FireDiscoveryDateTime,attr_POOJurisdictionalUnit'
   + ',attr_IncidentShortDescription,attr_POOCounty,attr_POOState,attr_TotalIncidentPersonnel,attr_FireCause'
-  + ',poly_PolygonDateTime,attr_ModifiedOnDateTime_dt'
+  + ',poly_PolygonDateTime,attr_ModifiedOnDateTime_dt,attr_POOProtectingUnit,attr_CpxName'
   + '&geometryPrecision=4'
   + '&f=geojson';
 
-// InciWeb's RSS index of currently-listed incidents. Used to gate the
-// "More info → InciWeb" link in the popup so we don't link to 404s for
-// fires that have no public InciWeb page (most small / contained fires).
-const INCIWEB_RSS_URL = 'https://inciweb.wildfire.gov/incidents/rss.xml';
 
 const DEFAULT_REFRESH_VISIBLE_MS = 5 * 60 * 1000;
 const DEFAULT_REFRESH_EMPTY_MS = 30 * 60 * 1000;
@@ -61,6 +58,8 @@ interface WildfireProps {
   attr_PercentContained?: number;
   attr_FireDiscoveryDateTime?: number;   // ms since epoch from ArcGIS
   attr_POOJurisdictionalUnit?: string;   // Point-of-origin jurisdictional unit (e.g. "FLFNF") — used to build the InciWeb URL
+  attr_POOProtectingUnit?: string;       // InciWeb files some fires under this unit instead
+  attr_CpxName?: string;                 // complex the fire belongs to; InciWeb may file it under that name
   attr_IncidentShortDescription?: string; // e.g. "30 Miles NW from Leavenworth, WA"; set for about 70% of fires
   attr_POOCounty?: string;
   attr_POOState?: string;                // e.g. "US-WA"
@@ -78,12 +77,6 @@ export class WildfireLayer {
   private _polygonLayer: L.GeoJSON | null = null;
   private _iconLayer: L.LayerGroup | null = null;
   private _features: GeoJSON.Feature[] = [];
-  // Lower-cased slugs (path segment after /incident-information/) of fires
-  // currently listed on InciWeb. Used to suppress the InciWeb link for
-  // incidents with no public page. Empty + _inciwebReady=false means the
-  // RSS hasn't returned yet (or failed) — fall back to showing the link.
-  private _inciwebSlugs: Set<string> = new Set();
-  private _inciwebReady = false;
   // Per-feature render decision from the last _render() pass — keyed by
   // featureKey(feature). Used to skip re-rendering (which would close any
   // open popup) when zoomend fires but no feature actually crossed the
@@ -103,7 +96,7 @@ export class WildfireLayer {
   // ArcGIS endpoint rate-limits intermittently; retrying on the normal
   // cadence keeps the block alive. Reset on success.
   private _failureCount = 0;
-  // Abort the in-flight fetches (NIFC + InciWeb) when a new fetch starts
+  // Abort the in-flight NIFC fetch when a new fetch starts
   // or the layer tears down, so the browser doesn't keep downloading
   // payloads we've already decided to discard via the gen check.
   private _abortCtrl: AbortController | null = null;
@@ -196,25 +189,15 @@ export class WildfireLayer {
     this._abortCtrl?.abort();
     const ctrl = new AbortController();
     this._abortCtrl = ctrl;
-    // Fetch WFIGS perimeters and the InciWeb incident index in parallel —
-    // they're independent and we want the latest of both before re-rendering.
-    const [features, inciwebSlugs] = await Promise.all([
-      this._fetchWfigs(ctrl.signal),
-      this._fetchInciwebSlugs(ctrl.signal),
-    ]);
+    const features = await this._fetchWfigs(ctrl.signal);
     if (myGen !== this._gen) return;   // stale — abandon
     if (this._abortCtrl === ctrl) this._abortCtrl = null;
 
     // null = the WFIGS fetch failed (transient 503 / rate-limit). Keep
     // the currently displayed perimeters rather than blanking every
     // fire polygon/icon for the 5-30 min until the next scheduled
-    // retry. Same convention _fetchInciwebSlugs already uses. A
-    // SUCCESSFUL fetch returning [] is real data ("no active fires in
-    // the feed") and replaces as before.
-    if (inciwebSlugs) {
-      this._inciwebSlugs = inciwebSlugs;
-      this._inciwebReady = true;
-    }
+    // retry. A SUCCESSFUL fetch returning [] is real data ("no active
+    // fires in the feed") and replaces as before.
     if (features !== null) {
       this._features = this._filter(features);
       this._failureCount = 0;
@@ -244,7 +227,7 @@ export class WildfireLayer {
 
   // Returns null on failure so the caller can keep the existing feature
   // set in place (avoid blowing displayed perimeters away on a transient
-  // error) — mirroring _fetchInciwebSlugs.
+  // error).
   private async _fetchWfigs(signal: AbortSignal): Promise<GeoJSON.Feature[] | null> {
     try {
       const res = await fetch(NIFC_URL, { signal });
@@ -258,34 +241,6 @@ export class WildfireLayer {
       // Transient — NIFC's ArcGIS endpoint occasionally rate-limits or
       // returns 503. Next scheduled fetch will retry.
       console.warn('Wildfire layer: WFIGS fetch failed', err);
-      return null;
-    }
-  }
-
-  // Fetch InciWeb's RSS and extract the slug (path segment) from every
-  // incident link. Returns null on failure so the caller can leave the
-  // existing slug set in place (avoid blowing it away on a transient error).
-  private async _fetchInciwebSlugs(signal: AbortSignal): Promise<Set<string> | null> {
-    try {
-      const res = await fetch(INCIWEB_RSS_URL, { signal });
-      if (!res.ok) throw new Error(`InciWeb RSS fetch ${res.status}`);
-      const text = await res.text();
-      const doc = new DOMParser().parseFromString(text, 'application/xml');
-      const slugs = new Set<string>();
-      doc.querySelectorAll('item > link').forEach((linkEl) => {
-        const url = linkEl.textContent?.trim();
-        if (!url) return;
-        const m = url.match(/\/incident-information\/([^/?#]+)/i);
-        if (m) slugs.add(m[1].toLowerCase());
-      });
-      return slugs;
-    } catch (err) {
-      // Deliberate cancellation (teardown / superseded by a fresh fetch).
-      // Not a real failure — return null so the caller keeps the prior slug set.
-      if ((err as Error)?.name === 'AbortError') return null;
-      // CORS, network, or parse failure. Leave the previous set intact and
-      // fall back to "show link" behaviour for new fires until next refresh.
-      console.warn('Wildfire layer: InciWeb RSS fetch failed', err);
       return null;
     }
   }
@@ -387,17 +342,8 @@ export class WildfireLayer {
           // autoPan keeps the popup inside the visible map area when the
           // anchor is near an edge — Leaflet smoothly slides the map so the
           // popup is fully readable. autoPanPadding keeps a small inset so
-          // it never butts against the card edge. Built when opened, so its
-          // ages are current and it uses an InciWeb index that arrived later.
-          layer.bindPopup(
-            () => buildPopupHtml(
-              feature.properties as WildfireProps | null,
-              this._inciwebSlugs,
-              this._inciwebReady,
-              this._hass,
-            ),
-            { autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight() },
-          );
+          // it never butts against the card edge.
+          this._bindPopup(layer, feature.properties as WildfireProps | null);
         },
       } as L.GeoJSONOptions);
       this._polygonLayer.addTo(this._map);
@@ -416,14 +362,30 @@ export class WildfireLayer {
           className: 'wildfire-icon',
         });
         const marker = L.marker(item.latLng, { icon });
-        marker.bindPopup(
-          () => buildPopupHtml(props, this._inciwebSlugs, this._inciwebReady, this._hass),
-          { autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight() },
-        );
+        this._bindPopup(marker, props);
         marker.addTo(this._iconLayer!);
       }
       this._iconLayer.addTo(this._map);
     }
+  }
+
+  // Built when opened, so its ages are current. Opening it looks up the
+  // fire's InciWeb page (once per page load) and redraws it with the link
+  // if it's still open.
+  private _bindPopup(layer: L.Layer, props: WildfireProps | null): void {
+    const candidates = inciwebCandidates(
+      [props?.attr_POOJurisdictionalUnit, props?.attr_POOProtectingUnit],
+      [props?.poly_IncidentName, props?.attr_CpxName],
+    );
+    layer.bindPopup(
+      () => buildPopupHtml(props, knownInciwebPage(candidates), this._hass),
+      { autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight() },
+    );
+    layer.on('popupopen', () => {
+      findInciwebPage(candidates)
+        .then((slug) => { if (slug && layer.isPopupOpen()) layer.getPopup()?.update(); })
+        .catch(() => { /* no link this time; the next open tries again */ });
+    });
   }
 
   /** 80% of the current map height, floored at 200 px so a tiny / not-yet-sized map still produces a usable popup. */
@@ -467,8 +429,7 @@ function featureKey(f: GeoJSON.Feature): string {
 
 function buildPopupHtml(
   props: WildfireProps | null,
-  inciwebSlugs: Set<string>,
-  inciwebReady: boolean,
+  inciwebSlug: string | null,
   hass: HomeAssistant | undefined,
   nowMs = Date.now(),
 ): string {
@@ -521,35 +482,10 @@ function buildPopupHtml(
     typeof updated === 'number' ? row('ui.wildfire.updated', agoText(updated, nowMs, lang)) : '',
   ].join('');
 
-  // InciWeb URL format: /incident-information/{poo-jurisdictional-unit-lower}-{name-slug}
-  // e.g. flfnf-sand-drain. We only render the link when the computed slug
-  // appears in InciWeb's RSS index — that way we don't link users to 404s
-  // for fires too small / contained to have a public InciWeb page.
-  // InciWeb sometimes appends "-fire" to incident slugs (e.g. "East Side"
-  // → mtgnf-east-side-fire), so we test both variants. If neither matches,
-  // no link is rendered. While the RSS fetch hasn't returned yet
-  // (inciwebReady=false), fall back to the bare slug so first paint
-  // isn't degraded.
-  const unit = props?.attr_POOJurisdictionalUnit;
-  const baseSlug = unit ? `${unit.toLowerCase()}-${slugify(name)}` : null;
-  let linkSlug: string | null = null;
-  if (baseSlug) {
-    if (!inciwebReady) {
-      linkSlug = baseSlug;
-    } else {
-      const candidates = [baseSlug, `${baseSlug}-fire`];
-      linkSlug = candidates.find((c) => inciwebSlugs.has(c)) ?? null;
-    }
-  }
-  // linkSlug is currently safe-by-construction — always one of
-  // [baseSlug, baseSlug + '-fire'] where baseSlug derives from
-  // slugify() which strips everything outside [a-z0-9-]. The InciWeb
-  // RSS-parsed slugs are only consulted via Set.has() (a key check),
-  // never substituted into HTML. Defensive escapeHtml here protects
-  // against a future refactor that breaks the safe-by-construction
-  // guarantee.
-  const linkHtml = linkSlug
-    ? `<div style="margin-top:4px"><a href="https://inciweb.wildfire.gov/incident-information/${escapeHtml(linkSlug)}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.wildfire.more_info'))}</a></div>`
+  // inciwebSlug is one inciwebCandidates built with slugify, so only
+  // [a-z0-9-]; escaped anyway in case that ever changes.
+  const linkHtml = inciwebSlug
+    ? `<div style="margin-top:4px"><a href="${escapeHtml(inciwebUrl(inciwebSlug))}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.wildfire.more_info'))}</a></div>`
     : '';
 
   // Inline-styled HTML — the popup renders inside Leaflet's own container,

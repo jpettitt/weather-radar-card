@@ -12,6 +12,7 @@ Released as part of [v3.5.0](https://github.com/jpettitt/weather-radar-card/rele
 
 - **Layer-menu control deferred.** The design called for an on-map session-toggle menu (`mdi:layers` button → expanding panel). Replaced by the editor's Hazard Overlays subpage, which covers the configuration use case without a custom Leaflet control. The menu can still be added later if there's demand for "session-only toggle without opening the editor".
 - **InciWeb URL gating** added — not in the original design. The popup link now suppresses itself when the computed slug isn't in InciWeb's RSS index, since most WFIGS incidents don't have a public InciWeb page. Both `{slug}` and `{slug}-fire` variants are tested before suppressing.
+  Since 3.12 the popup checks the page itself instead (`src/inciweb.ts`): the RSS lists only 50 incidents (10 of the 30 largest fires on 2026-10-08), while trying the jurisdictional and protecting units with the fire's and its complex's name found 22. InciWeb answers any slug with a 200 page, so only one containing "Date of Origin" counts.
 - **Popup `autoPan: true` + 12 px inset** so off-edge clicks slide the map into view inside the card.
 - **Performance work** picked up from the alerts implementation — pause when card hidden, shared rate limiters, dynamic radar tile size — also benefit the wildfire layer indirectly.
 
