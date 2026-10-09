@@ -12,6 +12,7 @@ Released as part of [v3.5.0](https://github.com/jpettitt/weather-radar-card/rele
 
 - **Layer-menu control deferred.** The design called for an on-map session-toggle menu (`mdi:layers` button → expanding panel). Replaced by the editor's Hazard Overlays subpage, which covers the configuration use case without a custom Leaflet control. The menu can still be added later if there's demand for "session-only toggle without opening the editor".
 - **InciWeb URL gating** added — not in the original design. The popup link now suppresses itself when the computed slug isn't in InciWeb's RSS index, since most WFIGS incidents don't have a public InciWeb page. Both `{slug}` and `{slug}-fire` variants are tested before suppressing.
+  Since 3.12 the popup checks the page itself instead (`src/inciweb.ts`): the RSS lists only 50 incidents (10 of the 30 largest fires on 2026-10-08), while trying the jurisdictional and protecting units with the fire's and its complex's name found 22. InciWeb answers any slug with a 200 page, so only one containing "Date of Origin" counts.
 - **Popup `autoPan: true` + 12 px inset** so off-edge clicks slide the map into view inside the card.
 - **Performance work** picked up from the alerts implementation — pause when card hidden, shared rate limiters, dynamic radar tile size — also benefit the wildfire layer indirectly.
 
@@ -203,6 +204,7 @@ Place this near the top of the wildfire section in the README, in a callout bloc
 - **Binary containment colour** (active red / contained grey). No gradient — keeps the visual noise low.
 - **No incident-points layer.** Perimeters only. NIFC's hotspot point feed doubles request volume for marginal benefit.
 - **Polygon simplification:** start with ArcGIS's `geometryPrecision=4` query param (server-side coordinate trimming). If profiling shows polygon rendering is still a bottleneck, add `@turf/simplify` (Douglas-Peucker) as a client-side post-process. Likely not needed initially — measure first.
+  Measured in 3.12 (2026-10-08): the feed was 13.7 MB of JSON (1.4 MB gzipped), 99.5% outlines, and refetched in full whenever any record changed (36 edits a day; the ETag covers the whole layer). The refresh now fetches attributes only (`returnGeometry=false`, ~8 KB gzipped) and refetches outlines, simplified server-side with `maxAllowableOffset=0.001` (157 KB gzipped), when `poly_DateCurrent` moves, fires come or go, or every 3 h. From zoom 11 the fires in view get their full outline by `objectIds`.
 - **`wildfire_radius_km` re-filters on `hass` change.** Tracked-marker users move the map center implicitly; the radius filter follows. Cheap to implement — just re-evaluate filter + re-render in `updateHass()`.
 
 ## To do after PR #114 (DWD) merges

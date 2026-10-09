@@ -111,8 +111,11 @@ describe('WildfireLayer transient-failure resilience', () => {
     l._getConfig = () => ({});
     l._failureCount = 0;
     l._features = [{ id: 'existing-fire' }];
-    l._inciwebSlugs = new Set<string>();
-    l._inciwebReady = false;
+    l._all = [];
+    l._outlineStamp = '';
+    l._outlinesAt = 0;
+    l._detail = new Map();
+    l._showDetail = vi.fn();
     l._filter = vi.fn((f: unknown[]) => f);
     l._render = vi.fn();
     l._scheduleNext = vi.fn();
@@ -123,7 +126,6 @@ describe('WildfireLayer transient-failure resilience', () => {
     const l = bareFetchable();
     l._scheduleRetry = vi.fn();
     l._fetchWfigs = vi.fn(async () => null);          // transient 503
-    l._fetchInciwebSlugs = vi.fn(async () => null);
     await l._fetch();
     expect(l._features).toEqual([{ id: 'existing-fire' }]);  // NOT blanked
     expect(l._filter).not.toHaveBeenCalled();
@@ -139,7 +141,6 @@ describe('WildfireLayer transient-failure resilience', () => {
   it('replaces features on a successful fetch — including a genuinely empty feed', async () => {
     const l = bareFetchable();
     l._fetchWfigs = vi.fn(async () => []);            // real "no fires" data
-    l._fetchInciwebSlugs = vi.fn(async () => null);
     await l._fetch();
     expect(l._filter).toHaveBeenCalledWith([]);
     expect(l._features).toEqual([]);                  // empty feed DOES replace
