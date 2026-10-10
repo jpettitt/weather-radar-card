@@ -280,3 +280,54 @@ describe('_updateRadar — several new frames in one update', () => {
     expect(p._currentSlot).toBe(FRAME_COUNT - 1);
   });
 });
+
+// ── Resume with nothing new (2026-10-10 review, F1) ────────────────────
+//
+// onVisibilityHidden / onNavPaused stop the loop and relied on _updateRadar
+// to restart it, but _updateRadar restarts the loop only when it shifts a
+// new frame in. A refresh that found nothing newer (about every other tick)
+// left the loop stopped: one frame on screen, toolbar showing "playing".
+
+describe('resume after a refresh that finds nothing new', () => {
+  it('onVisibilityVisible restarts the loop before the owed refresh', async () => {
+    const p: any = makePlayer();
+    const mkFrames = seedSteadyState(p);
+    p.run = true;
+    p._fetchPaths = vi.fn().mockResolvedValue(mkFrames(NOW_SEC));   // nothing newer
+    p.onVisibilityHidden();
+    p._doRadarUpdate = true;                                           // a tick fired while hidden
+    const scheduleNext = vi.spyOn(p, '_scheduleNext');
+    p.onVisibilityVisible();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(p._fetchPaths).toHaveBeenCalledOnce();
+    expect(scheduleNext).toHaveBeenCalledWith(p._loopGen);
+  });
+
+  it('onNavSettled restarts the loop before the owed refresh', async () => {
+    const p: any = makePlayer();
+    const mkFrames = seedSteadyState(p);
+    p.run = true;
+    p._requestedFrameCount = FRAME_COUNT;
+    p._fetchPaths = vi.fn().mockResolvedValue(mkFrames(NOW_SEC));
+    p.onNavPaused();
+    p._doRadarUpdate = true;
+    const scheduleNext = vi.spyOn(p, '_scheduleNext');
+    await p.onNavSettled(FRAME_COUNT);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(p._fetchPaths).toHaveBeenCalledOnce();
+    expect(scheduleNext).toHaveBeenCalledWith(p._loopGen);
+  });
+});
+
+// ── Teardown mid-fetch (F13) ───────────────────────────────────────────
+
+describe('_updateRadar after a teardown mid-fetch', () => {
+  it('does not re-arm the update chain when the fetch fails for a stale generation', async () => {
+    const p: any = makePlayer();
+    seedSteadyState(p);
+    p._fetchPaths = vi.fn(() => { p._frameGeneration++; return Promise.reject(new Error('aborted by clear()')); });
+    const schedule = vi.spyOn(p, '_scheduleUpdate');
+    await p._updateRadar();
+    expect(schedule).not.toHaveBeenCalled();
+  });
+});

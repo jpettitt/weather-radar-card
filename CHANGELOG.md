@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Very large alert polygons** (a marine warning spanning many zones) could stop the alerts layer refreshing.
 - **Zone cache sweep** — expired zone shapes are removed in one IndexedDB transaction instead of one each; the whole 11,600-zone set expiring together stalled a tablet for seconds.
 - **Tile retries end with the tile** — a retry armed after a failed tile request survived the tile leaving the map and made a request anyway; with no network, a tablet's tiles kept retrying for the life of the page, more with every layer rebuild. Rate-limited or offline attempts now also give up after 10 tries.
+- **A loop no longer freezes after a tab switch or a pan** — a refresh that found nothing newer (about every other one) left the animation stopped, with the toolbar still showing *playing*, until a later refresh shifted a frame in.
+- **A card that loaded no frames retries on its own** — a dashboard that started before its Wi-Fi was up, or during a source outage, showed an empty map until a pan or a reload. It now retries after 30 s, backing off to 5 minutes.
+- **A failed past frame no longer takes the forecast with it** — the loop stops at the archive boundary as before, but DWD's forecast frames still load.
+- **A refresh interrupted by a teardown** no longer arms one last update timer on the discarded player.
 
 ## [3.12.0] - 2026-10-09
 

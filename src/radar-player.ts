@@ -62,6 +62,19 @@ export function buildLoadOrder(frameCount: number, nowIndex: number): number[] {
 }
 
 /**
+ * After the frame at order[failedIdx] fails: the order index to try next, or
+ * -1 to stop. A failed past frame means the older ones are past the archive
+ * too, but the forecast leg is independent, so loading skips to it; a failed
+ * "now" or forecast frame ends the load. Pure, for the same reason as
+ * buildLoadOrder.
+ */
+export function resumeIndexAfterFailure(order: number[], failedIdx: number): number {
+  const forwardStart = order[0] + 1;   // the backward leg is now..0
+  if (failedIdx > 0 && failedIdx < forwardStart && forwardStart < order.length) return forwardStart;
+  return -1;
+}
+
+/**
  * RainViewer frames on the stride grid at `phaseSec` (see stride-phase.ts;
  * default: on the newest frame), inside `pastMin` of the newest one on it.
  * By time, not count: the list (up to 13 frames, 10 min apart) can skip a
@@ -520,6 +533,9 @@ export class RadarPlayer {
   // INVALIDATION stays immediate in the event handlers, so stale
   // vectors can't be applied while the refresh is pending.
   private _viewRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  // Retry of an init that ended with no frames (see _scheduleInitRetry).
+  private _initRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private _initRetries = 0;
 
   private _scheduleViewRefresh(): void {
     if (this._viewRefreshTimer) clearTimeout(this._viewRefreshTimer);
@@ -1327,6 +1343,7 @@ export class RadarPlayer {
     this._map?.off('moveend', this._onMoveEnd);
     this._map?.off('resize', this._onResize);
     if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
+    if (this._initRetryTimer) { clearTimeout(this._initRetryTimer); this._initRetryTimer = null; }
     // Cancel the armed periodic-update timer before terminating the
     // worker — for the setTimeout-fallback path the worker teardown
     // wouldn't kill it, and a post-clear() fire would act on a player
@@ -1395,15 +1412,6 @@ export class RadarPlayer {
       return;
     }
 
-    // _scheduleUpdate's timer keeps running through the pause; if it fired
-    // while navPaused was true it set _doRadarUpdate. Pick that up now;
-    // _updateRadar restarts the loop from its load callback.
-    if (this._doRadarUpdate) {
-      this._doRadarUpdate = false;
-      void this._updateRadar();
-      return;
-    }
-
     // Resume without re-showing the current slot. _stopLoop already left
     // the displayed layer at active opacity via _settleVisibility; routing
     // through _showSlot would snap it to 0 and fade back in, producing a
@@ -1411,6 +1419,15 @@ export class RadarPlayer {
     if (this.run) {
       this._loopGen++;
       this._scheduleNext(this._loopGen);
+    }
+
+    // _scheduleUpdate's timer keeps running through the pause; if it fired
+    // while navPaused was true it set _doRadarUpdate. Pick that up now, after
+    // the resume: _updateRadar restarts the loop only when it shifts a new
+    // frame in, so a refresh that found nothing newer left it stopped.
+    if (this._doRadarUpdate) {
+      this._doRadarUpdate = false;
+      void this._updateRadar();
     }
   }
 
@@ -1450,11 +1467,15 @@ export class RadarPlayer {
       void this._initRadar();
       return;
     }
-    if (this._doRadarUpdate && this._radarReady) {
+    if (!this._radarReady) return;
+    // Resume first, then refresh: _updateRadar restarts the loop only when
+    // it shifts a new frame in, so a refresh that found nothing newer (about
+    // every other tick) left the loop stopped, frozen on one frame with the
+    // toolbar showing "playing".
+    if (this.run) this._startLoop();
+    if (this._doRadarUpdate) {
       this._doRadarUpdate = false;
       this._updateRadar();
-    } else if (this.run && this._radarReady) {
-      this._startLoop();
     }
   }
 
@@ -2617,6 +2638,34 @@ export class RadarPlayer {
 
   // ── Radar init ───────────────────────────────────────────────────────────
 
+  // An init that ends with no frames (listing fetch failed, empty listing,
+  // every frame failed) used to leave the card blank until a pan or a
+  // reload: nothing was armed, and the visibility handler needs _radarReady.
+  // A tablet booting before its Wi-Fi, or a source outage outlasting the
+  // tile retries, sat on an empty map indefinitely. Backoff 30 s → 5 min;
+  // a later successful init resets it.
+  private _scheduleInitRetry(): void {
+    if (this._initRetryTimer) clearTimeout(this._initRetryTimer);
+    const gen = this._frameGeneration;
+    // Counted per retry that fired, not per failed init: a card's setup can
+    // run two inits in quick succession (a resize or move during start), and
+    // counting both doubled the first real retry to 60 s.
+    const delay = Math.min(30_000 * 2 ** this._initRetries, 5 * 60_000);
+    this._initRetryTimer = setTimeout(() => {
+      this._initRetryTimer = null;
+      // A teardown or another init took over: that generation owns retries.
+      if (gen !== this._frameGeneration || !this._map) return;
+      if (this.viewPaused && this._cfg.preload_while_hidden !== true) {
+        // Hidden: try again later rather than loading into an unseen card.
+        this._scheduleInitRetry();
+        return;
+      }
+      this._initRetries++;
+      this._clearLayers();
+      void this._initRadar();
+    }, delay);
+  }
+
   private async _initRadar(): Promise<void> {
     // Increment generation before the first await so any concurrently-running
     // _initRadar call (same-gen double-start) aborts at its next gen check.
@@ -2655,10 +2704,12 @@ export class RadarPlayer {
     try {
       pastFrames = await this._fetchPaths();
     } catch {
-      return; // network/parse error — card stays blank until next nav or reload
+      // Network/parse error (or aborted by a teardown: the gen check tells).
+      if (myGen === this._frameGeneration) this._scheduleInitRetry();
+      return;
     }
     if (myGen !== this._frameGeneration) return;
-    if (pastFrames.length === 0) return; // API returned no frames
+    if (pastFrames.length === 0) { this._scheduleInitRetry(); return; } // API returned no frames
     // Awaited before any layer exists, so every tile is requested after the
     // run it's judged against was published (_tileCachePolicy). Costs one
     // small round trip on DWD load; null on failure (15-min fallback).
@@ -2801,8 +2852,10 @@ export class RadarPlayer {
 
         this._afterFrameInserted(insertPos);
       } else {
-        this._markRemainingFailed(order, idx + 1);
-        break;
+        const next = resumeIndexAfterFailure(order, idx);
+        this._markRemainingFailed(order, idx + 1, next === -1 ? order.length : next);
+        if (next === -1) break;
+        idx = next - 1;   // the loop's increment lands on the first forecast frame
       }
     }
 
@@ -2835,8 +2888,11 @@ export class RadarPlayer {
     }
 
     if (this._loadedSlots.length > 0) {
+      this._initRetries = 0;
       this._radarReady = true;
       this._scheduleUpdate();
+    } else {
+      this._scheduleInitRetry();
     }
 
     // Started from a cached older run: move to the newest now the loop is
@@ -2881,14 +2937,13 @@ export class RadarPlayer {
     }
   }
 
-  // Mark every not-yet-attempted frame in `order` (from `fromIdx` on) as
-  // failed. Called when a frame fails to load — the init loop aborts
-  // entirely at that point, so everything later in the load order never
-  // gets attempted. `order` isn't a contiguous numeric range once
-  // loading walks outward from "now" (see buildLoadOrder), so this
-  // can't be a simple counting loop over frame indices.
-  private _markRemainingFailed(order: number[], fromIdx: number): void {
-    for (let k = fromIdx; k < order.length; k++) this._setSegment(order[k], 'failed');
+  // Mark the frames of `order` from `fromIdx` up to (not including) `toIdx`
+  // as failed: the ones the init loop skips after a failure (see
+  // resumeIndexAfterFailure for which). `order` isn't a contiguous numeric
+  // range once loading walks outward from "now" (see buildLoadOrder), so
+  // this can't be a simple counting loop over frame indices.
+  private _markRemainingFailed(order: number[], fromIdx: number, toIdx: number = order.length): void {
+    for (let k = fromIdx; k < toIdx; k++) this._setSegment(order[k], 'failed');
   }
 
   // ── Periodic update ──────────────────────────────────────────────────────
@@ -2960,6 +3015,9 @@ export class RadarPlayer {
     try {
       pastFrames = await this._fetchPaths();
     } catch {
+      // Torn down or re-inited while fetching: that generation arms its own
+      // chain, and a timer armed here would outlive the player.
+      if (myGen !== this._frameGeneration) return;
       this._scheduleUpdate(); // retry on next cycle
       return;
     }
