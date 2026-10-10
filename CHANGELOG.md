@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tile retries end with the tile** — a retry armed after a failed tile request survived the tile leaving the map and made a request anyway; with no network, a tablet's tiles kept retrying for the life of the page, more with every layer rebuild. Rate-limited or offline attempts now also give up after 10 tries.
+
 ## [3.12.0] - 2026-10-09
 
 > **Stable release.** US wind now shows the current hour in the right place, at the right speed. NOAA radar covers Alaska, Hawaii, Puerto Rico and Guam, radar loops reload from the browser with DWD's forecast now included, every frame says how old it is, and wildfire popups say much more. **One breaking change:** without a CARTO key, `map_style: Auto` uses Home Assistant's map tiles (see Changed). The entries below are what changed since 3.11.0.

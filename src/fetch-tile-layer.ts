@@ -14,6 +14,12 @@ export interface FetchTileOptions extends L.TileLayerOptions {
   retryDelay?: number;
   /** Cap on retries for a 5xx (server error) response — see on5xx. */
   maxServerErrorRetries?: number;
+  /**
+   * Cap on attempts for a 429 or, with a rate limiter, a statusless error
+   * (a CORS-blocked 429, or no network at all). Uncapped, an offline
+   * tablet's tiles retried for the life of the page.
+   */
+  maxRateLimitRetries?: number;
   on429?: () => void;
   /**
    * Called when a tile fetch resolves with a 5xx status (502/503/504…).
@@ -78,6 +84,7 @@ const INTERNAL_OPTION_FIELDS: Record<InternalOptionKey, true> = {
   maxRetries: true,
   retryDelay: true,
   maxServerErrorRetries: true,
+  maxRateLimitRetries: true,
   on429: true,
   on5xx: true,
   onTileRecovered: true,
@@ -160,6 +167,10 @@ interface Coords extends L.Point {
 // stubs without needing a full L.TileLayer instance.
 export interface TileWithAbort extends HTMLImageElement {
   __wrcAbort?: AbortController | null;
+  /** A retry armed while nothing is in flight; cancelled with the tile. */
+  __wrcRetry?: ReturnType<typeof setTimeout> | null;
+  /** Set once Leaflet has unloaded the tile: no later attempt may start. */
+  __wrcCancelled?: boolean;
 }
 
 // One network attempt, resolving to the raw tile bytes. Rejections carry
@@ -217,6 +228,7 @@ export function createFetchTile(
   const maxRetries = opts.maxRetries ?? 3;
   const retryDelay = opts.retryDelay ?? 500;
   const maxServerErrorRetries = opts.maxServerErrorRetries ?? 6;
+  const maxRateLimitRetries = opts.maxRateLimitRetries ?? 10;
   const limiter = opts.rateLimiter;
   const on429 = opts.on429;
   const on5xx = opts.on5xx;
@@ -229,6 +241,7 @@ export function createFetchTile(
   // frame time comes close (see pinnedForecastPolicy).
   const shareKeyFor = (final: boolean): string => (final ? url : `${url}#provisional`);
   let attempt = 0;
+  let rateLimited = 0;
 
   layer._tilePending++;
 
@@ -264,14 +277,31 @@ export function createFetchTile(
     });
   };
 
+  // Every wait before another attempt goes through here, so cancelTile can
+  // stop it: a plain setTimeout(tryFetch) outlived the tile, fired, and made
+  // a real request for a tile that had left the map.
+  const schedule = (ms: number): void => {
+    tile.__wrcRetry = setTimeout(() => {
+      tile.__wrcRetry = null;
+      tryFetch();
+    }, ms);
+  };
+
   const tryFetch = (): void => {
+    if (tile.__wrcCancelled) {
+      // Reached only from deliverCached's fallback; cancelTile found no
+      // timer to settle, so the count is settled here.
+      layer._tilePending--;
+      tile.__wrcAbort = null;
+      return;
+    }
     // Joining a download that is already in flight costs no request, so it
     // skips the rate limiter.
     const final = isFinalRequest(cache, Date.now());
     const joining = !!cache && hasInflight(shareKeyFor(final));
     if (!joining) {
       if (limiter && !limiter.canFetch(url)) {
-        setTimeout(tryFetch, limiter.msUntilSlot());
+        schedule(limiter.msUntilSlot());
         return;
       }
       limiter?.record(url);
@@ -311,8 +341,11 @@ export function createFetchTile(
           // blocks the response entirely, leaving err.status undefined. If we have a
           // rate limiter on this source, treat any statusless error as rate-limited.
           on429?.();
-          const wait = limiter ? Math.max(limiter.msUntilSlot(), 1000) : 5000;
-          setTimeout(tryFetch, wait);
+          if (++rateLimited < maxRateLimitRetries) {
+            schedule(limiter ? Math.max(limiter.msUntilSlot(), 1000) : 5000);
+          } else {
+            fail();
+          }
         } else if (err.status && err.status >= 500 && err.status < 600) {
           // Genuine server error (502/503/504…) — the server IS responding,
           // just can't serve right now. Distinct from on429 (self-imposed
@@ -321,12 +354,12 @@ export function createFetchTile(
           // outage like this is often transient but can outlast maxRetries.
           on5xx?.();
           if (++attempt < maxServerErrorRetries) {
-            setTimeout(tryFetch, Math.min(1000 * 2 ** (attempt - 1), 30_000));
+            schedule(Math.min(1000 * 2 ** (attempt - 1), 30_000));
           } else {
             fail();
           }
         } else if (++attempt < maxRetries) {
-          setTimeout(tryFetch, retryDelay * attempt);
+          schedule(retryDelay * attempt);
         } else {
           fail();
         }
@@ -371,11 +404,25 @@ export function createFetchTile(
 // bulk teardown case (layer removed from the map, card teardown).
 //
 // @internal — exported for tests/fetch-abort.test.ts integration coverage.
+// Stops a tile for good: the in-flight request and any retry armed while
+// nothing was in flight. Retries used to survive this; each fired, made a
+// fresh controller and a real request, and an offline tablet's tiles kept
+// retrying for the life of the page, more with every layer rebuild.
+function cancelTile(layer: FetchTileLayer | FetchWmsTileLayer, tile: TileWithAbort): void {
+  tile.__wrcCancelled = true;
+  tile.__wrcAbort?.abort();
+  tile.__wrcAbort = null;
+  if (tile.__wrcRetry) {
+    clearTimeout(tile.__wrcRetry);
+    tile.__wrcRetry = null;
+    // Nothing is in flight, so no catch handler will settle the count.
+    layer._tilePending--;
+  }
+}
+
 export function wireAbortLifecycle(layer: FetchTileLayer | FetchWmsTileLayer): void {
   layer.on('tileunload', (e: L.TileEvent) => {
-    const tile = e.tile as TileWithAbort;
-    tile.__wrcAbort?.abort();
-    tile.__wrcAbort = null;
+    cancelTile(layer, e.tile as TileWithAbort);
   });
   layer.on('remove', () => {
     // Walk Leaflet's internal _tiles map for any still-pending fetches.
@@ -385,10 +432,7 @@ export function wireAbortLifecycle(layer: FetchTileLayer | FetchWmsTileLayer): v
     if (!tiles) return;
     for (const key in tiles) {
       const tile = tiles[key]?.el as TileWithAbort | undefined;
-      if (tile?.__wrcAbort) {
-        tile.__wrcAbort.abort();
-        tile.__wrcAbort = null;
-      }
+      if (tile && (tile.__wrcAbort || tile.__wrcRetry)) cancelTile(layer, tile);
     }
   });
 }
