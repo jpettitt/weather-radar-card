@@ -610,12 +610,6 @@ export class RadarPlayer {
   // Toolbar reference (set externally after toolbar is created)
   toolbar: RadarToolbar | null = null;
 
-  // Highest native tile zoom requested in this session. Bumped on zoom-in
-  // via _onZoomEnd, never lowered. Passed as minNativeZoom on each layer
-  // so zoom-out reuses cached high-res tiles instead of fetching at the
-  // lower native zoom.
-  private _pinnedNativeZoom = 0;
-
   // ── Motion compensation state ────────────────────────────────────────
   //
   // Per-frame snapshots of the visible radar tiles (distance-from-white
@@ -705,40 +699,17 @@ export class RadarPlayer {
     this._noaaLimiter = opts.noaaLimiter;
     this._dwdLimiter = opts.dwdLimiter;
     this._startWorker();
-    this._pinnedNativeZoom = Math.min(
-      this._map.getZoom(),
-      this._sourceMaxNativeZoom(),
-    );
     this._map.on('zoomend', this._onZoomEnd);
     this._map.on('moveend', this._onMoveEnd);
     this._map.on('resize', this._onResize);
   }
 
-  private _sourceMaxNativeZoom(): number {
-    // Must match the maxNativeZoom set per source in _createLayer.
-    return (this._cfg.data_source ?? 'RainViewer') === 'DWD' ? 8 : 7;
-  }
-
+  // Tiles follow the map's zoom. The native zoom used to be pinned to the
+  // highest level visited so a zoom-out reused its tiles, but a four-level
+  // zoom-out then drew 24 tiles per frame instead of 3 (measured 2026-10-10)
+  // and a default loop could trip RainViewer's request limit.
   private _onZoomEnd = (): void => {
     if (!this._map) return;
-    const newPin = Math.min(this._map.getZoom(), this._sourceMaxNativeZoom());
-    if (newPin > this._pinnedNativeZoom) {
-      this._pinnedNativeZoom = newPin;
-      // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
-      // option on existing layers is enough, no redraw needed.
-      // Forecast-refresh layers still loading or waiting to swap in count
-      // too, or a swapped-in frame would sit on a different native zoom.
-      const layers = [
-        ...this._radarImage,
-        ...this._forecastLoading,
-        ...[...this._stagedForecast.values()].map((s) => s.layer),
-      ];
-      for (const layer of layers) {
-        if (layer) (layer.options as any).minNativeZoom = newPin;
-      }
-      // Keep the mask on the frames' grid so its tiles stay shared.
-      if (this._coverageMask) (this._coverageMask.options as any).minNativeZoom = newPin;
-    }
     // Zoom changes pixel scale, so cached snapshots and the screen-
     // pixel motion vectors derived from them are stale. Drop them and
     // immediately recapture from whatever tiles are in the DOM at the
@@ -2191,7 +2162,6 @@ export class RadarPlayer {
       ...this._dwdRunParam(frame),
       tileSize,
       zoomOffset,
-      minNativeZoom: this._pinnedNativeZoom,
       maxNativeZoom: 8 + Math.max(0, -zoomOffset),
       rateLimiter: this._dwdLimiter,
       on429: () => this._onRateLimited(),
@@ -2541,7 +2511,6 @@ export class RadarPlayer {
         // mean fewer requests for the same coverage on large maps.
         tileSize,
         zoomOffset,
-        minNativeZoom: this._pinnedNativeZoom,
         // Both endpoints serve ~1 km MRMS-derived mosaics but the
         // rendering is smooth past zoom 7 anyway; cap to keep the
         // upscaled appearance consistent with the legacy behaviour.
@@ -2573,7 +2542,6 @@ export class RadarPlayer {
         // count proportionally — see _radarTileSize() for the picker.
         tileSize,
         zoomOffset,
-        minNativeZoom: this._pinnedNativeZoom,
         // DWD's 1 km grid supports zoom 8; bump for larger tiles.
         maxNativeZoom: 8 + Math.max(0, -zoomOffset),
         rateLimiter: this._dwdLimiter,
@@ -2597,7 +2565,6 @@ export class RadarPlayer {
       detectRetina: false,
       tileSize,
       zoomOffset,
-      minNativeZoom: this._pinnedNativeZoom,
       // RainViewer publishes tiles up to native zoom 7 at 256px;
       // higher native zoom available with bigger tiles.
       maxNativeZoom: 7 + Math.max(0, -zoomOffset),

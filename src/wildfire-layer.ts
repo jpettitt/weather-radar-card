@@ -3,7 +3,7 @@ import { HomeAssistant, formatDate } from 'custom-card-helpers';
 import { WeatherRadarCardConfig } from './types';
 import { FIRE_PATH } from './marker-icon';
 import { localize } from './localize/localize';
-import { centroidLngLat, geometryLngLatBounds, haversineKm, formatArea } from './geo-utils';
+import { boundsCentreLngLat, geometryLngLatBounds, haversineKm, formatArea } from './geo-utils';
 import { sharedCanvasRenderer } from './shared-canvas-renderer';
 import { escapeHtml } from './string-utils';
 import { findInciwebPage, inciwebCandidates, inciwebUrl, knownInciwebPage } from './inciweb';
@@ -282,7 +282,7 @@ export class WildfireLayer {
     if (this._map.getZoom() < DETAIL_ZOOM) return;
     const view = this._map.getBounds();
     const inView = this._features.filter((f) => {
-      const b = geometryLngLatBounds(f.geometry);
+      const b = featureLngLatBounds(f.geometry);
       return !!b && view.intersects(L.latLngBounds([b.minLat, b.minLng], [b.maxLat, b.maxLng]));
     });
     const have = (f: GeoJSON.Feature): boolean =>
@@ -368,7 +368,7 @@ export class WildfireLayer {
       if (acres < minAcres) return false;
 
       if (radiusKm && center) {
-        const c = centroidLngLat(f.geometry);
+        const c = boundsCentreLngLat(featureLngLatBounds(f.geometry));
         if (!c) return false;
         const distKm = haversineKm(center.lat, center.lng, c[1], c[0]);
         if (distKm > radiusKm) return false;
@@ -415,7 +415,7 @@ export class WildfireLayer {
         if (current) detailDrawn.add(key);
         newDecisions.set(key, 'polygon');
       } else {
-        const c = centroidLngLat(f.geometry);
+        const c = boundsCentreLngLat(featureLngLatBounds(f.geometry));
         if (c) {
           icons.push({ latLng: L.latLng(c[1], c[0]), feature: f });
           newDecisions.set(key, 'icon');
@@ -669,13 +669,28 @@ function agoText(thenMs: number, nowMs: number, lang: string): string {
   return rtf.format(-Math.round(hours / 24), 'day');
 }
 
+// A geometry's lng/lat bounds never change, but updateHass renders on every
+// hass tick (several a second on a busy install) and the walk over ~30k
+// vertices for ~90 fires cost 2.3 ms per tick on a Mac, more on a tablet.
+// Keyed by the geometry object: a fetch replaces the features, and the old
+// entries go with them.
+const boundsMemo = new WeakMap<GeoJSON.Geometry, ReturnType<typeof geometryLngLatBounds>>();
+function featureLngLatBounds(geom: GeoJSON.Geometry): ReturnType<typeof geometryLngLatBounds> {
+  let b = boundsMemo.get(geom);
+  if (b === undefined) {
+    b = geometryLngLatBounds(geom);
+    boundsMemo.set(geom, b);
+  }
+  return b;
+}
+
 // Compute the on-screen pixel bounding box of a geometry at the current zoom.
 // Returns null if the geometry is empty or unsupported.
 function featureBboxPx(
   geom: GeoJSON.Geometry,
   map: L.Map,
 ): { width: number; height: number } | null {
-  const ll = geometryLngLatBounds(geom);
+  const ll = featureLngLatBounds(geom);
   if (!ll) return null;
   const sw = map.latLngToLayerPoint(L.latLng(ll.minLat, ll.minLng));
   const ne = map.latLngToLayerPoint(L.latLng(ll.maxLat, ll.maxLng));
@@ -683,4 +698,4 @@ function featureBboxPx(
 }
 
 // Test-only exports — internal helpers exposed for the unit tests.
-export { featureKey, decisionsEqual, isContained, iconSizeForAcres, buildPopupHtml };
+export { featureKey, decisionsEqual, isContained, iconSizeForAcres, buildPopupHtml, featureLngLatBounds };

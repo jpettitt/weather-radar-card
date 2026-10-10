@@ -217,7 +217,7 @@ Disabled when:
 |---|---|
 | Layer `'load'` (per-frame, via `wireSpinner`) | Capture snapshot for that frame, compute motion into/out of it. |
 | Map `'moveend'` | Invalidate all snapshots + resnapshot (handles cached-pan where Leaflet doesn't refetch tiles). |
-| Map `'zoomend'` | Same — plus update `_pinnedNativeZoom`. |
+| Map `'zoomend'` | Same. |
 | Map `'resize'` | Same — Leaflet will re-fetch tiles and `'load'` will fire again, but we don't wait for it. |
 | `_initRadar` per-frame load | Snapshot + compute as each frame becomes 'loaded' (frames load newest-first). |
 | `_updateRadar` refresh | Shift `_frameSnapshot` / `_frameMotion` arrays alongside the frame arrays. |

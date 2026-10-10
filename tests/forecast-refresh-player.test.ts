@@ -157,22 +157,6 @@ describe('forecast refresh in the player', () => {
     expect(p._loadedSlots[p._currentSlot]).toBe(2); // still on the same frame
     expect(p._setSegment).toHaveBeenCalledWith(1, 'loaded');
   });
-
-  it('moves refresh layers to the new native zoom with the frames, so a swap keeps the grid', () => {
-    const p = makePlayer(REFRESH, 10);
-    p._invalidateSnapshots = vi.fn();
-    p._scheduleViewRefresh = vi.fn();
-    p._pinnedNativeZoom = 6;
-    const frame = fakeLayer();
-    const loading = fakeLayer();
-    const staged = fakeLayer();
-    p._radarImage = [frame];
-    p._forecastLoading = [loading];
-    p._stagedForecast.set(RUN, { frame: { time: RUN, path: '' }, layer: staged });
-
-    p._onZoomEnd();
-    expect([frame, loading, staged].map((l) => l.options.minNativeZoom)).toEqual([8, 8, 8]);
-  });
 });
 
 // Forecast tiles that survive a reload (#279, 3.12): forecast frames are

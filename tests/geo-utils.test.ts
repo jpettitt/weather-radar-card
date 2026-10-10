@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { geometryLngLatBounds, centroidLngLat, haversineKm, formatDistance, formatArea } from '../src/geo-utils';
+import { geometryLngLatBounds, centroidLngLat, boundsCentreLngLat, haversineKm, formatDistance, formatArea } from '../src/geo-utils';
 
 // A simple unit-square Polygon centred on the origin — easy to reason about
 // for bounds and centroid tests.
@@ -313,5 +313,13 @@ describe('geometryLngLatBounds on very large geometries', () => {
     expect(b!.minLng).toBeCloseTo(-70, 6);
     expect(b!.maxLng).toBeCloseTo(-69.01, 6);
     expect(b!.minLat).toBeCloseTo(40, 6);
+  });
+});
+
+describe('boundsCentreLngLat', () => {
+  it('is the bbox centre with the longitude wrapped, like centroidLngLat', () => {
+    expect(boundsCentreLngLat({ minLng: 170, minLat: 50, maxLng: 190, maxLat: 52 })).toEqual([180, 51]);
+    expect(boundsCentreLngLat({ minLng: 175, minLat: 50, maxLng: 190, maxLat: 52 })).toEqual([-177.5, 51]);
+    expect(boundsCentreLngLat(null)).toBeNull();
   });
 });

@@ -85,7 +85,11 @@ export function geometryLngLatBounds(
 // / unsupported geometries. Longitude is wrapped to [-180, 180] (the
 // bbox may use a continuous >180 window across the dateline).
 export function centroidLngLat(geom: GeoJSON.Geometry): [number, number] | null {
-  const b = geometryLngLatBounds(geom);
+  return boundsCentreLngLat(geometryLngLatBounds(geom));
+}
+
+/** centroidLngLat for bounds already computed (a caller that memoises them). */
+export function boundsCentreLngLat(b: ReturnType<typeof geometryLngLatBounds>): [number, number] | null {
   if (!b) return null;
   let lng = (b.minLng + b.maxLng) / 2;
   // Stryker disable next-line EqualityOperator: 180 and -180 are the same meridian, both inside the documented range

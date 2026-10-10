@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A failed past frame no longer takes the forecast with it** — the loop stops at the archive boundary as before, but DWD's forecast frames still load.
 - **A refresh interrupted by a teardown** no longer arms one last update timer on the discarded player.
 
+### Changed
+
+- **Zooming out no longer keeps the zoomed-in tile grid** — the loop pinned its tile zoom to the highest level visited, so a four-level zoom-out drew 24 tiles per frame instead of 3 and a default loop could trip RainViewer's request limit. Tiles now follow the map's zoom.
+- **Wildfire overlay does less per Home Assistant update** — each fire's extent is computed once per fetch instead of on every state change (2.3 ms a tick with 90 fires on a Mac, more on a tablet).
+
 ## [3.12.0] - 2026-10-09
 
 > **Stable release.** US wind now shows the current hour in the right place, at the right speed. NOAA radar covers Alaska, Hawaii, Puerto Rico and Guam, radar loops reload from the browser with DWD's forecast now included, every frame says how old it is, and wildfire popups say much more. **One breaking change:** without a CARTO key, `map_style: Auto` uses Home Assistant's map tiles (see Changed). The entries below are what changed since 3.11.0.
