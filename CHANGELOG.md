@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A loop no longer freezes after a tab switch or a pan** — a refresh that found nothing newer (about every other one) left the animation stopped, with the toolbar still showing *playing*, until a later refresh shifted a frame in.
+- **A card that loaded no frames retries on its own** — a dashboard that started before its Wi-Fi was up, or during a source outage, showed an empty map until a pan or a reload. It now retries after 30 s, backing off to 5 minutes.
+- **A failed past frame no longer takes the forecast with it** — the loop stops at the archive boundary as before, but DWD's forecast frames still load.
+- **A refresh interrupted by a teardown** no longer arms one last update timer on the discarded player.
+
 ## [3.12.0] - 2026-10-09
 
 > **Stable release.** US wind now shows the current hour in the right place, at the right speed. NOAA radar covers Alaska, Hawaii, Puerto Rico and Guam, radar loops reload from the browser with DWD's forecast now included, every frame says how old it is, and wildfire popups say much more. **One breaking change:** without a CARTO key, `map_style: Auto` uses Home Assistant's map tiles (see Changed). The entries below are what changed since 3.11.0.

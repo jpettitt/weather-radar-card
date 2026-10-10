@@ -10,7 +10,7 @@
 //
 // Follows the "stub Leaflet, test the helpers" convention.
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('leaflet', () => {
   class Layer {}
@@ -28,7 +28,7 @@ vi.mock('leaflet', () => {
   };
 });
 
-import { RadarPlayer } from '../src/radar-player';
+import { RadarPlayer, buildLoadOrder, resumeIndexAfterFailure } from '../src/radar-player';
 import type { WeatherRadarCardConfig } from '../src/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -115,5 +115,90 @@ describe('_markRemainingFailed', () => {
     // Already-attempted frames (order[0], order[1] = 2, 3) are untouched.
     expect(p._frameStatuses[2]).toBe('loaded');
     expect(p._frameStatuses[3]).toBe('loaded');
+  });
+});
+
+// ── Failure mid-load (2026-10-10 review, F6) ───────────────────────────
+//
+// The load order is now → past (backward) → forecast (forward). One
+// `break` covered both legs, so a past frame beyond the archive boundary
+// marked every forecast frame failed without attempting it.
+
+describe('resumeIndexAfterFailure', () => {
+  const order = buildLoadOrder(7, 3);   // [3, 2, 1, 0, 4, 5, 6]
+
+  it('a failed past frame skips to the forecast leg', () => {
+    expect(resumeIndexAfterFailure(order, 1)).toBe(4);
+    expect(resumeIndexAfterFailure(order, 3)).toBe(4);   // the oldest past frame
+  });
+
+  it('a failed "now" frame stops the load', () => {
+    expect(resumeIndexAfterFailure(order, 0)).toBe(-1);
+  });
+
+  it('a failed forecast frame stops the load', () => {
+    expect(resumeIndexAfterFailure(order, 4)).toBe(-1);
+    expect(resumeIndexAfterFailure(order, 6)).toBe(-1);
+  });
+
+  it('with no forecast leg a failed past frame stops the load', () => {
+    expect(resumeIndexAfterFailure(buildLoadOrder(4, 3), 1)).toBe(-1);   // [3, 2, 1, 0]
+  });
+});
+
+describe('_markRemainingFailed with an upper bound', () => {
+  it('marks only the skipped past frames, leaving the forecast leg to be attempted', () => {
+    const p = makePlayer() as any;
+    const order = buildLoadOrder(7, 3);   // [3, 2, 1, 0, 4, 5, 6]
+    p._segEls = order.map(() => ({ style: {} as Record<string, string> }));
+    p._frameStatuses = ['empty', 'empty', 'empty', 'loaded', 'empty', 'empty', 'empty'];
+    p._markRemainingFailed(order, 2, 4);   // frame 2 failed: skip 1 and 0
+    expect(p._frameStatuses[1]).toBe('failed');
+    expect(p._frameStatuses[0]).toBe('failed');
+    expect(p._frameStatuses[4]).toBe('empty');
+    expect(p._frameStatuses[6]).toBe('empty');
+  });
+});
+
+// ── Init that ends with no frames (F3) ─────────────────────────────────
+//
+// Nothing was armed after a failed listing fetch, an empty listing or a
+// load with no frames, and the visibility handler needs _radarReady, so the
+// card stayed blank until a pan or a reload.
+
+describe('_scheduleInitRetry', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('a failed listing fetch arms a retry that re-runs the init, backing off', async () => {
+    const p = makePlayer() as any;
+    p._fetchPaths = vi.fn().mockRejectedValue(new Error('offline'));
+    await p._initRadar();
+    expect(p._fetchPaths).toHaveBeenCalledOnce();
+    expect(p._initRetryTimer).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(p._fetchPaths).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(p._fetchPaths).toHaveBeenCalledTimes(2);     // after 30 s
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(p._fetchPaths).toHaveBeenCalledTimes(3);     // then 60 s
+    p.clear();
+  });
+
+  it('clear() cancels the retry', async () => {
+    const p = makePlayer() as any;
+    p._fetchPaths = vi.fn().mockRejectedValue(new Error('offline'));
+    await p._initRadar();
+    p.clear();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(p._fetchPaths).toHaveBeenCalledOnce();
+  });
+
+  it('an empty listing arms the retry too', async () => {
+    const p = makePlayer() as any;
+    p._fetchPaths = vi.fn().mockResolvedValue([]);
+    await p._initRadar();
+    expect(p._initRetryTimer).not.toBeNull();
+    p.clear();
   });
 });
