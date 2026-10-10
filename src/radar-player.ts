@@ -10,7 +10,7 @@ import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
 import { getEffectiveTimeRange, getSourceCaps } from './source-caps';
 import {
-  FORECAST_REUSE_MAX_AGE_MS, TileCachePolicy, finalUpToMs, persistUntilFor, pinnedForecastPolicy,
+  TileCachePolicy, finalUpToMs, forecastReuseMaxAgeMs, persistUntilFor, pinnedForecastPolicy,
 } from './tile-cache';
 import {
   chooseStartRun, dwdIsoTime, fetchLatestRun, markUnverified, parseDwdTimeOverride, pinToRun, planForecastRefresh,
@@ -2457,7 +2457,9 @@ export class RadarPlayer {
   // DWD run read from the run list was published before the server
   // answered them (see TileCachePolicy).
   private _tileCachePolicy(frame: RadarFrame): TileCachePolicy {
-    if (frame.run !== undefined) return pinnedForecastPolicy(frame.time * 1000, frame.run * 1000);
+    if (frame.run !== undefined) {
+      return pinnedForecastPolicy(frame.time * 1000, frame.run * 1000, forecastReuseMaxAgeMs(this._forecastRefreshMin()));
+    }
     const source = this._cfg.data_source ?? 'RainViewer';
     const { pastMin, strideMin } = getEffectiveTimeRange(this._cfg);
     const finalUpTo = finalUpToMs(source, Date.now(), strideMin, this._dwdLatestRun);
@@ -2688,12 +2690,13 @@ export class RadarPlayer {
         // Pin forecast frames to one run from the start, refresh on or off:
         // every tile of a frame then comes from one run, the tiles can be
         // cached (pinnedForecastPolicy), and a refresh can tell whether
-        // anything newer exists. A run used in the last 30 min is reused so
-        // its cached tiles show at once; the newest replaces it once the
-        // first load is done (_catchUpRun). Without a run frames load
-        // unpinned and the first refresh pins them.
+        // anything newer exists. A run used within the reuse window (30 min,
+        // or the refresh interval plus grace) is reused so its cached tiles
+        // show at once; the newest replaces it once the first load is done
+        // (_catchUpRun). Without a run frames load unpinned and the first
+        // refresh pins them.
         const layerName = this._dwdLayerName();
-        const startRun = chooseStartRun(run, recalledRun(layerName), Date.now(), FORECAST_REUSE_MAX_AGE_MS);
+        const startRun = chooseStartRun(run, recalledRun(layerName), Date.now(), forecastReuseMaxAgeMs(this._forecastRefreshMin()));
         pastFrames = pinToRun(pastFrames, startRun);
         rememberRun(layerName, startRun);
         this._catchUpRun = startRun < run ? run : null;

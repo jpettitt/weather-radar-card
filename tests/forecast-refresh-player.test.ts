@@ -261,3 +261,15 @@ describe('forecast cache in the player', () => {
     expect(p._refreshForecast).not.toHaveBeenCalled();
   });
 });
+
+describe('forecast reuse window follows forecast_refresh_minutes (#279)', () => {
+  it('a 60-minute refresh keeps pinned tiles 75 minutes (60 + 10 grace + 5 margin)', () => {
+    const p = makePlayer({ ...REFRESH, forecast_refresh_minutes: 60 });
+    expect(p._tileCachePolicy({ time: RUN + 1800, path: '', run: RUN }).persistUntil).toBe((RUN + 75 * 60) * 1000);
+  });
+
+  it('a 5-minute refresh keeps the 30-minute floor (35 with the margin)', () => {
+    const p = makePlayer(REFRESH);
+    expect(p._tileCachePolicy({ time: RUN + 1800, path: '', run: RUN }).persistUntil).toBe((RUN + 35 * 60) * 1000);
+  });
+});
