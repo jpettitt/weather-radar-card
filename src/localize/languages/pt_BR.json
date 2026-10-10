@@ -124,6 +124,7 @@
       "vector_style_muted": "Suave",
       "vector_style_gray": "Cinza",
       "vector_style_toner": "Toner",
+      "vector_style_classic": "Clássico",
       "vector_labels_above": "Rótulos acima do radar",
       "theme_mode": "Tema do mapa",
       "theme_mode_auto": "Automático",

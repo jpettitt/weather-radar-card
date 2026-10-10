@@ -267,8 +267,9 @@ export const MAP_STYLE_CHOICES: ReadonlyArray<{
   { value: 'Custom', label: 'style_custom' },
 ];
 
-/** HA's vector map styles, as its map card offers them. */
-export const VECTOR_STYLES = ['default', 'colorful', 'natural', 'muted', 'gray', 'toner'] as const;
+/** HA's vector map styles, as its map card offers them, plus the card's own
+ *  Classic: the classic OpenStreetMap colours (vector-styles.ts). */
+export const VECTOR_STYLES = ['default', 'classic', 'colorful', 'natural', 'muted', 'gray', 'toner'] as const;
 export type VectorStyle = typeof VECTOR_STYLES[number];
 
 /** `vector_style` as one of VECTOR_STYLES: unset or unknown is Default. */

@@ -126,9 +126,28 @@ describe('buildVectorStyle', () => {
     expect(() => finishForHa({ sources: { a: {}, b: {} }, layers: [] })).toThrow('expected one tile source, got 2');
   });
 
-  it.each(['colorful', 'natural', 'muted', 'gray', 'toner'])('builds a dark variant of %s', (theme) => {
+  it.each(['classic', 'colorful', 'natural', 'muted', 'gray', 'toner'])('builds a dark variant of %s', (theme) => {
     const background = (s: any): unknown => s.layers.find((l: any) => l.type === 'background').paint['background-color'];
     expect(background(buildVectorStyle(`${theme}-dark`, URLS))).not.toEqual(background(buildVectorStyle(theme, URLS)));
+  });
+
+  it("classic: the classic OpenStreetMap colours on Colorful's cartography, light and dark", () => {
+    const paint = (s: any, id: string, prop: string): unknown => s.layers.find((l: any) => l.id === id)?.paint?.[prop];
+    const light = buildVectorStyle('classic', URLS);
+    expect(paint(light, 'land-residential', 'fill-color')).toBe('rgb(224,223,223)');   // #e0dfdf
+    expect(paint(light, 'water-area', 'fill-color')).toBe('rgb(170,211,223)');          // #aad3df
+    expect(paint(light, 'land-forest', 'fill-color')).toBe('rgb(173,209,158)');         // #add19e
+    // The builder derives primary and secondary from the trunk colour, so these are set per layer.
+    expect(paint(light, 'street-primary', 'line-color')).toBe('#fcd6a4');
+    expect(paint(light, 'street-primary:outline', 'line-color')).toBe('#a06b00');
+    expect(paint(light, 'street-secondary', 'line-color')).toBe('#f7fabf');
+    expect(paint(light, 'street-motorway', 'line-color')).toBe('rgb(232,146,162)');     // #e892a2
+    const dark = buildVectorStyle('classic-dark', URLS);
+    expect(paint(dark, 'water-area', 'fill-color')).toBe('rgb(29,53,80)');              // blue, not the inverted raster's brown
+    expect(paint(dark, 'land-forest', 'fill-color')).toBe('rgb(34,51,38)');             // green, not purple
+    expect(paint(dark, 'street-primary', 'line-color')).toBe('#a39372');
+    expect(paint(dark, 'street-minor', 'line-color')).toBe('rgb(107,110,117)');         // light grey roads, as the raster dark has
+    expect(light.sources['versatiles-shortbread'].url).toBe('/api/map_tiles/tilejson.json');
   });
 });
 

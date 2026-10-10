@@ -124,6 +124,7 @@
       "vector_style_muted": "Atténué",
       "vector_style_gray": "Gris",
       "vector_style_toner": "Toner",
+      "vector_style_classic": "Classique",
       "vector_labels_above": "Libellés au-dessus du radar",
       "theme_mode": "Thème de la carte",
       "theme_mode_auto": "Automatique",
