@@ -110,6 +110,8 @@ export interface ZoneKV {
   get(key: string): Promise<StoredZone | undefined>;
   set(key: string, val: StoredZone): Promise<void>;
   delete(key: string): Promise<void>;
+  /** Delete several keys in one transaction (a sweep can drop thousands). */
+  deleteMany(keys: string[]): Promise<void>;
   keysByAge(): Promise<{ key: string; ts: number }[]>;
 }
 
@@ -161,13 +163,15 @@ export async function sweepZones(kv: ZoneKV, now: number): Promise<number> {
   let removed = 0;
   try {
     const keys = await kv.keysByAge();   // oldest first
-    const expired = keys.filter((k) => typeof k.ts !== 'number' || now - k.ts > TTL_MS);
-    const fresh = keys.filter((k) => !expired.includes(k));
+    const isExpired = (k: { ts: number }): boolean => typeof k.ts !== 'number' || now - k.ts > TTL_MS;
+    const expired = keys.filter(isExpired);
+    const fresh = keys.filter((k) => !isExpired(k));
     const overflow = fresh.length > MAX_ENTRIES ? fresh.slice(0, fresh.length - MAX_ENTRIES) : [];
-    for (const k of [...expired, ...overflow]) {
-      await kv.delete(k.key);
-      removed++;
-    }
+    // One transaction: the whole 11,600-zone set expiring together meant as
+    // many sequential transactions, seconds of stall on a tablet.
+    const doomed = [...expired, ...overflow].map((k) => k.key);
+    await kv.deleteMany(doomed);
+    removed = doomed.length;
   } catch {
     // Backend unavailable — nothing to sweep.
   }
@@ -178,7 +182,7 @@ async function evictOldest(kv: ZoneKV, fraction: number): Promise<void> {
   try {
     const keys = await kv.keysByAge();
     const n = Math.max(1, Math.floor(keys.length * fraction));
-    for (const k of keys.slice(0, n)) await kv.delete(k.key);
+    await kv.deleteMany(keys.slice(0, n).map((k) => k.key));
   } catch { /* best-effort */ }
 }
 
@@ -240,6 +244,14 @@ export function idbZoneKV(): ZoneKV {
     get: (key) => tx<StoredZone | undefined>('readonly', (s) => s.get(key) as IDBRequest<StoredZone | undefined>),
     set: (key, val) => tx('readwrite', (s) => s.put(val, key)).then(() => undefined),
     delete: (key) => tx('readwrite', (s) => s.delete(key)).then(() => undefined),
+    deleteMany: (keys) => keys.length === 0 ? Promise.resolve() : openDb().then((db) => new Promise<void>((resolve, reject) => {
+      const t = db.transaction(STORE, 'readwrite');
+      const s = t.objectStore(STORE);
+      for (const k of keys) s.delete(k);
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error);
+    })),
     keysByAge: () => openDb().then((db) => new Promise<{ key: string; ts: number }[]>((resolve, reject) => {
       const out: { key: string; ts: number }[] = [];
       const t = db.transaction(STORE, 'readonly');

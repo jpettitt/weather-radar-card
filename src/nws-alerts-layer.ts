@@ -222,10 +222,19 @@ export class NwsAlertsLayer {
     // certainty) so the most actionable alerts paint last and end up
     // on top of the visual stack. Sort once here, not per render —
     // the order is stable until the next _fetch().
-    this._features = this._filter(features).sort(paintOrderAscending);
+    try {
+      this._features = this._filter(features).sort(paintOrderAscending);
+    } catch (err) {
+      // Keep the alerts on screen and the refresh chain alive, as _render
+      // does for its own failures; nothing after the await catches for us.
+      console.warn('NWS alerts: filter failed', err);
+    }
     // Render polygon-bearing alerts immediately for snappy first paint;
     // zone-only alerts will fill in progressively as their geometry arrives.
-    this._render();
+    // Skip when nothing changed: a rebuild closes an open popup, and on the
+    // 60 s cadence that cut reads short. An updated alert has a new id, so
+    // it still redraws.
+    this._render({ skipIfDecisionsUnchanged: true });
     this._scheduleNext();
     // Kick off zone resolution in the background — re-renders the layer
     // once each batch of zone fetches completes, picking up newly-cached

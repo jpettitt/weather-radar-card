@@ -110,6 +110,7 @@ import {
   getCoordinateConfig,
   resolveCoordinatePair,
 } from './coordinate-utils';
+import { parseDwdTimeOverride } from './forecast-refresh';
 import { createMarkerIconForMarker, HOME_PATH } from './marker-icon';
 import { migrateConfig, frameCountIsOverridden, resolveMarkerPosition, resolveTracking } from './marker-utils';
 import { WildfireLayer } from './wildfire-layer';
@@ -405,14 +406,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   private _syncMapViewIfNeeded(): void {
     if (!this._map || !this._config) return;
-    const isMobile = isMobileDevice();
-    const haLat = this.hass?.config?.latitude ?? 0;
-    const haLon = this.hass?.config?.longitude ?? 0;
-    const target = resolveCoordinatePair(
-      getCoordinateConfig(this._config.center_latitude, undefined, isMobile),
-      getCoordinateConfig(this._config.center_longitude, undefined, isMobile),
-      haLat, haLon, this.hass,
-    );
+    const target = this._resolveCenter();
     const targetZoom = this._config.zoom_level ?? 7;
     const current = this._map.getCenter();
     const r4 = (n: number): number => Math.round(n * 10000) / 10000;
@@ -711,16 +705,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const cfg = this._config;
     const mapStyle = this._effectiveMapStyle();
     this._currentMapStyle = mapStyle;
-    const isMobile = isMobileDevice();
-    const userInfo = getCurrentUserInfo(this.hass);
-    const haLat = this.hass?.config?.latitude ?? 0;
-    const haLon = this.hass?.config?.longitude ?? 0;
-
-    const center = resolveCoordinatePair(
-      getCoordinateConfig(cfg.center_latitude, undefined, isMobile, userInfo?.deviceTracker),
-      getCoordinateConfig(cfg.center_longitude, undefined, isMobile, userInfo?.deviceTracker),
-      haLat, haLon, this.hass,
-    );
+    const center = this._resolveCenter();
 
     const isStatic = cfg.static_map === true;
     // Leaflet's built-in double-click zoom stays on for two cases: when no
@@ -800,6 +785,10 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     });
     if (cfg.start_paused === true) this._player.run = false;
     this._player.toolbar = this._toolbar;
+    // The toolbar was built before the player existed, so the speed it shows
+    // is applied here; _hydrateViewerState re-applies a persisted override
+    // once the WS round-trip resolves.
+    this._player.setSpeedMultiplier(loadPlaybackSpeed(this._viewerState, cfg.playback_speed));
     // frame count is derived from past_minutes / forecast_minutes / stride
     // via getEffectiveTimeRange — passed in for back-compat with the
     // start(frameCount) signature. Player re-derives from this._cfg
@@ -931,9 +920,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // Override + forecast only meaningful when DWD radar is selected; otherwise live.
     const isDwdRadar = cfg.data_source === 'DWD';
     const forecastMs = isDwdRadar ? (cfg.forecast_minutes ?? 0) * 60_000 : 0;
-    const baseMs = isDwdRadar && cfg.dwd_time_override
-      ? new Date(cfg.dwd_time_override).getTime()
-      : Date.now();
+    // An invalid override falls back to now, as the loop does (it warns).
+    const baseMs = (isDwdRadar ? parseDwdTimeOverride(cfg.dwd_time_override) : null) ?? Date.now();
     const anchorMs = baseMs + forecastMs;
     const useAnchor = isDwdRadar && (cfg.dwd_time_override != null || forecastMs > 0);
     const timeMs = useAnchor ? anchorMs : undefined;
@@ -1232,16 +1220,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const showRecenter = cfg.show_recenter === true && cfg.static_map !== true;
     const showPlayback = shouldShowPlayback(cfg);
     if (!showRecenter && !showPlayback) return;
-    // Restore the user's previous playback speed (if any) before the
-    // toolbar mounts so the button label and the player's effective
-    // frame_delay both start coherent. The override (stored per user
-    // in HA frontend storage via ViewerState) wins when active; the
-    // YAML default applies otherwise. Note the cache is only populated
-    // after hydrate() resolves — see _hydrateViewerState — so on a
-    // fresh page load we may briefly start at the YAML default and
-    // snap to the override once the WS round-trip completes.
+    // The button starts at the user's saved speed when the ViewerState cache
+    // has it (filled after hydrate() — see _hydrateViewerState), else the
+    // YAML default. The player doesn't exist yet: _initMap applies the same
+    // value to it right after constructing it.
     const savedSpeed = loadPlaybackSpeed(this._viewerState, this._config.playback_speed);
-    this._player?.setSpeedMultiplier(savedSpeed);
 
     this._toolbar = new RadarToolbar({
       showRecenter,
@@ -1302,16 +1285,24 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     });
   }
 
-  private _recenter(): void {
-    if (!this._map) return;
+  // One resolution for init, re-centre and the config-driven view sync:
+  // re-centre and sync used to leave out the mobile device tracker, so on a
+  // phone with no centre configured the button went home, not to the user.
+  private _resolveCenter(): { lat: number; lon: number } {
     const cfg = this._config;
     const isMobile = isMobileDevice();
-    const c = resolveCoordinatePair(
-      getCoordinateConfig(cfg.center_latitude, undefined, isMobile),
-      getCoordinateConfig(cfg.center_longitude, undefined, isMobile),
+    const tracker = getCurrentUserInfo(this.hass)?.deviceTracker;
+    return resolveCoordinatePair(
+      getCoordinateConfig(cfg.center_latitude, undefined, isMobile, tracker),
+      getCoordinateConfig(cfg.center_longitude, undefined, isMobile, tracker),
       this.hass?.config?.latitude ?? 0, this.hass?.config?.longitude ?? 0, this.hass,
     );
-    this._map.setView([c.lat, c.lon], cfg.zoom_level ?? 7);
+  }
+
+  private _recenter(): void {
+    if (!this._map) return;
+    const c = this._resolveCenter();
+    this._map.setView([c.lat, c.lon], this._config.zoom_level ?? 7);
   }
 
   // ── Navigation pause ──────────────────────────────────────────────────────

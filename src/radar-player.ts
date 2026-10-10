@@ -13,8 +13,8 @@ import {
   FORECAST_REUSE_MAX_AGE_MS, TileCachePolicy, finalUpToMs, persistUntilFor, pinnedForecastPolicy,
 } from './tile-cache';
 import {
-  chooseStartRun, dwdIsoTime, fetchLatestRun, markUnverified, pinToRun, planForecastRefresh, recalledRun,
-  rememberRun, swappableFrames,
+  chooseStartRun, dwdIsoTime, fetchLatestRun, markUnverified, parseDwdTimeOverride, pinToRun, planForecastRefresh,
+  recalledRun, rememberRun, swappableFrames,
 } from './forecast-refresh';
 import {
   dropMissingNoaaLayer, fetchNoaaFrameTimes, noaaOpengeoLayers, noaaRegionAt, pickFrameTimes, NOAA_OPENGEO_WMS_URL,
@@ -2381,8 +2381,8 @@ export class RadarPlayer {
       const override = this._cfg.dwd_time_override;
       let base = Date.now() - DWD_LAG_MS;
       if (override) {
-        const parsed = new Date(override).getTime();
-        if (Number.isNaN(parsed)) {
+        const parsed = parseDwdTimeOverride(override);
+        if (parsed === null) {
           console.warn(
             `[weather-radar-card] Invalid dwd_time_override "${override}"; expected ISO 8601. Using current time instead.`,
           );
