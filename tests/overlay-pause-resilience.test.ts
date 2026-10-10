@@ -161,7 +161,7 @@ describe('WindOverlay pause/resume', () => {
     return o;
   }
 
-  it('pause cancels the hourly chain and the move debounce', () => {
+  it('pause cancels the refresh chain and the move debounce', () => {
     const o = bareWind();
     o._refreshTimer = setTimeout(() => {}, 1000);
     o._debounceTimer = setTimeout(() => {}, 1000);
@@ -171,14 +171,14 @@ describe('WindOverlay pause/resume', () => {
     expect(o._debounceTimer).toBeNull();
   });
 
-  it('_scheduleHourlyRefresh is a no-op while paused', () => {
+  it('_scheduleRefreshTick is a no-op while paused', () => {
     const o = bareWind();
     o._paused = true;
-    o._scheduleHourlyRefresh();
+    o._scheduleRefreshTick();
     expect(o._refreshTimer).toBeNull();
   });
 
-  it('resume refreshes immediately and re-arms the hourly chain', () => {
+  it('resume refreshes immediately and re-arms the refresh chain', () => {
     const o = bareWind();
     o._paused = true;
     o._refresh = vi.fn(async () => {});
@@ -189,10 +189,10 @@ describe('WindOverlay pause/resume', () => {
     clearTimeout(o._refreshTimer);
   });
 
-  it('_scheduleHourlyRefresh replaces an armed chain rather than adding one', () => {
+  it('_scheduleRefreshTick replaces an armed chain rather than adding one', () => {
     const o = bareWind();
-    o._scheduleHourlyRefresh();
-    o._scheduleHourlyRefresh();
+    o._scheduleRefreshTick();
+    o._scheduleRefreshTick();
     expect(vi.getTimerCount()).toBe(1);
     clearTimeout(o._refreshTimer);
   });
@@ -209,7 +209,7 @@ describe('WindFlowOverlay pause/resume', () => {
     return w;
   }
 
-  it('pause stops the particle loop and the hourly chain', () => {
+  it('pause stops the particle loop and the refresh chain', () => {
     const w = bareFlow();
     w._running = true;
     w._refreshTimer = setTimeout(() => {}, 1000);
@@ -219,11 +219,11 @@ describe('WindFlowOverlay pause/resume', () => {
     expect(w._refreshTimer).toBeNull();
   });
 
-  it('resume with preload_while_hidden re-arms the hourly chain instead of forking it', () => {
+  it('resume with preload_while_hidden re-arms the refresh chain instead of forking it', () => {
     const w = bareFlow();
     w._preloadWhileHidden = true;
     w._restart = vi.fn(async () => {});
-    w._scheduleHourlyRefresh();         // armed at construction
+    w._scheduleRefreshTick();         // armed at construction
     expect(vi.getTimerCount()).toBe(1);
     w.pause();                           // preload keeps the chain alive
     expect(w._refreshTimer).not.toBeNull();
@@ -241,14 +241,14 @@ describe('WindFlowOverlay pause/resume', () => {
     expect(w._running).toBe(false);
   });
 
-  it('_scheduleHourlyRefresh is a no-op while paused', () => {
+  it('_scheduleRefreshTick is a no-op while paused', () => {
     const w = bareFlow();
     w._paused = true;
-    w._scheduleHourlyRefresh();
+    w._scheduleRefreshTick();
     expect(w._refreshTimer).toBeNull();
   });
 
-  it('resume restarts the loop and re-arms the hourly chain', () => {
+  it('resume restarts the loop and re-arms the refresh chain', () => {
     const w = bareFlow();
     w._paused = true;
     w._restart = vi.fn(async () => {});
@@ -546,5 +546,27 @@ describe('NwsAlertsLayer refresh with an unchanged alert set', () => {
     expect(l._map.removeLayer).toHaveBeenCalledWith(drawn);
     expect(l._polygonLayer).not.toBe(drawn);
     if (l._timer) clearTimeout(l._timer);
+  });
+});
+
+// ── 5. Half-hour refresh tick ───────────────────────────────────────────
+//
+// The wind shown is the model step nearest to now, which changes at the
+// half-step; an hourly tick would have shown ICON's previous hour for the
+// second half of every hour.
+
+describe('wind refresh tick cadence', () => {
+  it('wakes 30 s after the next half hour', () => {
+    vi.setSystemTime(Date.UTC(2026, 9, 10, 12, 10));   // 12:10:00
+    const o: any = Object.create(WindOverlay.prototype);
+    o._paused = false;
+    o._refreshTimer = null;
+    o._refresh = vi.fn(async () => {});
+    o._scheduleRefreshTick();
+    vi.advanceTimersByTime(20 * 60_000 + 29_000);        // 12:30:29
+    expect(o._refresh).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(2_000);                        // 12:30:31
+    expect(o._refresh).toHaveBeenCalledOnce();
+    clearTimeout(o._refreshTimer);
   });
 });

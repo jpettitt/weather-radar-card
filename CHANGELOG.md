@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Zooming out no longer keeps the zoomed-in tile grid** — the loop pinned its tile zoom to the highest level visited, so a four-level zoom-out drew 24 tiles per frame instead of 3 and a default loop could trip RainViewer's request limit. Tiles now follow the map's zoom.
+- **Wind shows the model step nearest to now** — the DWD wind overlays rounded the time down to the model's step, so ICON showed a slice up to an hour old and AICON (3-hourly, the default outside the US) one up to almost 3 hours old. They now pick the nearest step and refresh every half hour, so what's shown is within half a step of now.
 - **Wildfire overlay does less per Home Assistant update** — each fire's extent is computed once per fetch instead of on every state change (2.3 ms a tick with 90 fires on a Mac, more on a tablet).
 
 ## [3.12.0] - 2026-10-09
