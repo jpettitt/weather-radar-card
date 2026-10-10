@@ -4,6 +4,7 @@ import {
   dwdIsoTime,
   fetchLatestRun,
   markUnverified,
+  parseDwdTimeOverride,
   parseLatestRun,
   pinToRun,
   planForecastRefresh,
@@ -207,5 +208,17 @@ describe('chooseStartRun', () => {
     expect(chooseStartRun(latest, latest - 25 * MIN, now, max)).toBe(latest); // 31 min old
     expect(chooseStartRun(latest, latest, now, max)).toBe(latest);
     expect(chooseStartRun(latest, latest + 5 * MIN, now, max)).toBe(latest);
+  });
+});
+
+describe('parseDwdTimeOverride', () => {
+  it('returns epoch ms for an ISO time', () => {
+    expect(parseDwdTimeOverride('2026-10-09T12:00:00Z')).toBe(Date.UTC(2026, 9, 9, 12));
+  });
+
+  it('is null for unset or unparseable values (the card used to pass NaN to the wind overlays)', () => {
+    expect(parseDwdTimeOverride(undefined)).toBeNull();
+    expect(parseDwdTimeOverride('')).toBeNull();
+    expect(parseDwdTimeOverride('yesterday noon')).toBeNull();
   });
 });

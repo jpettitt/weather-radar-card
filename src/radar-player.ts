@@ -10,11 +10,11 @@ import { RadarToolbar } from './radar-toolbar';
 import { localize } from './localize/localize';
 import { getEffectiveTimeRange, getSourceCaps } from './source-caps';
 import {
-  FORECAST_REUSE_MAX_AGE_MS, TileCachePolicy, finalUpToMs, persistUntilFor, pinnedForecastPolicy,
+  TileCachePolicy, finalUpToMs, forecastReuseMaxAgeMs, persistUntilFor, pinnedForecastPolicy,
 } from './tile-cache';
 import {
-  chooseStartRun, dwdIsoTime, fetchLatestRun, markUnverified, pinToRun, planForecastRefresh, recalledRun,
-  rememberRun, swappableFrames,
+  chooseStartRun, dwdIsoTime, fetchLatestRun, markUnverified, parseDwdTimeOverride, pinToRun, planForecastRefresh,
+  recalledRun, rememberRun, swappableFrames,
 } from './forecast-refresh';
 import {
   dropMissingNoaaLayer, fetchNoaaFrameTimes, noaaOpengeoLayers, noaaRegionAt, pickFrameTimes, NOAA_OPENGEO_WMS_URL,
@@ -59,6 +59,19 @@ export function buildLoadOrder(frameCount: number, nowIndex: number): number[] {
   for (let fi = now; fi >= 0; fi--) order.push(fi);
   for (let fi = now + 1; fi < frameCount; fi++) order.push(fi);
   return order;
+}
+
+/**
+ * After the frame at order[failedIdx] fails: the order index to try next, or
+ * -1 to stop. A failed past frame means the older ones are past the archive
+ * too, but the forecast leg is independent, so loading skips to it; a failed
+ * "now" or forecast frame ends the load. Pure, for the same reason as
+ * buildLoadOrder.
+ */
+export function resumeIndexAfterFailure(order: number[], failedIdx: number): number {
+  const forwardStart = order[0] + 1;   // the backward leg is now..0
+  if (failedIdx > 0 && failedIdx < forwardStart && forwardStart < order.length) return forwardStart;
+  return -1;
 }
 
 /**
@@ -520,6 +533,9 @@ export class RadarPlayer {
   // INVALIDATION stays immediate in the event handlers, so stale
   // vectors can't be applied while the refresh is pending.
   private _viewRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  // Retry of an init that ended with no frames (see _scheduleInitRetry).
+  private _initRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private _initRetries = 0;
 
   private _scheduleViewRefresh(): void {
     if (this._viewRefreshTimer) clearTimeout(this._viewRefreshTimer);
@@ -593,12 +609,6 @@ export class RadarPlayer {
 
   // Toolbar reference (set externally after toolbar is created)
   toolbar: RadarToolbar | null = null;
-
-  // Highest native tile zoom requested in this session. Bumped on zoom-in
-  // via _onZoomEnd, never lowered. Passed as minNativeZoom on each layer
-  // so zoom-out reuses cached high-res tiles instead of fetching at the
-  // lower native zoom.
-  private _pinnedNativeZoom = 0;
 
   // ── Motion compensation state ────────────────────────────────────────
   //
@@ -689,40 +699,17 @@ export class RadarPlayer {
     this._noaaLimiter = opts.noaaLimiter;
     this._dwdLimiter = opts.dwdLimiter;
     this._startWorker();
-    this._pinnedNativeZoom = Math.min(
-      this._map.getZoom(),
-      this._sourceMaxNativeZoom(),
-    );
     this._map.on('zoomend', this._onZoomEnd);
     this._map.on('moveend', this._onMoveEnd);
     this._map.on('resize', this._onResize);
   }
 
-  private _sourceMaxNativeZoom(): number {
-    // Must match the maxNativeZoom set per source in _createLayer.
-    return (this._cfg.data_source ?? 'RainViewer') === 'DWD' ? 8 : 7;
-  }
-
+  // Tiles follow the map's zoom. The native zoom used to be pinned to the
+  // highest level visited so a zoom-out reused its tiles, but a four-level
+  // zoom-out then drew 24 tiles per frame instead of 3 (measured 2026-10-10)
+  // and a default loop could trip RainViewer's request limit.
   private _onZoomEnd = (): void => {
     if (!this._map) return;
-    const newPin = Math.min(this._map.getZoom(), this._sourceMaxNativeZoom());
-    if (newPin > this._pinnedNativeZoom) {
-      this._pinnedNativeZoom = newPin;
-      // Leaflet reads minNativeZoom each time _clampZoom runs; updating the
-      // option on existing layers is enough, no redraw needed.
-      // Forecast-refresh layers still loading or waiting to swap in count
-      // too, or a swapped-in frame would sit on a different native zoom.
-      const layers = [
-        ...this._radarImage,
-        ...this._forecastLoading,
-        ...[...this._stagedForecast.values()].map((s) => s.layer),
-      ];
-      for (const layer of layers) {
-        if (layer) (layer.options as any).minNativeZoom = newPin;
-      }
-      // Keep the mask on the frames' grid so its tiles stay shared.
-      if (this._coverageMask) (this._coverageMask.options as any).minNativeZoom = newPin;
-    }
     // Zoom changes pixel scale, so cached snapshots and the screen-
     // pixel motion vectors derived from them are stale. Drop them and
     // immediately recapture from whatever tiles are in the DOM at the
@@ -1327,6 +1314,7 @@ export class RadarPlayer {
     this._map?.off('moveend', this._onMoveEnd);
     this._map?.off('resize', this._onResize);
     if (this._rateLimitTimer) { clearTimeout(this._rateLimitTimer); this._rateLimitTimer = null; }
+    if (this._initRetryTimer) { clearTimeout(this._initRetryTimer); this._initRetryTimer = null; }
     // Cancel the armed periodic-update timer before terminating the
     // worker — for the setTimeout-fallback path the worker teardown
     // wouldn't kill it, and a post-clear() fire would act on a player
@@ -1395,15 +1383,6 @@ export class RadarPlayer {
       return;
     }
 
-    // _scheduleUpdate's timer keeps running through the pause; if it fired
-    // while navPaused was true it set _doRadarUpdate. Pick that up now;
-    // _updateRadar restarts the loop from its load callback.
-    if (this._doRadarUpdate) {
-      this._doRadarUpdate = false;
-      void this._updateRadar();
-      return;
-    }
-
     // Resume without re-showing the current slot. _stopLoop already left
     // the displayed layer at active opacity via _settleVisibility; routing
     // through _showSlot would snap it to 0 and fade back in, producing a
@@ -1411,6 +1390,15 @@ export class RadarPlayer {
     if (this.run) {
       this._loopGen++;
       this._scheduleNext(this._loopGen);
+    }
+
+    // _scheduleUpdate's timer keeps running through the pause; if it fired
+    // while navPaused was true it set _doRadarUpdate. Pick that up now, after
+    // the resume: _updateRadar restarts the loop only when it shifts a new
+    // frame in, so a refresh that found nothing newer left it stopped.
+    if (this._doRadarUpdate) {
+      this._doRadarUpdate = false;
+      void this._updateRadar();
     }
   }
 
@@ -1450,11 +1438,15 @@ export class RadarPlayer {
       void this._initRadar();
       return;
     }
-    if (this._doRadarUpdate && this._radarReady) {
+    if (!this._radarReady) return;
+    // Resume first, then refresh: _updateRadar restarts the loop only when
+    // it shifts a new frame in, so a refresh that found nothing newer (about
+    // every other tick) left the loop stopped, frozen on one frame with the
+    // toolbar showing "playing".
+    if (this.run) this._startLoop();
+    if (this._doRadarUpdate) {
       this._doRadarUpdate = false;
       this._updateRadar();
-    } else if (this.run && this._radarReady) {
-      this._startLoop();
     }
   }
 
@@ -2170,7 +2162,6 @@ export class RadarPlayer {
       ...this._dwdRunParam(frame),
       tileSize,
       zoomOffset,
-      minNativeZoom: this._pinnedNativeZoom,
       maxNativeZoom: 8 + Math.max(0, -zoomOffset),
       rateLimiter: this._dwdLimiter,
       on429: () => this._onRateLimited(),
@@ -2381,8 +2372,8 @@ export class RadarPlayer {
       const override = this._cfg.dwd_time_override;
       let base = Date.now() - DWD_LAG_MS;
       if (override) {
-        const parsed = new Date(override).getTime();
-        if (Number.isNaN(parsed)) {
+        const parsed = parseDwdTimeOverride(override);
+        if (parsed === null) {
           console.warn(
             `[weather-radar-card] Invalid dwd_time_override "${override}"; expected ISO 8601. Using current time instead.`,
           );
@@ -2466,7 +2457,9 @@ export class RadarPlayer {
   // DWD run read from the run list was published before the server
   // answered them (see TileCachePolicy).
   private _tileCachePolicy(frame: RadarFrame): TileCachePolicy {
-    if (frame.run !== undefined) return pinnedForecastPolicy(frame.time * 1000, frame.run * 1000);
+    if (frame.run !== undefined) {
+      return pinnedForecastPolicy(frame.time * 1000, frame.run * 1000, forecastReuseMaxAgeMs(this._forecastRefreshMin()));
+    }
     const source = this._cfg.data_source ?? 'RainViewer';
     const { pastMin, strideMin } = getEffectiveTimeRange(this._cfg);
     const finalUpTo = finalUpToMs(source, Date.now(), strideMin, this._dwdLatestRun);
@@ -2520,7 +2513,6 @@ export class RadarPlayer {
         // mean fewer requests for the same coverage on large maps.
         tileSize,
         zoomOffset,
-        minNativeZoom: this._pinnedNativeZoom,
         // Both endpoints serve ~1 km MRMS-derived mosaics but the
         // rendering is smooth past zoom 7 anyway; cap to keep the
         // upscaled appearance consistent with the legacy behaviour.
@@ -2552,7 +2544,6 @@ export class RadarPlayer {
         // count proportionally — see _radarTileSize() for the picker.
         tileSize,
         zoomOffset,
-        minNativeZoom: this._pinnedNativeZoom,
         // DWD's 1 km grid supports zoom 8; bump for larger tiles.
         maxNativeZoom: 8 + Math.max(0, -zoomOffset),
         rateLimiter: this._dwdLimiter,
@@ -2576,7 +2567,6 @@ export class RadarPlayer {
       detectRetina: false,
       tileSize,
       zoomOffset,
-      minNativeZoom: this._pinnedNativeZoom,
       // RainViewer publishes tiles up to native zoom 7 at 256px;
       // higher native zoom available with bigger tiles.
       maxNativeZoom: 7 + Math.max(0, -zoomOffset),
@@ -2617,6 +2607,34 @@ export class RadarPlayer {
 
   // ── Radar init ───────────────────────────────────────────────────────────
 
+  // An init that ends with no frames (listing fetch failed, empty listing,
+  // every frame failed) used to leave the card blank until a pan or a
+  // reload: nothing was armed, and the visibility handler needs _radarReady.
+  // A tablet booting before its Wi-Fi, or a source outage outlasting the
+  // tile retries, sat on an empty map indefinitely. Backoff 30 s → 5 min;
+  // a later successful init resets it.
+  private _scheduleInitRetry(): void {
+    if (this._initRetryTimer) clearTimeout(this._initRetryTimer);
+    const gen = this._frameGeneration;
+    // Counted per retry that fired, not per failed init: a card's setup can
+    // run two inits in quick succession (a resize or move during start), and
+    // counting both doubled the first real retry to 60 s.
+    const delay = Math.min(30_000 * 2 ** this._initRetries, 5 * 60_000);
+    this._initRetryTimer = setTimeout(() => {
+      this._initRetryTimer = null;
+      // A teardown or another init took over: that generation owns retries.
+      if (gen !== this._frameGeneration || !this._map) return;
+      if (this.viewPaused && this._cfg.preload_while_hidden !== true) {
+        // Hidden: try again later rather than loading into an unseen card.
+        this._scheduleInitRetry();
+        return;
+      }
+      this._initRetries++;
+      this._clearLayers();
+      void this._initRadar();
+    }, delay);
+  }
+
   private async _initRadar(): Promise<void> {
     // Increment generation before the first await so any concurrently-running
     // _initRadar call (same-gen double-start) aborts at its next gen check.
@@ -2655,10 +2673,12 @@ export class RadarPlayer {
     try {
       pastFrames = await this._fetchPaths();
     } catch {
-      return; // network/parse error — card stays blank until next nav or reload
+      // Network/parse error (or aborted by a teardown: the gen check tells).
+      if (myGen === this._frameGeneration) this._scheduleInitRetry();
+      return;
     }
     if (myGen !== this._frameGeneration) return;
-    if (pastFrames.length === 0) return; // API returned no frames
+    if (pastFrames.length === 0) { this._scheduleInitRetry(); return; } // API returned no frames
     // Awaited before any layer exists, so every tile is requested after the
     // run it's judged against was published (_tileCachePolicy). Costs one
     // small round trip on DWD load; null on failure (15-min fallback).
@@ -2670,12 +2690,13 @@ export class RadarPlayer {
         // Pin forecast frames to one run from the start, refresh on or off:
         // every tile of a frame then comes from one run, the tiles can be
         // cached (pinnedForecastPolicy), and a refresh can tell whether
-        // anything newer exists. A run used in the last 30 min is reused so
-        // its cached tiles show at once; the newest replaces it once the
-        // first load is done (_catchUpRun). Without a run frames load
-        // unpinned and the first refresh pins them.
+        // anything newer exists. A run used within the reuse window (30 min,
+        // or the refresh interval plus grace) is reused so its cached tiles
+        // show at once; the newest replaces it once the first load is done
+        // (_catchUpRun). Without a run frames load unpinned and the first
+        // refresh pins them.
         const layerName = this._dwdLayerName();
-        const startRun = chooseStartRun(run, recalledRun(layerName), Date.now(), FORECAST_REUSE_MAX_AGE_MS);
+        const startRun = chooseStartRun(run, recalledRun(layerName), Date.now(), forecastReuseMaxAgeMs(this._forecastRefreshMin()));
         pastFrames = pinToRun(pastFrames, startRun);
         rememberRun(layerName, startRun);
         this._catchUpRun = startRun < run ? run : null;
@@ -2801,8 +2822,10 @@ export class RadarPlayer {
 
         this._afterFrameInserted(insertPos);
       } else {
-        this._markRemainingFailed(order, idx + 1);
-        break;
+        const next = resumeIndexAfterFailure(order, idx);
+        this._markRemainingFailed(order, idx + 1, next === -1 ? order.length : next);
+        if (next === -1) break;
+        idx = next - 1;   // the loop's increment lands on the first forecast frame
       }
     }
 
@@ -2835,8 +2858,11 @@ export class RadarPlayer {
     }
 
     if (this._loadedSlots.length > 0) {
+      this._initRetries = 0;
       this._radarReady = true;
       this._scheduleUpdate();
+    } else {
+      this._scheduleInitRetry();
     }
 
     // Started from a cached older run: move to the newest now the loop is
@@ -2881,14 +2907,13 @@ export class RadarPlayer {
     }
   }
 
-  // Mark every not-yet-attempted frame in `order` (from `fromIdx` on) as
-  // failed. Called when a frame fails to load — the init loop aborts
-  // entirely at that point, so everything later in the load order never
-  // gets attempted. `order` isn't a contiguous numeric range once
-  // loading walks outward from "now" (see buildLoadOrder), so this
-  // can't be a simple counting loop over frame indices.
-  private _markRemainingFailed(order: number[], fromIdx: number): void {
-    for (let k = fromIdx; k < order.length; k++) this._setSegment(order[k], 'failed');
+  // Mark the frames of `order` from `fromIdx` up to (not including) `toIdx`
+  // as failed: the ones the init loop skips after a failure (see
+  // resumeIndexAfterFailure for which). `order` isn't a contiguous numeric
+  // range once loading walks outward from "now" (see buildLoadOrder), so
+  // this can't be a simple counting loop over frame indices.
+  private _markRemainingFailed(order: number[], fromIdx: number, toIdx: number = order.length): void {
+    for (let k = fromIdx; k < toIdx; k++) this._setSegment(order[k], 'failed');
   }
 
   // ── Periodic update ──────────────────────────────────────────────────────
@@ -2960,6 +2985,9 @@ export class RadarPlayer {
     try {
       pastFrames = await this._fetchPaths();
     } catch {
+      // Torn down or re-inited while fetching: that generation arms its own
+      // chain, and a timer armed here would outlive the player.
+      if (myGen !== this._frameGeneration) return;
       this._scheduleUpdate(); // retry on next cycle
       return;
     }

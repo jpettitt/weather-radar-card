@@ -61,9 +61,23 @@ export interface TileCachePolicy {
   finalBefore?: number;
 }
 
-/** How long a DWD run's forecast tiles stay reusable after the run. A
- *  reload starts from the last run used only within this window (#279). */
-export const FORECAST_REUSE_MAX_AGE_MS = 30 * 60_000;
+/** The least time a DWD run's forecast tiles stay reusable after the run. A
+ *  reload starts from the last run used only within the reuse window (#279). */
+export const FORECAST_REUSE_FLOOR_MS = 30 * 60_000;
+// Added to the refresh interval: the run was already a few minutes old when
+// it was pinned, and the card may be switched away from for a while.
+const FORECAST_REUSE_GRACE_MS = 10 * 60_000;
+
+/**
+ * How long a run stays reusable: the refresh interval plus grace, with the
+ * floor. With a 60-minute refresh, a dashboard switch 45 minutes after the
+ * last refresh used to discard tiles the card was showing a moment before;
+ * a 5-minute refresh keeps the floor so usable tiles aren't discarded any
+ * sooner than before (@m42cel, #279). `refreshMinutes` 0 means refresh off.
+ */
+export function forecastReuseMaxAgeMs(refreshMinutes: number): number {
+  return Math.max(FORECAST_REUSE_FLOOR_MS, refreshMinutes * 60_000 + FORECAST_REUSE_GRACE_MS);
+}
 // Pinned tiles must be requested this long before their frame time to count
 // as final, so the request can't land after DWD has started answering it
 // with observations.
@@ -75,11 +89,15 @@ const PINNED_FINAL_MARGIN_MS = 5 * 60_000;
  * is fixed; once it passes, DWD serves the newest observation under the same
  * URL instead (measured 2026-10-08: +30..+115 min steps byte-identical across
  * 11 min and a new run's listing; the +5 step changed as its time passed).
- * Kept only as long as a reload could still start from this run.
+ * Kept only as long as a reload could still start from this run
+ * (`reuseMaxAgeMs`, see forecastReuseMaxAgeMs): the same window as the
+ * start-up choice, or a reload would pick a run whose tiles had expired.
  */
-export function pinnedForecastPolicy(frameTimeMs: number, runMs: number): TileCachePolicy {
+export function pinnedForecastPolicy(
+  frameTimeMs: number, runMs: number, reuseMaxAgeMs: number = FORECAST_REUSE_FLOOR_MS,
+): TileCachePolicy {
   return {
-    persistUntil: runMs + FORECAST_REUSE_MAX_AGE_MS + PINNED_FINAL_MARGIN_MS,
+    persistUntil: runMs + reuseMaxAgeMs + PINNED_FINAL_MARGIN_MS,
     finalBefore: frameTimeMs - PINNED_FINAL_MARGIN_MS,
   };
 }

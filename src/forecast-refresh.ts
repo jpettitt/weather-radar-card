@@ -20,6 +20,17 @@ export function dwdIsoTime(epochSec: number): string {
   return new Date(epochSec * 1000).toISOString().split('.')[0] + 'Z';
 }
 
+/**
+ * Epoch ms of a `dwd_time_override`, or null when it is unset or not a date.
+ * Shared by the radar player and the wind anchor: parsed separately, a bad
+ * value reached the wind overlays as NaN and threw inside map init.
+ */
+export function parseDwdTimeOverride(override: string | undefined | null): number | null {
+  if (!override) return null;
+  const ms = new Date(override).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 /** Newest REFERENCE_TIME (epoch seconds) in a GetCapabilities document, or null. */
 export function parseLatestRun(xml: string): number | null {
   const m = xml.match(/<Dimension[^>]*name="REFERENCE_TIME"[^>]*>([^<]*)</);

@@ -1518,8 +1518,12 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       const value = target.value?.trim();
 
       if (value === '' || value === null) {
-        // Remove config value
-        delete this._config[target.configValue];
+        // Remove it from a copy: this._config can be the object HA holds,
+        // and an in-place delete fires config-changed with an unchanged
+        // reference that nothing re-renders from.
+        const next = { ...this._config };
+        delete next[target.configValue];
+        this._config = next;
       } else {
         // Check if it's a number or entity ID
         const numValue = parseFloat(value);

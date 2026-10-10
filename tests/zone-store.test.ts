@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   zoneKeyFromUrl,
   quantizeGeometry,
@@ -24,6 +24,7 @@ function memKV(): ZoneKV & { map: Map<string, StoredZone> } {
     get: (k) => Promise.resolve(map.get(k)),
     set: (k, v) => { map.set(k, v); return Promise.resolve(); },
     delete: (k) => { map.delete(k); return Promise.resolve(); },
+    deleteMany: (ks) => { for (const k of ks) map.delete(k); return Promise.resolve(); },
     keysByAge: () => Promise.resolve(
       [...map.entries()]
         .map(([key, v]) => ({ key, ts: v.ts }))
@@ -140,6 +141,18 @@ describe('sweepZones', () => {
     expect(kv.map.has('z0')).toBe(false);   // five oldest gone
     expect(kv.map.has('z4')).toBe(false);
     expect(kv.map.has('z5')).toBe(true);
+  });
+
+  it('removes expired and overflow entries in one deleteMany call', async () => {
+    const now = Date.now();
+    kv.map.set('stale', { ts: now - TTL_MS - 1, c: 0, data: '{}' });
+    for (let i = 0; i < MAX_ENTRIES + 2; i++) kv.map.set(`z${i}`, { ts: now + i, c: 0, data: '{}' });
+    const spy = vi.spyOn(kv, 'deleteMany');
+    const removed = await sweepZones(kv, now);
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0][0]).toEqual(['stale', 'z0', 'z1']);
+    expect(removed).toBe(3);
+    expect(kv.map.size).toBe(MAX_ENTRIES);
   });
 
   it('purges legacy localStorage zone caches (the format that filled the quota)', async () => {

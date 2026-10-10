@@ -12,6 +12,7 @@ import {
   isFinalRequest,
   persistUntilFor,
   pinnedForecastPolicy,
+  forecastReuseMaxAgeMs,
   persistedGet,
   sharedFetch,
   storeTile,
@@ -310,5 +311,20 @@ describe('pinnedForecastPolicy / isFinalRequest', () => {
     expect(isFinalRequest(undefined, 0)).toBe(false);
     expect(isFinalRequest({}, 0)).toBe(false);
     expect(isFinalRequest({ persistUntil: 1 }, Date.now())).toBe(true);
+  });
+});
+
+describe('forecastReuseMaxAgeMs (#279)', () => {
+  it('is the refresh interval plus 10 minutes, never less than 30', () => {
+    expect(forecastReuseMaxAgeMs(0)).toBe(30 * MIN);     // refresh off
+    expect(forecastReuseMaxAgeMs(5)).toBe(30 * MIN);     // a short refresh keeps the floor
+    expect(forecastReuseMaxAgeMs(15)).toBe(30 * MIN);
+    expect(forecastReuseMaxAgeMs(30)).toBe(40 * MIN);
+    expect(forecastReuseMaxAgeMs(60)).toBe(70 * MIN);
+  });
+
+  it('pinnedForecastPolicy keeps tiles for the same window, plus the final margin', () => {
+    const run = Date.UTC(2026, 9, 8, 16, 35);
+    expect(pinnedForecastPolicy(run + 60 * MIN, run, forecastReuseMaxAgeMs(60)).persistUntil).toBe(run + 75 * MIN);
   });
 });

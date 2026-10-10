@@ -18,6 +18,20 @@ import { formatNumber, type FrontendLocaleData } from 'custom-card-helpers';
 // returned bbox may legitimately have maxLng > 180 (continuous-window
 // convention; Leaflet accepts unwrapped longitudes). centroidLngLat
 // wraps its result back into [-180, 180].
+// Not Math.min(...values): that passes every element as an argument and
+// throws RangeError past ~100k, which a marine warning's zone union reaches.
+function minMax(values: number[]): [number, number] {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    // Stryker disable next-line EqualityOperator: `<` vs `<=` assigns an identical value
+    if (v < min) min = v;
+    // Stryker disable next-line EqualityOperator: `>` vs `>=` assigns an identical value
+    if (v > max) max = v;
+  }
+  return [min, max];
+}
+
 export function geometryLngLatBounds(
   geom: GeoJSON.Geometry,
 ): { minLng: number; minLat: number; maxLng: number; maxLat: number } | null {
@@ -47,16 +61,14 @@ export function geometryLngLatBounds(
   // Stryker restore BlockStatement
   if (!any) return null;
 
-  let minLng = Math.min(...lngs);
-  let maxLng = Math.max(...lngs);
+  let [minLng, maxLng] = minMax(lngs);
   // Stryker disable next-line EqualityOperator: at exactly 180 both windows are equally wide, so the tighter-window check below keeps naive either way
   if (maxLng - minLng > 180) {
     // Suspected dateline crossing — recompute in a 0..360 window.
     // (A real single geometry spanning >180° of longitude without
     // crossing the dateline doesn't exist in our data sources.)
     const shifted = lngs.map((l) => (l < 0 ? l + 360 : l));
-    const sMin = Math.min(...shifted);
-    const sMax = Math.max(...shifted);
+    const [sMin, sMax] = minMax(shifted);
     // Only adopt the shifted window if it's actually tighter —
     // degenerate geometries keep the naive answer.
     if (sMax - sMin < maxLng - minLng) {
@@ -73,7 +85,11 @@ export function geometryLngLatBounds(
 // / unsupported geometries. Longitude is wrapped to [-180, 180] (the
 // bbox may use a continuous >180 window across the dateline).
 export function centroidLngLat(geom: GeoJSON.Geometry): [number, number] | null {
-  const b = geometryLngLatBounds(geom);
+  return boundsCentreLngLat(geometryLngLatBounds(geom));
+}
+
+/** centroidLngLat for bounds already computed (a caller that memoises them). */
+export function boundsCentreLngLat(b: ReturnType<typeof geometryLngLatBounds>): [number, number] | null {
   if (!b) return null;
   let lng = (b.minLng + b.maxLng) / 2;
   // Stryker disable next-line EqualityOperator: 180 and -180 are the same meridian, both inside the documented range

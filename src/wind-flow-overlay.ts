@@ -94,13 +94,13 @@ const REFERENCE_PX_PER_M = 0.00255;
 const REFERENCE_PX_PER_MPS_PER_FRAME = 0.1;
 const MAX_PX_PER_MPS_PER_FRAME = 0.1;
 const MIN_PX_PER_MPS_PER_FRAME = 0.01;
-// Refresh anchored to the top of each clock hour. Our "current" time is
-// already hour-bucketed (Math.trunc(timeMs / 3_600_000)), so the displayed
-// data only changes when a new hour rolls in or DWD publishes a fresher
-// ICON run for the same hour. Top-of-hour catches both cases at the
-// instant they happen — polling more often returns identical data.
-// 30 sec offset gives DWD a window to publish if a new model run lands at HH:00.
-const HOURLY_REFRESH_OFFSET_MS = 30_000;
+// Refresh on the half hour. The wind shown is the model step nearest to
+// now, so it changes at the half-step (HH:30 for ICON's hourly slices,
+// xx:30 for AICON's 3-hourly ones); the top-of-hour tick also picks up a
+// fresher run for the same step. A tick whose step hasn't changed is
+// answered from the fetcher's cache. 30 sec offset gives DWD a publish window.
+const REFRESH_TICK_MS = 30 * 60_000;
+const REFRESH_TICK_OFFSET_MS = 30_000;
 
 export interface WindFlowOverlayOptions {
   /** Anchor time in epoch ms. Snapped to the hourly ICON boundary. Omit for "current". */
@@ -167,8 +167,11 @@ export class WindFlowOverlay {
     this._color = opts.particleColor ?? 'rgba(60,60,80,0.55)';
     this._source = opts.source ?? DEFAULT_WIND_SOURCE;
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
-    if (opts.timeMs != null) {
-      const snapped = Math.trunc(opts.timeMs / 3_600_000) * 3_600_000;
+    // NaN (an unparseable dwd_time_override) would throw in toISOString and
+    // abort the host's map init; show live wind instead.
+    if (opts.timeMs != null && Number.isFinite(opts.timeMs)) {
+      // Nearest hour; effectiveTimeIso rounds again to the source's step.
+      const snapped = Math.round(opts.timeMs / 3_600_000) * 3_600_000;
       this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
     }
 
@@ -228,17 +231,21 @@ export class WindFlowOverlay {
       this._reducedMotionMql.addEventListener('change', this._onReducedMotionChange);
     }
 
-    this._scheduleHourlyRefresh();
+    this._scheduleRefreshTick();
     void this._restart();
   }
 
-  // Self-rescheduling timer that wakes shortly after each clock hour to
-  // pick up the new hour bucket / model run. Independent of map events.
-  private _scheduleHourlyRefresh(): void {
+  // Self-rescheduling timer that wakes shortly after each half hour to pick
+  // up the nearest step / a new model run. Independent of map events.
+  private _scheduleRefreshTick(): void {
+    // Cancel before arming: with preload_while_hidden, pause() keeps the
+    // chain alive and resume() arms again, so every hide/show forked a chain
+    // that destroy() (one handle) couldn't stop.
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     if (this._paused && !this._preloadWhileHidden) return;
     const now = Date.now();
-    const nextHour = Math.ceil(now / 3_600_000) * 3_600_000;
-    const delay = nextHour - now + HOURLY_REFRESH_OFFSET_MS;
+    const nextTick = Math.ceil(now / REFRESH_TICK_MS) * REFRESH_TICK_MS;
+    const delay = nextTick - now + REFRESH_TICK_OFFSET_MS;
     this._refreshTimer = setTimeout(() => {
       if (this._paused) {
         // preload_while_hidden kept this chain alive — refetch the grid
@@ -249,7 +256,7 @@ export class WindFlowOverlay {
       } else {
         void this._restart();
       }
-      this._scheduleHourlyRefresh();
+      this._scheduleRefreshTick();
     }, delay);
   }
 
@@ -282,7 +289,7 @@ export class WindFlowOverlay {
     // Hour bucket may have rolled while hidden — _restart refetches the
     // grid when the cached one expired, so a plain restart covers both
     // "resume animation" and "pick up the new model run".
-    this._scheduleHourlyRefresh();
+    this._scheduleRefreshTick();
     void this._restart();
   }
 

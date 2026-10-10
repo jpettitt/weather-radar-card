@@ -19,11 +19,13 @@ const MIN_ICON_PX = 10;
 // browser's per-origin connection pool. (The bulk fetcher's request cache
 // dedupes anything redundant the debounce would otherwise filter.)
 const MOVE_DEBOUNCE_MS = 50;
-// Refresh anchored to the top of each clock hour. Our "current" time is
-// hour-bucketed already, so the displayed data only changes at the hour
-// rollover or when DWD publishes a fresher ICON run for the same hour
-// — top-of-hour catches both. 30 sec offset gives DWD a publish window.
-const HOURLY_REFRESH_OFFSET_MS = 30_000;
+// Refresh on the half hour. The wind shown is the model step nearest to
+// now, so it changes at the half-step (HH:30 for ICON's hourly slices,
+// xx:30 for AICON's 3-hourly ones); the top-of-hour tick also picks up a
+// fresher run for the same step. A tick whose step hasn't changed is
+// answered from the fetcher's cache. 30 sec offset gives DWD a publish window.
+const REFRESH_TICK_MS = 30 * 60_000;
+const REFRESH_TICK_OFFSET_MS = 30_000;
 
 export type WindStyle = 'barbs' | 'arrows';
 
@@ -65,9 +67,12 @@ export class WindOverlay {
     this._density = Number.isFinite(d) && d > 0 ? Math.max(0.25, Math.min(4, d)) : 1;
     const s = Number(opts.size);
     this._sizeMult = Number.isFinite(s) && s > 0 ? Math.max(0.5, Math.min(2, s)) : 1;
-    if (opts.timeMs != null) {
-      // Snap to the hourly ICON boundary; DWD rejects off-boundary timestamps.
-      const snapped = Math.trunc(opts.timeMs / 3_600_000) * 3_600_000;
+    // NaN (an unparseable dwd_time_override) would throw in toISOString and
+    // abort the host's map init; show live wind instead.
+    if (opts.timeMs != null && Number.isFinite(opts.timeMs)) {
+      // Nearest hour; effectiveTimeIso rounds again to the source's step
+      // (DWD answers an off-step time with its oldest slice).
+      const snapped = Math.round(opts.timeMs / 3_600_000) * 3_600_000;
       this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
     } else {
       this._timeIso = null;
@@ -80,7 +85,7 @@ export class WindOverlay {
       this._debounceTimer = setTimeout(() => this._refresh(), MOVE_DEBOUNCE_MS);
     };
     map.on('moveend', this._moveHandler);
-    this._scheduleHourlyRefresh();
+    this._scheduleRefreshTick();
     void this._refresh();
   }
 
@@ -114,21 +119,24 @@ export class WindOverlay {
     this._paused = false;
     // The hour bucket may have rolled over while hidden — refresh
     // immediately rather than waiting for the next boundary, then
-    // re-arm the hourly chain.
-    this._scheduleHourlyRefresh();
+    // re-arm the refresh chain.
+    this._scheduleRefreshTick();
     void this._refresh();
   }
 
-  // Self-rescheduling timer that wakes shortly after each clock hour to
-  // pick up the new hour bucket / model run. Independent of map events.
-  private _scheduleHourlyRefresh(): void {
+  // Self-rescheduling timer that wakes shortly after each half hour to pick
+  // up the nearest step / a new model run. Independent of map events.
+  private _scheduleRefreshTick(): void {
+    // Cancel before arming so there is only ever one chain (the streamlines
+    // overlay forked one per hide/show under preload_while_hidden).
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     if (this._paused) return;
     const now = Date.now();
-    const nextHour = Math.ceil(now / 3_600_000) * 3_600_000;
-    const delay = nextHour - now + HOURLY_REFRESH_OFFSET_MS;
+    const nextTick = Math.ceil(now / REFRESH_TICK_MS) * REFRESH_TICK_MS;
+    const delay = nextTick - now + REFRESH_TICK_OFFSET_MS;
     this._refreshTimer = setTimeout(() => {
       void this._refresh();
-      this._scheduleHourlyRefresh();
+      this._scheduleRefreshTick();
     }, delay);
   }
 

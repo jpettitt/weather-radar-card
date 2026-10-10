@@ -16,6 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Dark tile maps are greyer** — the inverted map (`Auto` in dark mode, `MapTiles` with `theme_mode: dark`, `custom_tile_theme: invert`, and the vector map's raster fallback in dark mode) keeps less of its colour (saturation 0.15, was HA's 0.3), so green forests and pink roads no longer compete with the radar.
+- **Zooming out no longer keeps the zoomed-in tile grid** — the loop pinned its tile zoom to the highest level visited, so a four-level zoom-out drew 24 tiles per frame instead of 3 and a default loop could trip RainViewer's request limit. Tiles now follow the map's zoom.
+- **Wind shows the model step nearest to now** — the DWD wind overlays rounded the time down to the model's step, so ICON showed a slice up to an hour old and AICON (3-hourly, the default outside the US) one up to almost 3 hours old. They now pick the nearest step and refresh every half hour, so what's shown is within half a step of now.
+- **Cached forecast tiles are kept as long as the refresh interval** — after a reload or a dashboard switch, stored DWD forecast tiles were reused only if their run was at most 30 minutes old, so with a long `forecast_refresh_minutes` a switch away and back discarded tiles the card was showing a moment before. The window is now the refresh interval plus 10 minutes, never less than 30. Suggested by [@m42cel](https://github.com/m42cel) ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)).
+- **Wildfire overlay does less per Home Assistant update** — each fire's extent is computed once per fetch instead of on every state change (2.3 ms a tick with 90 fires on a Mac, more on a tablet).
+
+### Fixed
+
+- **Alert popups stay open across the 60-second refresh** — the alerts layer now redraws only when the alert set or its geometry changed, as the wildfire layer already did.
+- **`playback_speed` applies from the first frame** — it was set before the player existed, so without the viewer layer control the YAML value never took effect.
+- **An invalid `dwd_time_override` no longer leaves the map without radar** when a wind overlay is on; the card falls back to the current time, as the loop does.
+- **Re-centre on mobile returns to the user's device tracker**, as the initial view does, instead of the home location.
+- **Streamlines overlay with `preload_while_hidden`** — every hide and show started another hourly refresh, and the extra chains outlived the card.
+- **Clearing a centre coordinate in the editor** changed Home Assistant's own copy of the config in place.
+- **Very large alert polygons** (a marine warning spanning many zones) could stop the alerts layer refreshing.
+- **Zone cache sweep** — expired zone shapes are removed in one IndexedDB transaction instead of one each; the whole 11,600-zone set expiring together stalled a tablet for seconds.
+- **Tile retries end with the tile** — a retry armed after a failed tile request survived the tile leaving the map and made a request anyway; with no network, a tablet's tiles kept retrying for the life of the page, more with every layer rebuild. Rate-limited or offline attempts now also give up after 10 tries.
+- **A loop no longer freezes after a tab switch or a pan** — a refresh that found nothing newer (about every other one) left the animation stopped, with the toolbar still showing *playing*, until a later refresh shifted a frame in.
+- **A card that loaded no frames retries on its own** — a dashboard that started before its Wi-Fi was up, or during a source outage, showed an empty map until a pan or a reload. It now retries after 30 s, backing off to 5 minutes.
+- **A failed past frame no longer takes the forecast with it** — the loop stops at the archive boundary as before, but DWD's forecast frames still load.
+- **A refresh interrupted by a teardown** no longer arms one last update timer on the discarded player.
 
 ## [3.12.0] - 2026-10-09
 

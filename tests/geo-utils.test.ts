@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { geometryLngLatBounds, centroidLngLat, haversineKm, formatDistance, formatArea } from '../src/geo-utils';
+import { geometryLngLatBounds, centroidLngLat, boundsCentreLngLat, haversineKm, formatDistance, formatArea } from '../src/geo-utils';
 
 // A simple unit-square Polygon centred on the origin — easy to reason about
 // for bounds and centroid tests.
@@ -298,5 +298,28 @@ describe('geometryLngLatBounds — antimeridian', () => {
       coordinates: [[[179, 50], [-170, 52], [-175, 51], [-178, 50], [179, 50]]],
     };
     expect(centroidLngLat(poly)).toEqual([-175.5, 51]);
+  });
+});
+
+describe('geometryLngLatBounds on very large geometries', () => {
+  it('handles a ring beyond the spread-argument limit (a marine warning zone union)', () => {
+    // 150k vertices: Math.min(...lngs) threw RangeError here in V8.
+    const n = 150_000;
+    const ring: GeoJSON.Position[] = [];
+    for (let i = 0; i < n; i++) ring.push([-70 + (i % 100) / 100, 40 + Math.floor(i / 100) / 1000]);
+    ring.push(ring[0]);
+    const b = geometryLngLatBounds({ type: 'Polygon', coordinates: [ring] });
+    expect(b).not.toBeNull();
+    expect(b!.minLng).toBeCloseTo(-70, 6);
+    expect(b!.maxLng).toBeCloseTo(-69.01, 6);
+    expect(b!.minLat).toBeCloseTo(40, 6);
+  });
+});
+
+describe('boundsCentreLngLat', () => {
+  it('is the bbox centre with the longitude wrapped, like centroidLngLat', () => {
+    expect(boundsCentreLngLat({ minLng: 170, minLat: 50, maxLng: 190, maxLat: 52 })).toEqual([180, 51]);
+    expect(boundsCentreLngLat({ minLng: 175, minLat: 50, maxLng: 190, maxLat: 52 })).toEqual([-177.5, 51]);
+    expect(boundsCentreLngLat(null)).toBeNull();
   });
 });

@@ -116,7 +116,7 @@ The wind overlay is **not coupled to the radar source** — both ICON and NDFD a
 
 ### Refresh cadence
 
-The overlay schedules a self-rescheduling timer that wakes shortly after each clock hour (HH:00:30) — exactly when the underlying ICON hour bucket changes (or when DWD publishes a fresher run for the same hour). One fetch per hour per overlay; no fixed-interval polling.
+The overlay shows the model step nearest to now (ICON hourly, AICON 3-hourly, NDFD from its own time list), so what's shown is never more than half a step from the current time. A self-rescheduling timer wakes shortly after each half hour (HH:00:30 and HH:30:30): the half-hour tick is where the nearest step changes, and the top-of-hour tick also picks up a fresher run for the same step. A tick whose step hasn't changed is answered from the fetcher's cache; no fixed-interval polling. Ships in 3.13.0-beta1.
 
 ### Reduced motion
 
