@@ -43,6 +43,7 @@ function sampleInternalValues(): Record<string, unknown> {
     maxRetries: 3,
     retryDelay: 500,
     maxServerErrorRetries: 6,
+    maxRateLimitRetries: 10,
     on429: vi.fn(),
     on5xx: vi.fn(),
     onTileRecovered: vi.fn(),

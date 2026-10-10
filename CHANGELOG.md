@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Clearing a centre coordinate in the editor** changed Home Assistant's own copy of the config in place.
 - **Very large alert polygons** (a marine warning spanning many zones) could stop the alerts layer refreshing.
 - **Zone cache sweep** — expired zone shapes are removed in one IndexedDB transaction instead of one each; the whole 11,600-zone set expiring together stalled a tablet for seconds.
+- **Tile retries end with the tile** — a retry armed after a failed tile request survived the tile leaving the map and made a request anyway; with no network, a tablet's tiles kept retrying for the life of the page, more with every layer rebuild. Rate-limited or offline attempts now also give up after 10 tries.
 
 ## [3.12.0] - 2026-10-09
 
