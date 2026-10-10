@@ -479,16 +479,20 @@ export function resolveSourceForBbox(opts: FetchWindGridOptions): WindSource {
   return DEFAULT_WIND_SOURCE;
 }
 
-/** The time subset to actually request, floored to the source's slice step.
+/** The time subset to actually request: the source's slice step nearest to
+ * the wanted time.
  *
  * GeoServer silently returns the OLDEST slice — no error — for a `time`
  * subset that's missing or off-step, and DWD's coverages span days of
  * history (verified live 2026-09-23, issue #262: a day-old wind field
  * that flips direction as the real wind turns). So DWD sources always
- * get a time: the caller's if given, else now, floored to `timeStepHours`
- * (ICON hourly, AICON 3-hourly). NDFD has no `timeStepHours`: it passes
- * through here unchanged, and fetchWindGrid picks its slice from the
- * coverage's own time list (ndfdTimeIso).
+ * get a time: the caller's if given, else now, rounded to `timeStepHours`
+ * (ICON hourly, AICON 3-hourly). Nearest rather than floored: floored,
+ * AICON (the default outside the US) showed a slice up to almost 3 hours
+ * old. Its time axis is a period reaching days ahead (DescribeCoverage,
+ * probed 2026-10-10), so the next step is always on it. NDFD has no
+ * `timeStepHours`: it passes through here unchanged, and fetchWindGrid
+ * picks its slice from the coverage's own time list (ndfdTimeIso).
  *
  * Resolves the source from the bbox so an NDFD config that fell back to
  * AICON outside the US is timed too. */
@@ -498,7 +502,7 @@ export function effectiveTimeIso(opts: FetchWindGridOptions, nowMs: number): str
   const base = opts.timeIso ? Date.parse(opts.timeIso) : nowMs;
   if (!Number.isFinite(base)) return opts.timeIso || null;
   const stepMs = stepH * 3_600_000;
-  return new Date(Math.trunc(base / stepMs) * stepMs).toISOString().split('.')[0] + 'Z';
+  return new Date(Math.round(base / stepMs) * stepMs).toISOString().split('.')[0] + 'Z';
 }
 
 /** Build the WCS GetCoverage URL for `opts` against `caps`. Exported for
