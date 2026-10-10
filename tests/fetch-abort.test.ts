@@ -591,4 +591,77 @@ describe('createFetchTile (fetch-tile-layer)', () => {
       expect(on5xx).not.toHaveBeenCalled();
     });
   });
+
+  // ── Retry chains end with the tile (2026-10-10 review) ────────────────
+  //
+  // A retry timer armed after a failed attempt survived tileunload/remove:
+  // the lifecycle aborted the already-settled controller, the timer fired
+  // anyway, and the orphaned tile made a real request. The 429/statusless
+  // branch had no attempt cap either, so an offline tablet's tiles retried
+  // for the life of the page.
+
+  describe('retry chains end with the tile', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    function makeWiredLayerStub() {
+      const listeners = new Map<string, (e: { tile?: HTMLElement }) => void>();
+      return {
+        ...makeFetchLayerStub(),
+        listeners,
+        on: vi.fn((event: string, fn: (e: { tile?: HTMLElement }) => void) => { listeners.set(event, fn); }),
+        _tiles: {} as Record<string, { el: HTMLElement }>,
+      };
+    }
+
+    it('tileunload during a retry wait cancels the retry and settles the pending count', async () => {
+      const layer = makeWiredLayerStub();
+      layer.options = { maxRetries: 3, retryDelay: 1000 };
+      wireAbortLifecycle(layer as never);
+      const done = vi.fn();
+      const tile = createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done) as TileWithAbort;
+      fetchCalls[0].reject(new Error('boom'));
+      await vi.advanceTimersByTimeAsync(0);          // retry armed for 1 s
+      expect(tile.__wrcRetry).not.toBeNull();
+      layer.listeners.get('tileunload')!({ tile });
+      expect(layer._tilePending).toBe(0);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(fetchCalls.length).toBe(1);             // no orphaned request
+      expect(layer._tileFailed).toBe(0);
+      expect(done).not.toHaveBeenCalled();
+    });
+
+    it('remove cancels tiles that are waiting to retry, not only in-flight ones', async () => {
+      const layer = makeWiredLayerStub();
+      layer.options = { maxRetries: 3, retryDelay: 1000 };
+      wireAbortLifecycle(layer as never);
+      const tile = createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, vi.fn()) as TileWithAbort;
+      layer._tiles = { '0:0:0': { el: tile } };
+      fetchCalls[0].reject(new Error('boom'));
+      await vi.advanceTimersByTimeAsync(0);
+      layer.listeners.get('remove')!({});
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(fetchCalls.length).toBe(1);
+      expect(layer._tilePending).toBe(0);
+    });
+
+    it('statusless errors with a rate limiter give up after maxRateLimitRetries', async () => {
+      const layer = makeWiredLayerStub();
+      const on429 = vi.fn();
+      layer.options = { maxRetries: 1, retryDelay: 0, rateLimiter: new RateLimiter(500), maxRateLimitRetries: 3, on429 };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+      for (let i = 0; i < 3; i++) {
+        fetchCalls[i].reject(new Error('Failed to fetch'));   // offline: no status
+        await vi.advanceTimersByTimeAsync(61_000);           // a limiter window per attempt
+      }
+      expect(on429).toHaveBeenCalledTimes(3);
+      expect(fetchCalls.length).toBe(3);
+      expect(layer._tileFailed).toBe(1);
+      expect(layer._tilePending).toBe(0);
+      expect(done).toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchCalls.length).toBe(3);            // and stays given up
+    });
+  });
 });
