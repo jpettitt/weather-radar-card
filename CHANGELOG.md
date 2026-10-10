@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Alert popups stay open across the 60-second refresh** — the alerts layer now redraws only when the alert set or its geometry changed, as the wildfire layer already did.
+- **`playback_speed` applies from the first frame** — it was set before the player existed, so without the viewer layer control the YAML value never took effect.
+- **An invalid `dwd_time_override` no longer leaves the map without radar** when a wind overlay is on; the card falls back to the current time, as the loop does.
+- **Re-centre on mobile returns to the user's device tracker**, as the initial view does, instead of the home location.
+- **Streamlines overlay with `preload_while_hidden`** — every hide and show started another hourly refresh, and the extra chains outlived the card.
+- **Clearing a centre coordinate in the editor** changed Home Assistant's own copy of the config in place.
+- **Very large alert polygons** (a marine warning spanning many zones) could stop the alerts layer refreshing.
+- **Zone cache sweep** — expired zone shapes are removed in one IndexedDB transaction instead of one each; the whole 11,600-zone set expiring together stalled a tablet for seconds.
+
 ## [3.12.0] - 2026-10-09
 
 > **Stable release.** US wind now shows the current hour in the right place, at the right speed. NOAA radar covers Alaska, Hawaii, Puerto Rico and Guam, radar loops reload from the browser with DWD's forecast now included, every frame says how old it is, and wildfire popups say much more. **One breaking change:** without a CARTO key, `map_style: Auto` uses Home Assistant's map tiles (see Changed). The entries below are what changed since 3.11.0.

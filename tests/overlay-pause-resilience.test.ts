@@ -30,9 +30,12 @@ vi.mock('leaflet', () => {
   const layerGroup = vi.fn(() => ({ addTo: vi.fn(), remove: vi.fn(), clearLayers: vi.fn() }));
   const DomUtil = { create: vi.fn(() => ({ style: {} })), setPosition: vi.fn() };
   const DomEvent = { disableClickPropagation: vi.fn(), on: vi.fn() };
+  // Enough of geoJSON/canvas for the alerts layer's real render path to run.
+  const geoJSON = vi.fn(() => ({ addTo: vi.fn() }));
+  const canvas = vi.fn(() => ({}));
   return {
-    Layer, TileLayer, Control, layerGroup, DomUtil, DomEvent,
-    default: { Layer, TileLayer, Control, layerGroup, DomUtil, DomEvent },
+    Layer, TileLayer, Control, layerGroup, DomUtil, DomEvent, geoJSON, canvas,
+    default: { Layer, TileLayer, Control, layerGroup, DomUtil, DomEvent, geoJSON, canvas },
   };
 });
 
@@ -185,6 +188,14 @@ describe('WindOverlay pause/resume', () => {
     expect(o._refreshTimer).not.toBeNull();
     clearTimeout(o._refreshTimer);
   });
+
+  it('_scheduleHourlyRefresh replaces an armed chain rather than adding one', () => {
+    const o = bareWind();
+    o._scheduleHourlyRefresh();
+    o._scheduleHourlyRefresh();
+    expect(vi.getTimerCount()).toBe(1);
+    clearTimeout(o._refreshTimer);
+  });
 });
 
 describe('WindFlowOverlay pause/resume', () => {
@@ -206,6 +217,19 @@ describe('WindFlowOverlay pause/resume', () => {
     expect(w._paused).toBe(true);
     expect(w._running).toBe(false);
     expect(w._refreshTimer).toBeNull();
+  });
+
+  it('resume with preload_while_hidden re-arms the hourly chain instead of forking it', () => {
+    const w = bareFlow();
+    w._preloadWhileHidden = true;
+    w._restart = vi.fn(async () => {});
+    w._scheduleHourlyRefresh();         // armed at construction
+    expect(vi.getTimerCount()).toBe(1);
+    w.pause();                           // preload keeps the chain alive
+    expect(w._refreshTimer).not.toBeNull();
+    w.resume();
+    expect(vi.getTimerCount()).toBe(1);  // one chain, not two
+    clearTimeout(w._refreshTimer);
   });
 
   it('_restart is a no-op while paused (resize/moveend firing on a hidden card)', async () => {
@@ -453,5 +477,74 @@ describe('LightningLayer buffer invalidation', () => {
     l._refreshFromHass();
     expect(l._bufferDirty).toBe(false);
     expect(l._scheduleRedraw).not.toHaveBeenCalled();
+  });
+});
+
+// ── 4. Alerts refresh keeps an unchanged layer (and its open popup) ─────
+//
+// _fetch rendered unconditionally, so every 60 s refresh tore the polygon
+// layer down and rebuilt it, closing whatever popup was open (2026-10-10
+// review). The other render paths already passed skipIfDecisionsUnchanged.
+
+describe('NwsAlertsLayer refresh with an unchanged alert set', () => {
+  const tornado = (id = 'https://api.weather.gov/alerts/urn:oid:1'): any => ({
+    type: 'Feature',
+    id,
+    properties: {
+      event: 'Tornado Warning', severity: 'Extreme', urgency: 'Immediate', certainty: 'Observed',
+      affectedZones: [],
+    },
+    geometry: { type: 'Polygon', coordinates: [[[-97, 35], [-96, 35], [-96, 36], [-97, 35]]] },
+  });
+
+  function bareAlertsForFetch(): any {
+    const l = Object.create(NwsAlertsLayer.prototype);
+    l._gen = 0;
+    l._abortCtrl = null;
+    l._zoneAbortCtrl = null;
+    l._failureCount = 0;
+    l._timer = null;
+    l._pausedAt = null;
+    l._features = [];
+    l._renderDecisions = new Map();
+    l._polygonLayer = null;
+    l._zoneCache = new Map();
+    l._map = { getCenter: () => ({ lat: 35, lng: -97 }), removeLayer: vi.fn(), getSize: () => ({ x: 800, y: 600 }) };
+    l._getConfig = () => ({ alerts_types: ['Tornado Warning'] });
+    l._resolveZones = vi.fn(async () => {});
+    return l;
+  }
+
+  function stubAlerts(features: unknown[]): void {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ type: 'FeatureCollection', features }),
+    })));
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('does not rebuild the polygon layer when the refresh returns the same alerts', async () => {
+    const l = bareAlertsForFetch();
+    stubAlerts([tornado()]);
+    await l._fetch();                       // first paint
+    const drawn = l._polygonLayer;
+    expect(drawn).not.toBeNull();
+    await l._fetch();                       // 60 s later, nothing changed
+    expect(l._map.removeLayer).not.toHaveBeenCalled();
+    expect(l._polygonLayer).toBe(drawn);
+    if (l._timer) clearTimeout(l._timer);
+  });
+
+  it('still rebuilds when an alert is updated (NWS issues a new id)', async () => {
+    const l = bareAlertsForFetch();
+    stubAlerts([tornado()]);
+    await l._fetch();
+    const drawn = l._polygonLayer;
+    stubAlerts([tornado('https://api.weather.gov/alerts/urn:oid:2')]);
+    await l._fetch();
+    expect(l._map.removeLayer).toHaveBeenCalledWith(drawn);
+    expect(l._polygonLayer).not.toBe(drawn);
+    if (l._timer) clearTimeout(l._timer);
   });
 });

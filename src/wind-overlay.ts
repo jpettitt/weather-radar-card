@@ -65,7 +65,9 @@ export class WindOverlay {
     this._density = Number.isFinite(d) && d > 0 ? Math.max(0.25, Math.min(4, d)) : 1;
     const s = Number(opts.size);
     this._sizeMult = Number.isFinite(s) && s > 0 ? Math.max(0.5, Math.min(2, s)) : 1;
-    if (opts.timeMs != null) {
+    // NaN (an unparseable dwd_time_override) would throw in toISOString and
+    // abort the host's map init; show live wind instead.
+    if (opts.timeMs != null && Number.isFinite(opts.timeMs)) {
       // Snap to the hourly ICON boundary; DWD rejects off-boundary timestamps.
       const snapped = Math.trunc(opts.timeMs / 3_600_000) * 3_600_000;
       this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
@@ -122,6 +124,9 @@ export class WindOverlay {
   // Self-rescheduling timer that wakes shortly after each clock hour to
   // pick up the new hour bucket / model run. Independent of map events.
   private _scheduleHourlyRefresh(): void {
+    // Cancel before arming so there is only ever one chain (the streamlines
+    // overlay forked one per hide/show under preload_while_hidden).
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     if (this._paused) return;
     const now = Date.now();
     const nextHour = Math.ceil(now / 3_600_000) * 3_600_000;

@@ -167,7 +167,9 @@ export class WindFlowOverlay {
     this._color = opts.particleColor ?? 'rgba(60,60,80,0.55)';
     this._source = opts.source ?? DEFAULT_WIND_SOURCE;
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
-    if (opts.timeMs != null) {
+    // NaN (an unparseable dwd_time_override) would throw in toISOString and
+    // abort the host's map init; show live wind instead.
+    if (opts.timeMs != null && Number.isFinite(opts.timeMs)) {
       const snapped = Math.trunc(opts.timeMs / 3_600_000) * 3_600_000;
       this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
     }
@@ -235,6 +237,10 @@ export class WindFlowOverlay {
   // Self-rescheduling timer that wakes shortly after each clock hour to
   // pick up the new hour bucket / model run. Independent of map events.
   private _scheduleHourlyRefresh(): void {
+    // Cancel before arming: with preload_while_hidden, pause() keeps the
+    // chain alive and resume() arms again, so every hide/show forked a chain
+    // that destroy() (one handle) couldn't stop.
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     if (this._paused && !this._preloadWhileHidden) return;
     const now = Date.now();
     const nextHour = Math.ceil(now / 3_600_000) * 3_600_000;
