@@ -351,11 +351,14 @@ option; basemap layers don't. With it:
   at least 5 minutes before its frame time (`pinnedForecastPolicy`,
   judged per request by `isFinalRequest`: a pan can refetch long after
   the layer was built, and once a frame's time passes DWD answers the
-  pinned URL with observations). They expire 35 minutes after the run.
-  Init reuses the last run pinned for that layer (`recalledRun`, in
-  localStorage) if it's at most 30 minutes old, so the forecast comes
-  from the cache, then refreshes once to the newest run (`_catchUpRun`)
-  whatever `forecast_refresh_minutes` says.
+  pinned URL with observations). They expire 5 minutes after the reuse
+  window (`forecastReuseMaxAgeMs`: 30 minutes after the run, or
+  `forecast_refresh_minutes` plus 10 if longer). Init reuses the last run
+  pinned for that layer (`recalledRun`, in localStorage) if it's within
+  that window, so the forecast comes from the cache, then refreshes once
+  to the newest run (`_catchUpRun`) whatever `forecast_refresh_minutes`
+  says. Both limits use the same window, or a reload could pick a run
+  whose tiles had already expired.
 - the store-or-not decision (`persistUntil`) is fixed when the layer
   is built, before any of its tiles are requested, and DWD init waits
   for the run list before building any layer. Deciding at download

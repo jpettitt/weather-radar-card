@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Zooming out no longer keeps the zoomed-in tile grid** — the loop pinned its tile zoom to the highest level visited, so a four-level zoom-out drew 24 tiles per frame instead of 3 and a default loop could trip RainViewer's request limit. Tiles now follow the map's zoom.
+- **Cached forecast tiles are kept as long as the refresh interval** — after a reload or a dashboard switch, stored DWD forecast tiles were reused only if their run was at most 30 minutes old, so with a long `forecast_refresh_minutes` a switch away and back discarded tiles the card was showing a moment before. The window is now the refresh interval plus 10 minutes, never less than 30. Suggested by [@m42cel](https://github.com/m42cel) ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)).
 - **Wildfire overlay does less per Home Assistant update** — each fire's extent is computed once per fetch instead of on every state change (2.3 ms a tick with 90 fires on a Mac, more on a tablet).
 
 ## [3.12.0] - 2026-10-09
