@@ -125,6 +125,7 @@
       "vector_style_muted": "Gedämpft",
       "vector_style_gray": "Grau",
       "vector_style_toner": "Toner",
+      "vector_style_classic": "Klassisch",
       "vector_labels_above": "Beschriftung über dem Radar",
       "theme_mode": "Kartendesign",
       "theme_mode_auto": "Automatisch",
