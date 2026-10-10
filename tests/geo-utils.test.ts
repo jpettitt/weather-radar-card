@@ -300,3 +300,18 @@ describe('geometryLngLatBounds — antimeridian', () => {
     expect(centroidLngLat(poly)).toEqual([-175.5, 51]);
   });
 });
+
+describe('geometryLngLatBounds on very large geometries', () => {
+  it('handles a ring beyond the spread-argument limit (a marine warning zone union)', () => {
+    // 150k vertices: Math.min(...lngs) threw RangeError here in V8.
+    const n = 150_000;
+    const ring: GeoJSON.Position[] = [];
+    for (let i = 0; i < n; i++) ring.push([-70 + (i % 100) / 100, 40 + Math.floor(i / 100) / 1000]);
+    ring.push(ring[0]);
+    const b = geometryLngLatBounds({ type: 'Polygon', coordinates: [ring] });
+    expect(b).not.toBeNull();
+    expect(b!.minLng).toBeCloseTo(-70, 6);
+    expect(b!.maxLng).toBeCloseTo(-69.01, 6);
+    expect(b!.minLat).toBeCloseTo(40, 6);
+  });
+});
