@@ -921,12 +921,36 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._basemapTileLayer.addTo(this._map);
     }
 
-    if (!labelsBakedIn && labelUrl) {
+    const addRasterLabels = (): void => {
+      if (!this._map || labelsBakedIn || !labelUrl) return;
       this._townLayer = new FetchTileLayer(labelUrl, {
         subdomains: 'abcd', detectRetina: false, tileSize, zoomOffset,
       } as any).addTo(this._map);
       this._townLayer.setZIndex(Z_LABELS);
+    };
+    // Satellite: place and street names from HA's map tiles over the radar
+    // (the vector map's label layer, one WebGL context), readable through
+    // rain and needing no key. Where that can't run, CARTO's label tiles with
+    // a key, under the radar, as before.
+    if (this._satelliteVectorLabels(mapStyle)) {
+      this._stopVectorBasemap = startVectorBasemap({
+        map: this._map,
+        hass: this.hass,
+        dark: true,
+        labelsOnly: true,
+        onFallback: (reason) => {
+          console.warn(`[weather-radar-card] Satellite labels from HA's map tiles unavailable (${reason}); using CARTO's if a key is set.`);
+          addRasterLabels();
+        },
+      });
+    } else {
+      addRasterLabels();
     }
+  }
+
+  /** Whether Satellite gets its labels from HA's map tiles (needs them loaded; low power stays raster). */
+  private _satelliteVectorLabels(mapStyle: string): boolean {
+    return mapStyle === 'satellite' && isMapTilesLoaded(this.hass) && this._config.low_power_mode !== true;
   }
 
   private _setupWindOverlay(): void {
@@ -1001,7 +1025,10 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       : ds === 'DWD'
         ? '<a href="https://www.dwd.de" target="_blank">DWD</a>'
         : '<a href="https://rainviewer.com" target="_blank">RainViewer</a>';
-    const map = basemapCredits(mapStyle, this._config.custom_tile_url, this._config.custom_tile_attribution, window.location.href);
+    const map = basemapCredits(
+      mapStyle, this._config.custom_tile_url, this._config.custom_tile_attribution, window.location.href,
+      this._satelliteVectorLabels(mapStyle),
+    );
     const leaflet = '<a href="https://leafletjs.com" target="_blank">Leaflet</a>';
     el.innerHTML = [leaflet, map.join(' '), `Radar: ${radar}`].filter(Boolean).join(' | ');
     // Narrow cards: the same credits in the Sources popup, labelled, one

@@ -100,7 +100,7 @@ Specifies the base map style. All CARTO- and Esri-based styles render labels in 
 | `Light`      | CARTO Light — English only, needs a CARTO key                                                    |
 | `Dark`       | CARTO Dark — English only, needs a CARTO key                                                     |
 | `Voyager`    | CARTO Voyager — English only, needs a CARTO key                                                  |
-| `Satellite`  | ESRI World Imagery — labels (English only) need a CARTO key                                      |
+| `Satellite`  | ESRI World Imagery; on HA 2026.10+ place names from HA's map tiles over the radar, else English labels with a CARTO key |
 | `OSM`        | OpenStreetMap — labels rendered in local language                                                |
 | `Grey`       | Esri Light Grey Canvas — English only, no CARTO key needed, free without signup                  |
 | `GreyDark`   | Esri Dark Grey Canvas — English only, no CARTO key needed, free without signup                   |
@@ -121,7 +121,7 @@ When `map_style` is not set or set to `Auto`, the card follows Home Assistant's 
 
 ### CARTO API key
 
-CARTO's Light/Dark/Voyager tiles, and Satellite's label overlay, need a free API key (no CARTO account needed — see [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/), 5 million tile requests/month free). Without one CARTO sends a blank "API KEY REQUIRED" tile instead of the map, so those styles show a banner saying a key is needed, Satellite drops its labels, and `Auto` uses a keyless style instead. Set the key in the editor's Map section, or via `carto_api_key` in YAML. It has no effect for `OSM`, `Grey`, `GreyDark`, `Custom`, `MapTiles` or `MapTilesVector`, none of which use CARTO tiles.
+CARTO's Light/Dark/Voyager tiles, and Satellite's CARTO label overlay (used only where HA's map tiles can't draw the labels), need a free API key (no CARTO account needed — see [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/), 5 million tile requests/month free). Without one CARTO sends a blank "API KEY REQUIRED" tile instead of the map, so those styles show a banner saying a key is needed, Satellite drops its labels, and `Auto` uses a keyless style instead. Set the key in the editor's Map section, or via `carto_api_key` in YAML. It has no effect for `OSM`, `Grey`, `GreyDark`, `Custom`, `MapTiles` or `MapTilesVector`, none of which use CARTO tiles.
 
 ### Custom tiles
 

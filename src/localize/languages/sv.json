@@ -114,7 +114,7 @@
       "style_desc_maptiles": "OpenStreetMap via ditt Home Assistant: etiketter på lokalt språk, ingen nyckel. Karttema Automatiskt håller den ljus; Mörkt visar den inverterad.",
       "style_desc_maptiles_vector": "Home Assistants egen karta, skarp i alla zoomnivåer, i sex stilar, med ortnamn ovanför radarn. Kräver WebGL2 och laddar en extra fil; annars visas Home Assistants kartplattor.",
       "style_desc_osm": "Etiketter på lokalt språk, ingen nyckel.",
-      "style_desc_satellite": "Esri-flygbilder, med engelska etiketter från CARTO om en nyckel är angiven.",
+      "style_desc_satellite": "Esri-flygbilder; ortnamn från Home Assistants kartrutor ovanpå radarn (HA 2026.10+), annars engelska etiketter från CARTO om en nyckel är angiven.",
       "style_desc_carto": "Engelska etiketter.",
       "style_desc_esri": "Engelska etiketter, utan nyckel eller registrering.",
       "vector_style": "Stil för vektorkarta",
