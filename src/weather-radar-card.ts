@@ -26,7 +26,6 @@ import {
   isInvertedBasemap,
   configWord,
   effectiveBasemapStyle,
-  extraLabelsApply,
   unknownTilePlaceholders,
   vectorLabelsAbove,
 } from './basemap-styles';
@@ -864,9 +863,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupBasemap(mapStyle: string): void {
     if (!this._map) return;
     const cfg = this._config;
-    // Not for the vector map, whose editor hides the switch, even when it
-    // falls back to raster: a leftover extra_labels couldn't be turned off.
-    const extraLabels = cfg.extra_labels === true && extraLabelsApply(cfg.map_style);
+    // Raster: tiles a zoom level higher at half size. The vector map and
+    // Satellite's labels get denserLabels instead (startVectorBasemap), and
+    // the vector map's raster fallback the raster trick, so the switch has
+    // an effect either way.
+    const extraLabels = cfg.extra_labels === true;
     const tileSize = extraLabels ? 128 : 256;
     const zoomOffset = extraLabels ? 1 : 0;
     // mapStyle is already resolved (_effectiveMapStyle): 'maptiles' only
@@ -910,6 +911,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         dark: mapStyle === 'maptiles-vector-dark',
         vectorStyle: cfg.vector_style,
         labelsAbove: vectorLabelsAbove(cfg.vector_labels),
+        extraLabels,
         onFallback: (reason) => {
           console.warn(`[weather-radar-card] Vector map unavailable (${reason}); showing raster MapTiles.`);
           attachRaster();
@@ -938,6 +940,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         hass: this.hass,
         dark: true,
         labelsOnly: true,
+        extraLabels,
         onFallback: (reason) => {
           console.warn(`[weather-radar-card] Satellite labels from HA's map tiles unavailable (${reason}); using CARTO's if a key is set.`);
           addRasterLabels();

@@ -9,7 +9,7 @@ import { ALL_ALERT_CATEGORIES, getActiveAlertCategories } from './nws-alert-cate
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { isMapTilesLoaded } from './map-tiles-token';
 import {
-  configWord, extraLabelsApply, MAP_STYLE_CHOICES, showsCartoKeyField, themeModeApplies, themeModeName,
+  configWord, MAP_STYLE_CHOICES, showsCartoKeyField, themeModeApplies, themeModeName,
   VECTOR_STYLES, vectorLabelsAbove, vectorStyleName,
 } from './basemap-styles';
 import { isSectionHeightPinned } from './card-layout';
@@ -213,14 +213,12 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       ></ha-selector>
       ${choice?.desc ? html`<div class="section-description">${localize(`editor.map.${choice.desc}`)}</div>` : ''}
       ${vectorPicker || themePicker ? html`<div class="side-by-side">${vectorPicker}${themePicker}</div>` : ''}
-      ${extraLabelsApply(style) ? html`
-        <div class="side-by-side">
-          <label>
-            <ha-switch .checked=${config.extra_labels === true} .configValue=${'extra_labels'} @change=${this._valueChangedSwitch}></ha-switch>
-            <span>${localize('editor.display.extra_labels')}</span>
-          </label>
-        </div>
-      ` : ''}
+      <div class="side-by-side">
+        <label>
+          <ha-switch .checked=${config.extra_labels === true} .configValue=${'extra_labels'} @change=${this._valueChangedSwitch}></ha-switch>
+          <span>${localize('editor.display.extra_labels')}</span>
+        </label>
+      </div>
       ${style === 'maptilesvector' ? html`
         <div class="side-by-side">
           <label>

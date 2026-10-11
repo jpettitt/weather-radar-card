@@ -127,6 +127,53 @@ export function splitLabels(style: any): { base: any; labels: any } {
   return { base: part((l) => l.type !== 'symbol'), labels: part((l) => l.type === 'symbol') };
 }
 
+// Where the tiles start carrying each label kind, in style zoom (probed
+// 2026-10-10): a layer can't be drawn earlier than its data exists.
+// Villages, hamlets, suburbs, quarters, localities and street names arrive
+// at tile zoom 10; towns and cities are there from 7 and below.
+const LABEL_DATA_FLOOR: Array<[RegExp, number]> = [
+  [/^label-street-/, 10],
+  [/^label-place-(village|hamlet|suburb|quarter|neighbourhood|locality)/, 10],
+];
+const EXTRA_LABELS_SIZE = 0.85;
+const EXTRA_LABELS_PADDING = 1;
+const EXTRA_LABELS_SPACING = 0.6;
+
+/**
+ * extra_labels for the vector map: every label kind a zoom level earlier
+ * (street names two, down to where the tiles start carrying them), text
+ * 15% smaller and packed tighter, so more of what the tiles hold survives
+ * MapLibre's collision pass. The raster counterpart draws tiles a zoom
+ * level higher at half size. In place, on a style of ours.
+ */
+export function denserLabels(style: any): any {
+  for (const layer of style.layers ?? []) {
+    if (layer.type !== 'symbol') continue;
+    const floor = LABEL_DATA_FLOOR.find(([re]) => re.test(layer.id))?.[1] ?? 0;
+    const shift = /^label-street-/.test(layer.id) ? 2 : 1;
+    if (layer.minzoom !== undefined) layer.minzoom = Math.max(floor, layer.minzoom - shift);
+    const layout = (layer.layout ??= {});
+    if (layout['text-size'] !== undefined) layout['text-size'] = scaledTextSize(layout['text-size'], shift);
+    layout['text-padding'] = EXTRA_LABELS_PADDING;
+    if (layout['symbol-placement'] === 'line') {
+      layout['symbol-spacing'] = Math.round((layout['symbol-spacing'] ?? 250) * EXTRA_LABELS_SPACING);
+    }
+  }
+  return style;
+}
+
+// A number, or an interpolate-by-zoom expression with its stops moved
+// `shift` zooms earlier, with the sizes scaled. Other shapes stay as they are.
+function scaledTextSize(size: any, shift: number): any {
+  if (typeof size === 'number') return size * EXTRA_LABELS_SIZE;
+  if (!Array.isArray(size) || size[0] !== 'interpolate' || JSON.stringify(size[2]) !== '["zoom"]') return size;
+  const out = size.slice(0, 3);
+  for (let i = 3; i + 1 < size.length; i += 2) {
+    out.push(size[i] - shift, typeof size[i + 1] === 'number' ? size[i + 1] * EXTRA_LABELS_SIZE : size[i + 1]);
+  }
+  return out;
+}
+
 // Calls onGone once a lost WebGL context stays lost for the grace period.
 // Backgrounding the page drops contexts too, and they come back on return.
 // Returns stop().
@@ -191,6 +238,8 @@ export function startVectorBasemap(opts: {
   labelsAbove?: boolean;
   /** Only the labels, over the radar; the card draws the map under them. */
   labelsOnly?: boolean;
+  /** The card's extra_labels: denserLabels on the style. */
+  extraLabels?: boolean;
   onFallback: (reason: string) => void;
   /** Injected in tests; the real one splits MapLibre into its own file. */
   loadLayerModule?: () => Promise<typeof import('./vector-basemap-layer')>;
@@ -323,6 +372,7 @@ export function startVectorBasemap(opts: {
       if (stopped) return;
       const full = loadedStyle ?? await buildStyle(mod);
       if (stopped) return;
+      if (opts.extraLabels) denserLabels(full);
       const create = (style: any, pane?: string): GlLayer => mod.createVectorLayer({
         L, style, transformRequest, pane, rtlPluginUrl: origin + RTL_PLUGIN_PATH, cssRoot: map.getContainer().getRootNode(),
       });
