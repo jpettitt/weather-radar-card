@@ -234,11 +234,6 @@ export function showsCartoKeyField(mapStyle: unknown, cartoApiKey?: string): boo
   return CARTO_KEY_STYLES.has(style) || !MAP_STYLE_CHOICES.some((c) => c.value.toLowerCase() === style) || !!cartoApiKey?.trim();
 }
 
-/** extra_labels draws raster tiles a zoom level higher at half size; the vector map has no tiles to resize. */
-export function extraLabelsApply(mapStyle: unknown): boolean {
-  return configWord(mapStyle) !== 'maptilesvector';
-}
-
 /** True when a CARTO style is chosen without a key, so its tiles will be blank. */
 export function cartoKeyMissing(mapStyle: unknown, cartoApiKey?: string): boolean {
   return CARTO_STYLES.has(configWord(mapStyle)) && !cartoApiKey?.trim();

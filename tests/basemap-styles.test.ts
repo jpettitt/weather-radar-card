@@ -14,7 +14,6 @@ import {
   resolveBasemapStyle,
   unknownTilePlaceholders,
   showsCartoKeyField,
-  extraLabelsApply,
   effectiveBasemapStyle,
   themeModeApplies,
   MAP_STYLE_CHOICES,
@@ -350,7 +349,6 @@ describe('config values YAML can give the wrong type', () => {
     expect(themeModeName(' DARK ')).toBe('dark');
     expect(effectiveBasemapStyle({ map_style: true, theme_mode: 1 }, { haDark: true, english: true, mapTilesLoaded: true })).toBe('maptiles-dark');
     expect(themeModeApplies(true)).toBe(true);
-    expect(extraLabelsApply(false)).toBe(true);
     expect(showsCartoKeyField(true)).toBe(true);
   });
 });
@@ -419,13 +417,5 @@ describe('editor rules for map styles', () => {
 
   it('keeps showing a CARTO key that is set, so it can be cleared', () => {
     expect(showsCartoKeyField('MapTilesVector', 'abc123')).toBe(true);
-  });
-
-  it('greys out extra labels only for the vector map', () => {
-    expect(extraLabelsApply('MapTilesVector')).toBe(false);
-    expect(extraLabelsApply('maptilesvector')).toBe(false);
-    for (const style of ['MapTiles', 'OSM', 'Light', 'Custom', 'Satellite', undefined]) {
-      expect(extraLabelsApply(style)).toBe(true);
-    }
   });
 });
