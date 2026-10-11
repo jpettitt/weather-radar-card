@@ -593,6 +593,59 @@ describe('startVectorBasemap', () => {
     });
   });
 
+  describe('labels only, for Satellite', () => {
+    const SYMBOLS = {
+      ...STYLE,
+      layers: [{ id: 'land', type: 'fill' }, { id: 'label-place-city', type: 'symbol', layout: { 'text-field': ['get', 'name'] } }],
+    };
+    beforeEach(() => {
+      global.fetch = vi.fn(async () => new Response(JSON.stringify(SYMBOLS))) as unknown as typeof fetch;
+    });
+
+    it("draws HA's dark-style labels alone, from one layer in the pane over the radar", async () => {
+      start({ labelsOnly: true, dark: true });
+      await flush();
+      expect(requested()).toEqual([`${ORIGIN}/static/map/dark.json`]);
+      expect(created).toHaveLength(1);
+      expect(created[0].pane).toBe('wrcVectorLabels');
+      expect(created[0].style.layers.map((l: any) => l.id)).toEqual(['label-place-city']);
+      expect(panes.wrcVectorLabels.style).toEqual({ zIndex: '450', pointerEvents: 'none' });
+      expect(layer.addTo).toHaveBeenCalledWith(map);
+      expect(onFallback).not.toHaveBeenCalled();
+    });
+
+    it('falls back without WebGL2, so the card can draw CARTO labels instead', () => {
+      _setWebGL2ForTests(false);
+      start({ labelsOnly: true, dark: true });
+      expect(onFallback).toHaveBeenCalledWith('no WebGL2');
+      expect(created).toEqual([]);
+    });
+
+    it("falls back when the layer can't start", async () => {
+      layer.addTo = vi.fn(() => { throw new Error('no context'); });
+      start({ labelsOnly: true, dark: true });
+      await flush();
+      expect(onFallback).toHaveBeenCalledWith('could not start: no context');
+    });
+
+    it('reloads the label style in full after a refused request, and removes the layer on stop()', async () => {
+      const stop = start({ labelsOnly: true, dark: true });
+      await flush();
+      gl.handlers.error(tileError(403));
+      await flush();
+      expect(gl.setStyle).toHaveBeenCalledWith(expect.objectContaining({ layers: [expect.objectContaining({ id: 'label-place-city' })] }), { diff: false });
+      stop();
+      expect(layer.remove).toHaveBeenCalled();
+    });
+
+    it('credits OSM for the labels over ESRI imagery only when they come from HA', () => {
+      expect(basemapCredits('satellite')).toHaveLength(1);
+      expect(basemapCredits('satellite', undefined, undefined, undefined, true)).toEqual([
+        expect.stringContaining('ESRI'), expect.stringContaining('OpenStreetMap'),
+      ]);
+    });
+  });
+
   it('calls onFallback at most once, and never after stop()', async () => {
     const stop = start();
     await flush();

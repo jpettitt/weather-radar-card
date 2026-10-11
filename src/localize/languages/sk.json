@@ -114,7 +114,7 @@
       "style_desc_maptiles": "OpenStreetMap cez váš Home Assistant: popisy v miestnom jazyku, bez kľúča. Motív Automaticky ju nechá svetlú; Tmavý ju zobrazí invertovanú.",
       "style_desc_maptiles_vector": "Vlastná mapa Home Assistant, ostrá pri každom priblížení, v šiestich štýloch, s názvami miest nad radarom. Vyžaduje WebGL2 a načíta ďalší súbor; inak zobrazí dlaždice Home Assistant.",
       "style_desc_osm": "Popisy v miestnom jazyku, bez kľúča.",
-      "style_desc_satellite": "Snímky Esri, s anglickými popismi od CARTO, ak je nastavený kľúč.",
+      "style_desc_satellite": "Snímky Esri; názvy miest z mapových dlaždíc Home Assistanta nad radarom (HA 2026.10+), inak anglické popisy od CARTO, ak je nastavený kľúč.",
       "style_desc_carto": "Anglické popisy.",
       "style_desc_esri": "Anglické popisy, bez kľúča a registrácie.",
       "vector_style": "Štýl vektorovej mapy",

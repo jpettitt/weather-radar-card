@@ -115,7 +115,7 @@
       "style_desc_maptiles": "OpenStreetMap through your Home Assistant: local-language labels, no key. Map theme Auto keeps it light; Dark shows it inverted.",
       "style_desc_maptiles_vector": "Home Assistant's own map, sharp at every zoom, in six styles, with place names over the radar. Needs WebGL2 and loads an extra file; otherwise shows Home Assistant's tiles.",
       "style_desc_osm": "Local-language labels, no key.",
-      "style_desc_satellite": "Esri imagery, with English labels from CARTO if a key is set.",
+      "style_desc_satellite": "Esri imagery; place names from Home Assistant’s map tiles over the radar (HA 2026.10+), or English labels from CARTO if a key is set.",
       "style_desc_carto": "English labels.",
       "style_desc_esri": "English labels, no key or sign-up.",
       "vector_style": "Vector map style",

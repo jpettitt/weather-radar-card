@@ -338,6 +338,8 @@ export function basemapCredits(
   customTileUrl?: string,
   customTileAttribution?: string,
   baseUrl?: string,
+  /** Satellite with its labels from HA's map tiles: OSM data over the imagery. */
+  satelliteVectorLabels = false,
 ): string[] {
   if (mapStyle === 'custom' && customTileUrl?.trim()) {
     const credit = getCustomAttribution(customTileUrl, customTileAttribution, baseUrl);
@@ -351,8 +353,10 @@ export function basemapCredits(
     case 'maptiles-vector':
     case 'maptiles-vector-dark':
       return [`${OSM_CREDIT} contributors`];
-    case 'satellite':
-      return ['&copy; <a href="http://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank">ESRI</a>'];
+    case 'satellite': {
+      const esri = '&copy; <a href="http://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank">ESRI</a>';
+      return satelliteVectorLabels ? [esri, `${OSM_CREDIT} contributors`] : [esri];
+    }
     case 'grey':
     case 'greydark':
       return [`${OSM_CREDIT} contributors`, '&copy; <a href="https://www.esri.com" target="_blank">Esri</a>, HERE, Garmin'];

@@ -115,7 +115,7 @@
       "style_desc_maptiles": "OpenStreetMap über dein Home Assistant: Beschriftung in der Landessprache, kein Schlüssel. Kartendesign Automatisch lässt sie hell, Dunkel zeigt sie invertiert.",
       "style_desc_maptiles_vector": "Die eigene Karte von Home Assistant, scharf in jeder Zoomstufe, in sechs Stilen, mit Ortsnamen über dem Radar. Benötigt WebGL2 und lädt eine zusätzliche Datei; sonst werden die Kacheln von Home Assistant gezeigt.",
       "style_desc_osm": "Beschriftung in der Landessprache, kein Schlüssel.",
-      "style_desc_satellite": "Esri-Luftbilder, mit englischer Beschriftung von CARTO, wenn ein Schlüssel gesetzt ist.",
+      "style_desc_satellite": "Esri-Luftbilder; Ortsnamen aus den Home-Assistant-Kartenkacheln über dem Radar (HA 2026.10+), sonst englische Beschriftung von CARTO, wenn ein Schlüssel gesetzt ist.",
       "style_desc_carto": "Englische Beschriftung.",
       "style_desc_esri": "Englische Beschriftung, ohne Schlüssel oder Anmeldung.",
       "vector_style": "Vektorkartenstil",

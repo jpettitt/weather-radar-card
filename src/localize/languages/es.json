@@ -114,7 +114,7 @@
       "style_desc_maptiles": "OpenStreetMap a través de tu Home Assistant: etiquetas en el idioma local, sin clave. El tema Automático lo deja claro; Oscuro lo muestra invertido.",
       "style_desc_maptiles_vector": "El mapa propio de Home Assistant, nítido en cualquier zoom, en seis estilos, con los nombres de lugares sobre el radar. Requiere WebGL2 y descarga un archivo adicional; si no, muestra las teselas de Home Assistant.",
       "style_desc_osm": "Etiquetas en el idioma local, sin clave.",
-      "style_desc_satellite": "Imágenes de Esri, con etiquetas en inglés de CARTO si hay una clave.",
+      "style_desc_satellite": "Imágenes de Esri; nombres de lugares de los mosaicos de mapa de Home Assistant sobre el radar (HA 2026.10+), o etiquetas en inglés de CARTO si hay una clave.",
       "style_desc_carto": "Etiquetas en inglés.",
       "style_desc_esri": "Etiquetas en inglés, sin clave ni registro.",
       "vector_style": "Estilo del mapa vectorial",

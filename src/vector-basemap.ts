@@ -175,6 +175,10 @@ async function loadMaplibreFile(): Promise<typeof import('./vector-basemap-layer
  * second WebGL context. If that one can't run, the basemap draws its labels
  * again, under the radar, rather than giving up the vector map.
  *
+ * With labelsOnly there is no basemap at all: one layer with the labels of
+ * the style, over the radar, on top of whatever raster layer the card put
+ * under it (Satellite's imagery). Falling back means no labels from here.
+ *
  * Returns stop(), for teardown.
  */
 export function startVectorBasemap(opts: {
@@ -185,6 +189,8 @@ export function startVectorBasemap(opts: {
   vectorStyle?: string;
   /** Labels over the radar instead of under it. */
   labelsAbove?: boolean;
+  /** Only the labels, over the radar; the card draws the map under them. */
+  labelsOnly?: boolean;
   onFallback: (reason: string) => void;
   /** Injected in tests; the real one splits MapLibre into its own file. */
   loadLayerModule?: () => Promise<typeof import('./vector-basemap-layer')>;
@@ -317,12 +323,19 @@ export function startVectorBasemap(opts: {
       if (stopped) return;
       const full = loadedStyle ?? await buildStyle(mod);
       if (stopped) return;
-      styles = opts.labelsAbove ? { full, ...splitLabels(full) } : { full };
       const create = (style: any, pane?: string): GlLayer => mod.createVectorLayer({
         L, style, transformRequest, pane, rtlPluginUrl: origin + RTL_PLUGIN_PATH, cssRoot: map.getContainer().getRootNode(),
       });
+      // Labels only: the one layer is `base`, so the recovery, the context
+      // watch and stop() work unchanged; it just sits in the label pane.
+      if (opts.labelsOnly) {
+        styles = { full: splitLabels(full).labels };
+        ensureLabelPane(map);
+      } else {
+        styles = opts.labelsAbove ? { full, ...splitLabels(full) } : { full };
+      }
       try {
-        base = create(styles.base ?? styles.full);
+        base = create(styles.base ?? styles.full, opts.labelsOnly ? LABEL_PANE : undefined);
         // Adding it builds the WebGL map, which throws when the browser
         // refuses a context.
         base.addTo(map);

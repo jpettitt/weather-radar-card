@@ -114,7 +114,7 @@
       "style_desc_maptiles": "OpenStreetMap via je Home Assistant: labels in de lokale taal, geen sleutel. Kaartthema Automatisch houdt hem licht; Donker toont hem geïnverteerd.",
       "style_desc_maptiles_vector": "De eigen kaart van Home Assistant, scherp op elk zoomniveau, in zes stijlen, met plaatsnamen boven de radar. Vereist WebGL2 en laadt een extra bestand; anders worden de kaarttegels van Home Assistant getoond.",
       "style_desc_osm": "Labels in de lokale taal, geen sleutel.",
-      "style_desc_satellite": "Esri-luchtbeelden, met Engelse labels van CARTO als er een sleutel is ingesteld.",
+      "style_desc_satellite": "Esri-luchtbeelden; plaatsnamen uit de kaarttegels van Home Assistant boven de radar (HA 2026.10+), anders Engelse labels van CARTO als er een sleutel is ingesteld.",
       "style_desc_carto": "Engelse labels.",
       "style_desc_esri": "Engelse labels, zonder sleutel of registratie.",
       "vector_style": "Stijl vectorkaart",

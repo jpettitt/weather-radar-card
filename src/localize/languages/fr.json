@@ -114,7 +114,7 @@
       "style_desc_maptiles": "OpenStreetMap via votre Home Assistant : libellés dans la langue locale, sans clé. Le thème Automatique la garde claire ; Sombre l'affiche inversée.",
       "style_desc_maptiles_vector": "La carte de Home Assistant, nette à tous les zooms, en six styles, avec les noms de lieux au-dessus du radar. Nécessite WebGL2 et charge un fichier supplémentaire ; sinon, les tuiles de Home Assistant s'affichent.",
       "style_desc_osm": "Libellés dans la langue locale, sans clé.",
-      "style_desc_satellite": "Imagerie Esri, avec les libellés anglais de CARTO si une clé est définie.",
+      "style_desc_satellite": "Imagerie Esri ; noms de lieux des tuiles de carte Home Assistant au-dessus du radar (HA 2026.10+), sinon libellés anglais de CARTO si une clé est définie.",
       "style_desc_carto": "Libellés en anglais.",
       "style_desc_esri": "Libellés en anglais, sans clé ni inscription.",
       "vector_style": "Style de la carte vectorielle",
