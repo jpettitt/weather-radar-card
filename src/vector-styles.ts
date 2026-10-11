@@ -68,7 +68,15 @@ export function buildVectorStyle(theme: string, urls: unknown): any {
   };
   if (classic) options.colors = dark ? CLASSIC_DARK : CLASSIC_LIGHT;
   const style = osm(options as Parameters<typeof osm>[0]);
-  if (classic) recolorRoads(style, CLASSIC_ROADS[dark ? 'dark' : 'light']);
+  if (classic) {
+    recolorRoads(style, CLASSIC_ROADS[dark ? 'dark' : 'light']);
+    // The tiles carry forests from tile zoom 7 (card zoom 8) and nothing of
+    // the land layer before; Colorful fades them in over 7→8, so green only
+    // started at card zoom 9. Classic shows them as soon as they exist,
+    // nearer the raster tiles, which are pre-rendered and green from 5.
+    const forest = style.layers.find((l: any) => l.id === 'land-forest');
+    if (forest?.paint) forest.paint['fill-opacity'] = 1;
+  }
   return finishForHa(style);
 }
 

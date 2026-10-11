@@ -149,6 +149,14 @@ describe('buildVectorStyle', () => {
     expect(paint(dark, 'street-minor', 'line-color')).toBe('rgb(107,110,117)');         // light grey roads, as the raster dark has
     expect(light.sources['versatiles-shortbread'].url).toBe('/api/map_tiles/tilejson.json');
   });
+
+  it('classic shows forests as soon as the tiles carry them (tile zoom 7), where Colorful fades them in to 8', () => {
+    const forest = (s: any): any => s.layers.find((l: any) => l.id === 'land-forest');
+    expect(forest(buildVectorStyle('classic', URLS)).minzoom).toBe(7);
+    expect(forest(buildVectorStyle('classic', URLS)).paint['fill-opacity']).toBe(1);
+    expect(forest(buildVectorStyle('classic-dark', URLS)).paint['fill-opacity']).toBe(1);
+    expect(Array.isArray(forest(buildVectorStyle('colorful', URLS)).paint['fill-opacity'])).toBe(true);
+  });
 });
 
 describe('splitLabels', () => {
