@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0-rc1] - 2026-10-19
+
+> **Release candidate of 4.0.** The same code as 4.0.0-alpha4. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included.
+
 ## [4.0.0-alpha4] - 2026-10-17
 
 > **Alpha pre-release of 4.0.** Fixes for the NWS alerts layer and the wind streamlines, on 4.0.0-alpha3. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-alpha3.
