@@ -1,6 +1,6 @@
 # Upgrading to 4.0
 
-4.0 is in alpha. This page lists what changes when you move from 3.13 to 4.0, how to try it, and how to go back. 3.13.0 is the current stable release and stays supported with bug fixes while 4.0 is in development.
+4.0 is a release candidate. This page lists what changes when you move from 3.13 to 4.0, how to try it, and how to go back. 3.13.0 is the current stable release and stays supported with bug fixes while 4.0 is in development.
 
 ## What changes
 

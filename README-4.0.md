@@ -7,7 +7,7 @@ A Home Assistant rain radar card using tiled radar imagery from RainViewer, NOAA
 [![License][license-shield]](LICENSE)
 ![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)
 
-> **This is the 4.0 branch.** 4.0 is in alpha. It adds Home Assistant's vector map under the radar, view presets and layer toggles. [3.13.0](https://github.com/jpettitt/weather-radar-card/blob/main/README.md) is the current stable release, on the `main` branch. To try 4.0, turn on **Show beta versions** for this card in HACS. To go back, select 3.13.0 in the same place. [Upgrading to 4.0](https://github.com/jpettitt/weather-radar-card/blob/4.0/docs/upgrading-to-4.0.md) lists what changes.
+> **This is the 4.0 branch.** 4.0 is a release candidate. It adds Home Assistant's vector map under the radar, view presets and layer toggles. [3.13.0](https://github.com/jpettitt/weather-radar-card/blob/main/README.md) is the current stable release, on the `main` branch. To try 4.0, turn on **Show beta versions** for this card in HACS. To go back, select 3.13.0 in the same place. [Upgrading to 4.0](https://github.com/jpettitt/weather-radar-card/blob/4.0/docs/upgrading-to-4.0.md) lists what changes.
 
 ## Description
 
