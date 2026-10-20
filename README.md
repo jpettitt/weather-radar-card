@@ -21,7 +21,7 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 
 ## 4.0 preview
 
-The next major version is in alpha on the [`4.0` branch](https://github.com/jpettitt/weather-radar-card/blob/4.0/README-4.0.md). It adds Home Assistant's vector map under the radar, with place names drawn above the rain, view presets, and per-user layer toggles. It also needs a second file next to the card, which HACS installs. To try it, turn on **Show beta versions** for this card in HACS. [Upgrading to 4.0](https://github.com/jpettitt/weather-radar-card/blob/4.0/docs/upgrading-to-4.0.md) lists what changes. Bug fixes continue on 3.13.
+The next major version is a release candidate on the [`4.0` branch](https://github.com/jpettitt/weather-radar-card/blob/4.0/README-4.0.md). It adds Home Assistant's vector map under the radar, with place names drawn above the rain, view presets, and per-user layer toggles. It also needs a second file next to the card, which HACS installs. To try it, turn on **Show beta versions** for this card in HACS. [Upgrading to 4.0](https://github.com/jpettitt/weather-radar-card/blob/4.0/docs/upgrading-to-4.0.md) lists what changes. Bug fixes continue on 3.13.
 
 ## What's new in 3.13 (current stable)
 
