@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0-rc2] - 2026-10-21
+
+> **Release candidate 2 of 4.0.** 4.0.0-rc1 with one new option, smooth DWD radar edges. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-rc1.
+
 ### Added
 
 - **Smooth DWD radar edges.** With `dwd_interpolation: bilinear` (editor: **Smooth Radar Edges**, shown for DWD), DWD's server smooths its 1 km grid before it applies its colour scale. When you zoom in, rain areas have smooth edges instead of squares, in DWD's own colours. Small areas of heavy rain look smaller. The option is off by default, and the default request does not change. Suggested by [@sushi137](https://github.com/sushi137). ([#326](https://github.com/jpettitt/weather-radar-card/issues/326))
