@@ -228,6 +228,8 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   dwd_time_override?: string;
   /** DWD-only: WMS layer name override. Default Niederschlagsradar; auto-switches to Radar_wn-product_1x1km_ger when forecast_minutes > 0 (both carry the +2 h nowcast). */
   dwd_layer?: string;
+  /** DWD-only: `bilinear` has DWD's server smooth its 1 km grid before colouring it (#326). Default `nearest`. */
+  dwd_interpolation?: string;
   /** @deprecated since 3.5: use forecast_minutes (source-agnostic). Auto-migrated by migrateConfig. */
   dwd_forecast_hours?: number;
   /** Wind data source for the overlay grid. Defaults to 'dwd_aicon'

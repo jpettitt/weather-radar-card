@@ -158,6 +158,8 @@
       "custom_tile_theme_light": "Tile chiari (ad es. OSM)",
       "custom_tile_theme_dark": "I tile sono già scuri (adatta solo i colori dell'interfaccia)",
       "custom_tile_theme_invert": "Tile chiari, mostrati scuri (invertiti)",
+      "dwd_smooth": "Bordi radar smussati",
+      "dwd_smooth_helper": "Il server del DWD smussa la sua griglia di 1 km prima di colorarla, così ingrandendo le zone di pioggia hanno bordi morbidi invece di quadrati. Le piccole zone di pioggia intensa appaiono più piccole. Disattivato per impostazione predefinita.",
       "source_dwd": "DWD (Germania — risoluzione 5 min)"
     },
     "time_range": {

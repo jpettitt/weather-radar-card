@@ -54,6 +54,8 @@ See [Hazard & Layer Overlays — Wind](overlays.md#wind) for the user-facing kno
 
 The default layer is `Niederschlagsradar` (precipitation rate, mm/h). Override via `dwd_layer`; `Radar_wn-product_1x1km_ger` gives reflectivity (dBZ) plus the 2-hour nowcast frames.
 
+DWD's radar grid has 1 km cells, and by default DWD draws each cell as a square, which you see when you zoom in. With `dwd_interpolation: bilinear` (editor: **Smooth Radar Edges**), DWD's server smooths the grid values before it applies its colour scale, so rain areas get smooth edges in DWD's own colours. This adds no detail, and small areas of heavy rain look smaller. Tiles were 2 to 26 % larger in tests. `bicubic` is not supported, because DWD then draws false rain at the edge of its coverage.
+
 Outside the German radar coverage you'll see a faint grey wash from the no-data mask; the card emits a one-time `console.warn` if HA's configured location falls outside the bounding box of Germany and its immediate neighbours.
 
 With `low_power_mode` the card skips its per-tile processing of DWD tiles, so frames show DWD's own grey wash and magenta outline instead of the theme-coloured coverage overlay. See [Low power mode](configuration.md#low-power-mode).

@@ -111,6 +111,8 @@
       "radar_source": "Radarquelle",
       "source_rainviewer": "RainViewer (Global)",
       "source_noaa": "NOAA/NWS (nur USA — experimentell)",
+      "dwd_smooth": "Radarränder glätten",
+      "dwd_smooth_helper": "Der DWD-Server glättet sein 1-km-Raster, bevor er es einfärbt. Beim Hineinzoomen haben Regengebiete dann glatte Ränder statt Quadrate. Kleine Gebiete mit starkem Regen erscheinen kleiner. Standard: aus.",
       "source_dwd": "DWD (Deutschland — 5 Min. Auflösung)",
       "map_style": "Kartenstil",
       "style_auto": "Automatisch",

@@ -158,6 +158,8 @@
       "custom_tile_theme_light": "Jasne kafelki (np. OSM)",
       "custom_tile_theme_dark": "Kafelki są już ciemne (dostosowuje tylko kolory interfejsu)",
       "custom_tile_theme_invert": "Jasne kafelki, wyświetlane jako ciemne (odwrócone)",
+      "dwd_smooth": "Wygładzanie krawędzi radaru",
+      "dwd_smooth_helper": "Serwer DWD wygładza swoją siatkę 1 km przed pokolorowaniem, więc po przybliżeniu obszary opadów mają gładkie krawędzie zamiast kwadratów. Małe obszary silnych opadów wyglądają na mniejsze. Domyślnie wyłączone.",
       "source_dwd": "DWD (Niemcy — rozdzielczość 5 min)"
     },
     "time_range": {

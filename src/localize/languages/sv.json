@@ -158,6 +158,8 @@
       "custom_tile_theme_light": "Ljusa brickor (t.ex. OSM)",
       "custom_tile_theme_dark": "Brickorna är redan mörka (anpassar bara gränssnittets färger)",
       "custom_tile_theme_invert": "Ljusa brickor, visade mörka (inverterade)",
+      "dwd_smooth": "Jämna radarkanter",
+      "dwd_smooth_helper": "DWD:s server jämnar ut sitt 1 km-rutnät innan det färgläggs, så när du zoomar in får nederbördsområden mjuka kanter i stället för rutor. Små områden med kraftigt regn ser mindre ut. Av som standard.",
       "source_dwd": "DWD (Tyskland — 5-min upplösning)"
     },
     "time_range": {

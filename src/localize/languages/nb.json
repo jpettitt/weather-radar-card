@@ -158,6 +158,8 @@
       "custom_tile_theme_light": "Lyse fliser (f.eks. OSM)",
       "custom_tile_theme_dark": "Flisene er allerede mørke (tilpasser bare UI-farger)",
       "custom_tile_theme_invert": "Lyse fliser, vist mørke (invertert)",
+      "dwd_smooth": "Glatte radarkanter",
+      "dwd_smooth_helper": "DWD-serveren glatter 1 km-rutenettet før det fargelegges, så når du zoomer inn, får nedbørsområder glatte kanter i stedet for ruter. Små områder med kraftig nedbør ser mindre ut. Av som standard.",
       "source_dwd": "DWD (Tyskland — 5-min oppløsning)"
     },
     "time_range": {

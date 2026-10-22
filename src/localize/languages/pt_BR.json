@@ -158,6 +158,8 @@
       "custom_tile_theme_light": "Blocos claros (ex.: OSM)",
       "custom_tile_theme_dark": "Os blocos já são escuros (só adapta as cores da interface)",
       "custom_tile_theme_invert": "Blocos claros, exibidos escuros (invertidos)",
+      "dwd_smooth": "Suavizar bordas do radar",
+      "dwd_smooth_helper": "O servidor do DWD suaviza sua grade de 1 km antes de colori-la, então, ao ampliar, as áreas de chuva ficam com bordas suaves em vez de quadrados. Pequenas áreas de chuva forte parecem menores. Desligado por padrão.",
       "source_dwd": "DWD (Alemanha — resolução de 5 min)"
     },
     "time_range": {

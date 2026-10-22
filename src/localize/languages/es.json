@@ -158,6 +158,8 @@
       "custom_tile_theme_light": "Teselas claras (p. ej. OSM)",
       "custom_tile_theme_dark": "Las teselas ya son oscuras (solo adapta los colores de la interfaz)",
       "custom_tile_theme_invert": "Teselas claras, mostradas oscuras (invertidas)",
+      "dwd_smooth": "Suavizar bordes del radar",
+      "dwd_smooth_helper": "El servidor del DWD suaviza su cuadrícula de 1 km antes de colorearla, así que al ampliar, las zonas de lluvia tienen bordes suaves en lugar de cuadrados. Las zonas pequeñas de lluvia intensa se ven más pequeñas. Desactivado por defecto.",
       "source_dwd": "DWD (Alemania — resolución de 5 min)"
     },
     "time_range": {
