@@ -151,6 +151,8 @@
       "carto_key_required": "CARTO vereist nu een gratis API-sleutel. Zonder sleutel tonen Light, Voyager en Dark een lege kaart en heeft Satellite geen labels. Voeg hieronder een sleutel toe of kies een andere stijl.",
       "zoom_level": "Zoomniveau",
       "zoom_default": "Standaard (7)",
+      "dwd_smooth": "Radarranden afvlakken",
+      "dwd_smooth_helper": "De server van DWD vlakt het 1 km-raster af voordat het wordt ingekleurd, zodat regengebieden bij inzoomen gladde randen krijgen in plaats van vierkantjes. Kleine gebieden met zware regen lijken kleiner. Standaard uit.",
       "source_dwd": "DWD (Duitsland — 5-min resolutie)",
       "custom_tile_url": "Tile-URL",
       "custom_tile_url_helper": "Leaflet-template, bv. https://tiles.example.com/{z}/{x}/{y}.png ({s} wordt a/b/c). Zet API-sleutels direct in de URL: andere {plaatshouders} worden niet ingevuld en de kaart valt terug op OpenStreetMap. Tiles moeten labels bevatten. Leeg laten voor OpenStreetMap.",

@@ -111,6 +111,8 @@
       "radar_source": "Radar Source",
       "source_rainviewer": "RainViewer (Global)",
       "source_noaa": "NOAA/NWS (US Only — Experimental)",
+      "dwd_smooth": "Smooth Radar Edges",
+      "dwd_smooth_helper": "DWD's server smooths its 1 km grid before it colours it, so when you zoom in, rain areas have smooth edges instead of squares. Small areas of heavy rain look smaller. Default off.",
       "source_dwd": "DWD (Germany — 5 min resolution)",
       "map_style": "Map Style",
       "style_auto": "Auto",

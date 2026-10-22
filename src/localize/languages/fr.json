@@ -158,6 +158,8 @@
       "custom_tile_theme_light": "Tuiles claires (p. ex. OSM)",
       "custom_tile_theme_dark": "Tuiles déjà sombres (adapte seulement les couleurs de l'interface)",
       "custom_tile_theme_invert": "Tuiles claires, affichées sombres (inversées)",
+      "dwd_smooth": "Lisser les bords du radar",
+      "dwd_smooth_helper": "Le serveur du DWD lisse sa grille de 1 km avant de la colorer : en zoomant, les zones de pluie ont des bords lisses au lieu de carrés. Les petites zones de forte pluie paraissent plus petites. Désactivé par défaut.",
       "source_dwd": "DWD (Allemagne — résolution 5 min)"
     },
     "time_range": {

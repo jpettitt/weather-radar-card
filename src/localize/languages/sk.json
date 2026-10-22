@@ -158,6 +158,8 @@
       "custom_tile_theme_light": "Svetlé dlaždice (napr. OSM)",
       "custom_tile_theme_dark": "Dlaždice sú už tmavé (prispôsobí iba farby rozhrania)",
       "custom_tile_theme_invert": "Svetlé dlaždice, zobrazené tmavo (invertované)",
+      "dwd_smooth": "Vyhladiť okraje radaru",
+      "dwd_smooth_helper": "Server DWD vyhladí svoju 1 km mriežku pred jej vyfarbením, takže pri priblížení majú oblasti zrážok hladké okraje namiesto štvorcov. Malé oblasti silných zrážok vyzerajú menšie. Predvolene vypnuté.",
       "source_dwd": "DWD (Nemecko — rozlíšenie 5 min)"
     },
     "time_range": {

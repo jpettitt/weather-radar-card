@@ -2275,9 +2275,9 @@ export class RadarPlayer {
     this._ensureDwdMaskPane();
     const isoTime = new Date(frame.time * 1000).toISOString().split('.')[0] + 'Z';
     const { size: tileSize, zoomOffset } = this._radarTileSize();
-    // Same TIME, tile grid and zoom pin as the anchor frame's own layer, so
-    // the URLs are identical and tile-cache shares one download between the
-    // two (#279) — the mask only needs a different pixel filter.
+    // Same TIME, interpolation, tile grid and zoom pin as the anchor frame's
+    // own layer, so the URLs are identical and tile-cache shares one download
+    // between the two (#279) — the mask only needs a different pixel filter.
     return new FetchWmsTileLayer(DWD_WMS_URL, {
       layers: layerName,
       format: 'image/png',
@@ -2285,6 +2285,7 @@ export class RadarPlayer {
       version: '1.3.0',
       TIME: isoTime,
       ...this._dwdRunParam(frame),
+      ...this._dwdInterpParam(),
       tileSize,
       zoomOffset,
       maxNativeZoom: 8 + Math.max(0, -zoomOffset),
@@ -2564,6 +2565,15 @@ export class RadarPlayer {
     return frame.run !== undefined ? { DIM_REFERENCE_TIME: dwdIsoTime(frame.run) } : {};
   }
 
+  // GeoServer vendor param (#326). bilinear resamples DWD's 1 km values
+  // before its colour map, so the palette (and the pixel filter) hold.
+  // Unset sends nothing, so URLs and cached tiles stay as before. Not
+  // offered: bicubic overshoots (false rain at the coverage edge), and a
+  // bare 'nearest' gets a ServiceException.
+  private _dwdInterpParam(): { interpolations?: string } {
+    return this._cfg.dwd_interpolation === 'bilinear' ? { interpolations: 'bilinear' } : {};
+  }
+
   // forecast_refresh_minutes in effect: 0 unless DWD with a forecast window.
   // Ticks run every 5 min, so that's the floor.
   private _forecastRefreshMin(): number {
@@ -2673,6 +2683,7 @@ export class RadarPlayer {
         version: '1.3.0',
         TIME: isoTime,
         ...this._dwdRunParam(frame),
+        ...this._dwdInterpParam(),
         // DWD's geoserver renders any size; bigger tiles cut request
         // count proportionally — see _radarTileSize() for the picker.
         tileSize,

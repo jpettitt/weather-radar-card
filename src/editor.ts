@@ -350,6 +350,16 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           @value-changed=${this._handleSelectorChanged}
         ></ha-selector>
         ${this._renderTimeRangeFields(config)}
+        ${config.data_source === 'DWD' ? html`
+          <label>
+            <ha-switch
+              .checked=${config.dwd_interpolation === 'bilinear'}
+              @change=${this._dwdInterpolationChanged}
+            ></ha-switch>
+            <span>${localize('editor.map.dwd_smooth')}</span>
+          </label>
+          <div class="section-description">${localize('editor.map.dwd_smooth_helper')}</div>
+        ` : ''}
         ${this._renderMapStyleFields(config)}
 
         <!-- LOCATION -->
@@ -1692,6 +1702,16 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     const config = { ...this._config };
     if ((ev.target as HTMLInputElement).checked) delete config.vector_labels;
     else config.vector_labels = 'below';
+    this._config = config;
+    fireEvent(this, 'config-changed', { config });
+  }
+
+  // Off is the default, so it's left out of the YAML; on is dwd_interpolation: bilinear.
+  private _dwdInterpolationChanged(ev: Event): void {
+    if (!this._config) return;
+    const config = { ...this._config };
+    if ((ev.target as HTMLInputElement).checked) config.dwd_interpolation = 'bilinear';
+    else delete config.dwd_interpolation;
     this._config = config;
     fireEvent(this, 'config-changed', { config });
   }
