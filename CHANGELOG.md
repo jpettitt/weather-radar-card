@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0-rc3] - 2026-10-23
+
+> **Release candidate 3 of 4.0.** 4.0.0-rc2 with a fix for DWD wind. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-rc2.
+
 ### Fixed
 
 - **DWD wind showed an old forecast.** When a request gives only a time, DWD's server uses the oldest model run that it keeps, not the newest. On 23 October, the wind for 03:00 UTC came from the run of 21 October 12:00 UTC. This forecast was 39 hours old, and ICON and AICON did not agree as well as their newest runs do. In western Canada, the two models pointed more than 45° apart at 12% of points, and at 4% with the newest runs. The card now reads DWD's list of runs (each 15 minutes) and asks for the newest run that has the time shown. DWD can list a new run some minutes before all of its times are ready; if the run cannot give the time yet, the card uses the run before it. This also applies where `wind_source: ndfd_wind` uses AICON outside the NWS area.
