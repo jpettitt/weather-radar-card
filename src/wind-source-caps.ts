@@ -63,6 +63,14 @@ export interface WindSourceCaps {
    * to this step (wind-grid-fetcher's effectiveTimeIso does). Omitted for
    * NDFD, whose slice comes from its own time list (ndfdTimeIso). */
   timeStepHours?: number;
+  /** Hours from a model run's start to its first time slice. Set for
+   * coverages with a REFERENCE_TIME (model run) dimension: given only a
+   * time, GeoServer answers from the OLDEST run that holds it (probed
+   * 2026-10-23: a 36 h old forecast for now), so wind-grid-fetcher names the
+   * newest run that starts at least this long before the slice. ICON's runs
+   * hold their start hour, AICON's begin 3 h later. Omitted for NDFD, which
+   * has no run dimension. */
+  runFirstStepHours?: number;
   /** Short cadence note for the editor's helper line. English; the i18n
    * key 'editor.wind.cadence_<id>' wins when present. */
   cadenceNote: string;
@@ -85,6 +93,7 @@ export const WIND_SOURCE_CAPS: Record<WindSource, WindSourceCaps> = {
     nativeStep: 0.25,
     bands: 'uv',
     timeStepHours: 1,
+    runFirstStepHours: 0,
     cadenceNote: 'DWD ICON global numerical model. 0.25° grid (~28 km). Hourly time steps, new model run every 6 h.',
   },
   dwd_aicon: {
@@ -96,6 +105,7 @@ export const WIND_SOURCE_CAPS: Record<WindSource, WindSourceCaps> = {
     nativeStep: 0.25,
     bands: 'uv',
     timeStepHours: 3,
+    runFirstStepHours: 3,
     cadenceNote: 'DWD AICON — ICON with AI-augmented post-processing. Same 0.25° global grid (~28 km) as ICON, but 3-hourly time steps; reportedly improves short-range accuracy.',
   },
   ndfd_wind: {

@@ -7,7 +7,7 @@
 // trivial and Canvas2D `stroke()` is plenty fast (~5ms/frame on integrated
 // graphics). WebGL would only matter at 50k+ particles, full-screen.
 import * as L from 'leaflet';
-import { windGridFetcher, sampleWindGridBilinearInto, type WindGrid } from './wind-grid-fetcher';
+import { windGridFetcher, sampleWindGridBilinearInto, resolveSourceForBbox, type WindGrid } from './wind-grid-fetcher';
 import { webMercatorPixelToLatLng } from './mercator-pixel';
 import { getWindSourceCaps, DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
 
@@ -142,6 +142,7 @@ export class WindFlowOverlay {
   private _timeIso: string | null = null;
   private _color: string;
   private _source: WindSource;
+  private _gridSource: WindSource;
   private _onMoveStart: () => void;
   private _onMoveEnd: () => void;
   private _onZoomStart: () => void;
@@ -167,6 +168,7 @@ export class WindFlowOverlay {
     this._map = map;
     this._color = opts.particleColor ?? 'rgba(60,60,80,0.55)';
     this._source = opts.source ?? DEFAULT_WIND_SOURCE;
+    this._gridSource = this._source;
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
     // NaN (an unparseable dwd_time_override) would throw in toISOString and
     // abort the host's map init; show live wind instead.
@@ -407,15 +409,27 @@ export class WindFlowOverlay {
     const east = b.getEast() + pad;
 
     try {
-      this._grid = await windGridFetcher.fetch({
-        south, west, north, east,
-        timeIso: this._timeIso,
-        source: this._source,
-      });
+      const opts = { south, west, north, east, timeIso: this._timeIso, source: this._source };
+      this._grid = await windGridFetcher.fetch(opts);
+      this._gridSource = resolveSourceForBbox(opts);
     } catch (err) {
       console.warn('WindFlowOverlay: WCS fetch failed, skipping refresh', err);
       this._grid = { rows: 0, cols: 0, latMin: 0, lonMin: 0, step: ICON_GRID_DEG, cells: [] };
     }
+  }
+
+  // Per-source visible-trail length cap. The ring buffer always
+  // records TRAIL_LENGTH frames; the draw loop only renders the
+  // freshest `drawSegments` of them. Sources with a finer native
+  // grid (NDFD at 2.5 km vs ICON at ~28 km) produce smoother
+  // particle paths that read as visibly longer ribbons even at the
+  // same per-frame pixel velocity, so they trim here. Particle motion
+  // (and therefore visual speed) is unaffected — only the rendered
+  // tail is shorter. Floor at 2 so we always draw at least one segment.
+  // The grid's source, not the configured one: NDFD outside the US is AICON.
+  private _drawSegmentCount(): number {
+    const trailMult = getWindSourceCaps(this._gridSource).streakLengthMultiplier ?? 1;
+    return Math.max(2, Math.floor(TRAIL_LENGTH * trailMult));
   }
 
   private _spawnParticles(w: number, h: number): void {
@@ -595,16 +609,7 @@ export class WindFlowOverlay {
     // the basemap with too many concurrent streaks (cube-root curve).
     const baseAlpha = Math.min(1, Math.pow(this._zoomDetailMultiplier(), 1 / 3));
     const lifetime = this._particleLifetimeFrames;
-    // Per-source visible-trail length cap. The ring buffer always
-    // records TRAIL_LENGTH frames; the draw loop only renders the
-    // freshest `drawSegments` of them. Sources with a finer native
-    // grid (NDFD at 2.5 km vs ICON at ~28 km) produce smoother
-    // particle paths that read as visibly longer ribbons even at the
-    // same per-frame pixel velocity, so they trim here. Particle motion
-    // (and therefore visual speed) is unaffected — only the rendered
-    // tail is shorter. Floor at 2 so we always draw at least one segment.
-    const trailMult = getWindSourceCaps(this._source).streakLengthMultiplier ?? 1;
-    const drawSegments = Math.max(2, Math.floor(TRAIL_LENGTH * trailMult));
+    const drawSegments = this._drawSegmentCount();
 
     // Pass A: fully alive particles batched by segment age.
     for (let segAge = 0; segAge < drawSegments - 1; segAge++) {

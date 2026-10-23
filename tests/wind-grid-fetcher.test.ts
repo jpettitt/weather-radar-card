@@ -10,7 +10,8 @@ import {
   resolveSourceForBbox,
   effectiveTimeIso,
   ndfdTimeIso,
-  _resetNdfdTimesForTests,
+  dwdRunIso,
+  _resetCoverageListsForTests,
   DEFAULT_WIND_COVERAGE,
   type WindGrid,
   type FetchWindGridOptions,
@@ -679,7 +680,7 @@ describe('fetchWindGrid', () => {
   });
 
   it('runs speed/direction sources through the NDFD converter', async () => {
-    _resetNdfdTimesForTests();
+    _resetCoverageListsForTests();
     const fakeFetch = vi.fn(async () => new Response(NDFD_FIXTURE_3x3, { status: 200 })) as any;
     const g = await fetchWindGrid({
       south: 38, west: -98, north: 39, east: -97, source: 'ndfd_wind', fetchImpl: fakeFetch,
@@ -910,6 +911,15 @@ describe('buildWindGridUrl', () => {
     const url = buildWindGridUrl({ ...bbox, source: 'dwd_icon', timeIso: '2026-05-15T12:00:00Z' });
     // URLSearchParams encodes the quotes as %22.
     expect(url).toContain('time%28%222026-05-15T12%3A00%3A00Z%22%29');
+  });
+
+  it('adds the model run as a REFERENCE_TIME subset, and no run when none is given', () => {
+    const url = buildWindGridUrl({
+      ...bbox, source: 'dwd_icon', timeIso: '2026-10-23T01:00:00Z', runIso: '2026-10-22T18:00:00Z',
+    });
+    expect(decodeURIComponent(url)).toContain('subset=REFERENCE_TIME("2026-10-22T18:00:00Z")');
+    expect(buildWindGridUrl({ ...bbox, source: 'dwd_icon', timeIso: '2026-10-23T01:00:00Z' }))
+      .not.toContain('REFERENCE_TIME');
   });
 
   it('appends scaleSize when native cells exceed maxCells (DWD)', () => {
@@ -1519,7 +1529,7 @@ describe('ndfdTimeIso', () => {
   const SLICES = ['2026-10-09T18:00:00.000Z', '2026-10-09T19:00:00.000Z', '2026-10-09T20:00:00.000Z', '2026-10-10T09:00:00.000Z'];
   const listing = (times = SLICES) => vi.fn(async () => new Response(describeXml(times))) as any;
 
-  beforeEach(() => _resetNdfdTimesForTests());
+  beforeEach(() => _resetCoverageListsForTests());
 
   it('asks the coverage for its time list', async () => {
     const f = listing();
@@ -1572,5 +1582,155 @@ describe('ndfdTimeIso', () => {
       vi.useRealTimers();
     }
     expect(decodeURIComponent(urls[1])).toContain('subset=time("2026-10-09T18:00:00Z")');
+  });
+});
+
+// ── DWD model run ──────────────────────────────────────────────────────────
+// Given only a time, DWD's WCS answers from the OLDEST model run that holds
+// it (live 2026-10-23: 00Z wind from the 21 Oct 12Z run, a 36 h forecast,
+// about 1 m/s from the newest runs at a mean speed of 1.5). So the card names
+// the newest run from the coverage's REFERENCE_TIME list.
+describe('dwdRunIso', () => {
+  const NOW = Date.parse('2026-10-23T00:44:00Z');
+  const ICON = getWindSourceCaps('dwd_icon');
+  const AICON = getWindSourceCaps('dwd_aicon');
+  const instants = (times: string[]): string => times
+    .map((t) => `<gml:TimeInstant><gml:timePosition>${t}</gml:timePosition></gml:TimeInstant>`).join('');
+  // Trimmed from live DescribeCoverage responses (2026-10-23). ICON lists its
+  // time slices as timePositions too; only the REFERENCE_TIME block is runs.
+  const describeXml = (runs: string[], slices: string[] = []): string => '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<wcs:CoverageDescriptions><wcs:CoverageDescription><gmlcov:metadata><gmlcov:Extension>'
+    + `<wcsgs:TimeDomain xmlns:wcsgs="http://www.geoserver.org/wcsgs/2.0" default="2026-10-30T00:00:00.000Z">${instants(slices)}</wcsgs:TimeDomain>`
+    + '<wcsgs:ElevationDomain xmlns:wcsgs="http://www.geoserver.org/wcsgs/2.0" uom="m" default="10.0"><wcsgs:SingleValue>10.0</wcsgs:SingleValue></wcsgs:ElevationDomain>'
+    + `<wcsgs:DimensionDomain xmlns:wcsgs="http://www.geoserver.org/wcsgs/2.0" name="REFERENCE_TIME" default="${runs.at(-1)}">${instants(runs)}</wcsgs:DimensionDomain>`
+    + '</gmlcov:Extension></gmlcov:metadata></wcs:CoverageDescription></wcs:CoverageDescriptions>';
+  const hourly = (fromIso: string, n: number): string[] => Array.from({ length: n },
+    (_, i) => new Date(Date.parse(fromIso) + i * 3_600_000).toISOString());
+  const ICON_RUNS = ['2026-10-21T12', '2026-10-21T18', '2026-10-22T00', '2026-10-22T06', '2026-10-22T12', '2026-10-22T18']
+    .map((h) => `${h}:00:00.000Z`);
+  const AICON_RUNS = hourly('2026-10-21T12:00:00Z', 34).filter((_, i) => i % 3 === 0);
+  const ICON_XML = describeXml(ICON_RUNS, hourly('2026-10-21T12:00:00Z', 60));
+  const AICON_XML = describeXml(AICON_RUNS);
+  const listing = (xml: string) => vi.fn(async () => new Response(xml)) as any;
+  const at = (iso: string): number => Date.parse(iso);
+
+  beforeEach(() => _resetCoverageListsForTests());
+
+  it('asks the coverage for its DescribeCoverage', async () => {
+    const f = listing(AICON_XML);
+    await dwdRunIso(at('2026-10-23T00:00:00Z'), NOW, f, AICON);
+    expect(String(f.mock.calls[0][0])).toContain('request=DescribeCoverage');
+    expect(String(f.mock.calls[0][0])).toContain('coverageId=dwd__Aicon_reg025_fd_sl_UV10M');
+  });
+
+  it("ICON: the newest run that holds the slice, its own start hour included", async () => {
+    expect(await dwdRunIso(at('2026-10-23T01:00:00Z'), NOW, listing(ICON_XML), ICON)).toBe('2026-10-22T18:00:00Z');
+    expect(await dwdRunIso(at('2026-10-22T18:00:00Z'), NOW, listing(ICON_XML), ICON)).toBe('2026-10-22T18:00:00Z');
+    expect(await dwdRunIso(at('2026-10-22T17:00:00Z'), NOW, listing(ICON_XML), ICON)).toBe('2026-10-22T12:00:00Z');
+  });
+
+  it("AICON: a run's first slice is 3 h after its start (live: run 21Z holds 00Z, not 21Z)", async () => {
+    expect(await dwdRunIso(at('2026-10-23T00:00:00Z'), NOW, listing(AICON_XML), AICON)).toBe('2026-10-22T21:00:00Z');
+    expect(await dwdRunIso(at('2026-10-22T21:00:00Z'), NOW, listing(AICON_XML), AICON)).toBe('2026-10-22T18:00:00Z');
+  });
+
+  it("reads runs only from REFERENCE_TIME, not ICON's slice list", async () => {
+    // The slice list reaches 2026-10-23T23Z; read as runs, 23T01 would pick itself.
+    expect(await dwdRunIso(at('2026-10-23T01:00:00Z'), NOW, listing(ICON_XML), ICON)).not.toBe('2026-10-23T01:00:00Z');
+  });
+
+  it.each([
+    ['the request fails', () => vi.fn(async () => { throw new Error('offline'); })],
+    ['the server errors', () => vi.fn(async () => new Response('', { status: 503 }))],
+    ['the coverage has no REFERENCE_TIME dimension', () => vi.fn(async () => new Response('<wcs:CoverageDescriptions/>'))],
+  ])('names no run when %s', async (_name, make) => {
+    expect(await dwdRunIso(at('2026-10-23T00:00:00Z'), NOW, make() as any, AICON)).toBeNull();
+  });
+
+  it('names no run for a slice before the oldest run holds it', async () => {
+    expect(await dwdRunIso(at('2026-10-21T12:00:00Z'), NOW, listing(AICON_XML), AICON)).toBeNull();
+  });
+
+  it('keeps one list per coverage, read once per 15 minutes', async () => {
+    const f = vi.fn(async (url: string) => new Response(url.includes('Aicon') ? AICON_XML : ICON_XML)) as any;
+    const valid = at('2026-10-23T00:00:00Z');
+    expect(await dwdRunIso(valid, NOW, f, ICON)).toBe('2026-10-22T18:00:00Z');
+    expect(await dwdRunIso(valid, NOW, f, AICON)).toBe('2026-10-22T21:00:00Z');
+    await dwdRunIso(valid, NOW + 14 * 60_000, f, ICON);
+    expect(f).toHaveBeenCalledTimes(2);
+    await dwdRunIso(valid, NOW + 15 * 60_000, f, ICON);
+    expect(f).toHaveBeenCalledTimes(3);
+  });
+
+  describe('in fetchWindGrid', () => {
+    const europe = { south: 50, west: 10, north: 51, east: 11 };
+    // What DWD answers for a run that doesn't hold the slice (live 2026-10-23).
+    const NOT_IN_RUN = '<?xml version="1.0" encoding="UTF-8"?><ows:ExceptionReport xmlns:ows="http://www.opengis.net/ows/2.0" version="2.0.0">'
+      + '<ows:Exception exceptionCode="NoApplicableCode"><ows:ExceptionText>Failed to read the coverage dwd__Icon_reg025_fd_sl_UV10M</ows:ExceptionText></ows:Exception></ows:ExceptionReport>';
+    function server(xml: string | null, unreadableRuns: string[] = []) {
+      const urls: string[] = [];
+      const f = vi.fn(async (url: string) => {
+        const u = decodeURIComponent(url);
+        urls.push(u);
+        if (!url.includes('DescribeCoverage')) {
+          return new Response(unreadableRuns.some((r) => u.includes(`REFERENCE_TIME("${r}")`)) ? NOT_IN_RUN : FIXTURE_8x8);
+        }
+        return xml === null ? new Response('', { status: 503 }) : new Response(xml);
+      }) as any;
+      return { f, urls, getCoverage: () => urls.filter((u) => u.includes('GetCoverage')) };
+    }
+
+    it('retries once from the run before when the newest run cannot answer yet', async () => {
+      const s = server(ICON_XML, ['2026-10-22T18:00:00Z']);
+      const g = await fetchWindGrid({ ...europe, source: 'dwd_icon', timeIso: '2026-10-23T01:00:00Z', fetchImpl: s.f });
+      expect(g.rows).toBe(8);
+      expect(s.getCoverage().map((u) => u.match(/REFERENCE_TIME\("([^"]+)/)?.[1]))
+        .toEqual(['2026-10-22T18:00:00Z', '2026-10-22T12:00:00Z']);
+      expect(s.urls.filter((u) => u.includes('DescribeCoverage'))).toHaveLength(1);
+    });
+
+    it('gives up after the one retry, with the server message', async () => {
+      const s = server(ICON_XML, ['2026-10-22T18:00:00Z', '2026-10-22T12:00:00Z']);
+      await expect(fetchWindGrid({ ...europe, source: 'dwd_icon', timeIso: '2026-10-23T01:00:00Z', fetchImpl: s.f }))
+        .rejects.toThrow(/WCS returned exception — Failed to read the coverage/);
+      expect(s.getCoverage()).toHaveLength(2);
+    });
+
+    it('does not retry when no older run holds the slice', async () => {
+      const s = server(ICON_XML, ['2026-10-21T12:00:00Z']);
+      await expect(fetchWindGrid({ ...europe, source: 'dwd_icon', timeIso: '2026-10-21T12:00:00Z', fetchImpl: s.f }))
+        .rejects.toThrow(/WCS returned exception/);
+      expect(s.getCoverage()).toHaveLength(1);
+    });
+
+    it('names the newest run in the GetCoverage request', async () => {
+      const s = server(ICON_XML);
+      await fetchWindGrid({ ...europe, source: 'dwd_icon', timeIso: '2026-10-23T01:00:00Z', fetchImpl: s.f });
+      expect(s.getCoverage()).toHaveLength(1);
+      expect(s.getCoverage()[0]).toContain('subset=time("2026-10-23T01:00:00Z")');
+      expect(s.getCoverage()[0]).toContain('subset=REFERENCE_TIME("2026-10-22T18:00:00Z")');
+    });
+
+    it('names an AICON run for an NDFD config that fell back outside the US', async () => {
+      const s = server(AICON_XML);
+      await fetchWindGrid({ ...europe, source: 'ndfd_wind', timeIso: '2026-10-23T00:00:00Z', fetchImpl: s.f });
+      expect(s.urls[0]).toContain('coverageId=dwd__Aicon_reg025_fd_sl_UV10M');
+      expect(s.getCoverage()[0]).toContain('subset=REFERENCE_TIME("2026-10-22T21:00:00Z")');
+    });
+
+    it('still fetches, with no run named, when the run list will not load', async () => {
+      const s = server(null);
+      const g = await fetchWindGrid({ ...europe, source: 'dwd_aicon', timeIso: '2026-10-23T00:00:00Z', fetchImpl: s.f });
+      expect(g.rows).toBe(8);
+      expect(s.getCoverage()[0]).toContain('subset=time("2026-10-23T00:00:00Z")');
+      expect(s.getCoverage()[0]).not.toContain('REFERENCE_TIME');
+    });
+
+    it('reads no run list for a request without a time', async () => {
+      const s = server(ICON_XML);
+      await fetchWindGrid({ ...europe, source: 'dwd_icon', timeIso: null, fetchImpl: s.f });
+      expect(s.urls).toHaveLength(1);
+      expect(s.urls[0]).not.toContain('REFERENCE_TIME');
+    });
   });
 });
