@@ -75,6 +75,9 @@ export interface FetchWindGridOptions {
    * source's slice step, and fills in "now" for DWD sources when omitted
    * (see effectiveTimeIso). */
   timeIso?: string | null;
+  /** Model run (ISO 8601) to read the slice from. fetchWindGrid sets it from
+   * the coverage's run list (see dwdRunIso); callers leave it unset. */
+  runIso?: string | null;
   /** Wind source registry id (see wind-source-caps.ts). Defaults to
    * 'dwd_icon' (ICON 10 m global). The source determines endpoint,
    * coverage id, CRS, and band semantics. */
@@ -371,31 +374,53 @@ let _fallbackLogged = false;
 // 2026-10-09: tomorrow 09Z at 17:32Z, so Hurricane Isaias's circulation sat
 // over Alabama while radar showed it in the Gulf), and a time it doesn't
 // hold gets an exception, not the nearest slice. So requests name a slice
-// from the coverage's own time list, re-read every 15 minutes.
-const NDFD_TIMES_TTL_MS = 15 * 60_000;
-let ndfdTimes: { expiresAt: number; times: Promise<number[]> } | undefined;
+// from the coverage's own time list. DWD's coverages do the same on their
+// model-run axis (see WindSourceCaps.runFirstStepHours), so requests name a
+// run from theirs. Each list is re-read every 15 minutes.
+const COVERAGE_LIST_TTL_MS = 15 * 60_000;
+const coverageLists = new Map<string, { expiresAt: number; list: Promise<number[]> }>();
 
 /** @internal */
-export function _resetNdfdTimesForTests(): void {
-  ndfdTimes = undefined;
+export function _resetCoverageListsForTests(): void {
+  coverageLists.clear();
 }
 
-function loadNdfdTimes(caps: WindSourceCaps, f: typeof fetch, nowMs: number): Promise<number[]> {
-  if (ndfdTimes && ndfdTimes.expiresAt > nowMs) return ndfdTimes.times;
+function timePositions(xml: string): string[] {
+  return [...xml.matchAll(/<gml:timePosition>([^<]+)<\/gml:timePosition>/g)].map((m) => m[1]);
+}
+
+/** The REFERENCE_TIME dimension's runs only: ICON also lists its time
+ * slices as timePositions. */
+function runPositions(xml: string): string[] {
+  const start = xml.indexOf('name="REFERENCE_TIME"');
+  if (start < 0) return [];
+  const end = xml.indexOf('</wcsgs:DimensionDomain>', start);
+  return timePositions(xml.slice(start, end < 0 ? undefined : end));
+}
+
+/** One time list from the coverage's DescribeCoverage, read once per TTL. */
+function loadCoverageList(
+  caps: WindSourceCaps,
+  f: typeof fetch,
+  nowMs: number,
+  pick: (xml: string) => string[],
+): Promise<number[]> {
+  const cached = coverageLists.get(caps.coverageId);
+  if (cached && cached.expiresAt > nowMs) return cached.list;
   const params = new URLSearchParams({
     service: 'WCS', version: '2.0.1', request: 'DescribeCoverage', coverageId: caps.coverageId,
   });
-  const times = f(`${caps.wcsUrl}?${params}`)
+  const list = f(`${caps.wcsUrl}?${params}`)
     .then((res) => (res.ok ? res.text() : ''))
-    .then((xml) => [...xml.matchAll(/<gml:timePosition>([^<]+)<\/gml:timePosition>/g)]
-      .map((m) => Date.parse(m[1]))
-      .filter(Number.isFinite));
-  const entry = { expiresAt: nowMs + NDFD_TIMES_TTL_MS, times };
-  ndfdTimes = entry;
+    .then((xml) => pick(xml).map((t) => Date.parse(t)).filter(Number.isFinite));
+  const entry = { expiresAt: nowMs + COVERAGE_LIST_TTL_MS, list };
+  coverageLists.set(caps.coverageId, entry);
   // A list that failed or came back empty isn't kept: the next fetch asks again.
-  const forget = (): void => { if (ndfdTimes === entry) ndfdTimes = undefined; };
-  times.then((t) => { if (t.length === 0) forget(); }, forget);
-  return times;
+  const forget = (): void => {
+    if (coverageLists.get(caps.coverageId) === entry) coverageLists.delete(caps.coverageId);
+  };
+  list.then((l) => { if (l.length === 0) forget(); }, forget);
+  return list;
 }
 
 /** The NDFD slice to request: the one nearest `targetMs` in the coverage's
@@ -408,7 +433,7 @@ export async function ndfdTimeIso(
 ): Promise<string> {
   let times: number[] = [];
   try {
-    times = await loadNdfdTimes(caps, f, nowMs);
+    times = await loadCoverageList(caps, f, nowMs, timePositions);
   } catch {
     // Falls back to the next hour below.
   }
@@ -416,6 +441,29 @@ export async function ndfdTimeIso(
     ? times.reduce((best, t) => (Math.abs(t - targetMs) < Math.abs(best - targetMs) ? t : best))
     : Math.ceil(targetMs / 3_600_000) * 3_600_000;
   return new Date(pick).toISOString().split('.')[0] + 'Z';
+}
+
+/** The DWD model run to read slice `validMs` from: the newest listed run
+ * that starts at least `runFirstStepHours` before it, and before
+ * `olderThanMs` when given (the retry in fetchWindGrid). Null without the
+ * list (the request then names no run, as before). */
+export async function dwdRunIso(
+  validMs: number,
+  nowMs: number,
+  f: typeof fetch,
+  caps: WindSourceCaps,
+  olderThanMs = Infinity,
+): Promise<string | null> {
+  let runs: number[] = [];
+  try {
+    runs = await loadCoverageList(caps, f, nowMs, runPositions);
+  } catch {
+    // No run named below.
+  }
+  const latestStart = validMs - (caps.runFirstStepHours ?? 0) * 3_600_000;
+  const holding = runs.filter((r) => r <= latestStart && r < olderThanMs);
+  if (holding.length === 0) return null;
+  return new Date(Math.max(...holding)).toISOString().split('.')[0] + 'Z';
 }
 
 export async function fetchWindGrid(opts: FetchWindGridOptions): Promise<WindGrid> {
@@ -430,21 +478,34 @@ export async function fetchWindGrid(opts: FetchWindGridOptions): Promise<WindGri
   const caps = getWindSourceCaps(source);
   const f = opts.fetchImpl ?? fetch;
   let timeIso = opts.timeIso;
+  let runIso: string | null = null;
+  const valid = Date.parse(timeIso ?? '');
   if (source === 'ndfd_wind') {
     const now = Date.now();
-    const target = Date.parse(opts.timeIso ?? '');
-    timeIso = await ndfdTimeIso(Number.isFinite(target) ? target : now, now, f, caps);
+    timeIso = await ndfdTimeIso(Number.isFinite(valid) ? valid : now, now, f, caps);
+  } else if (caps.runFirstStepHours !== undefined && Number.isFinite(valid)) {
+    runIso = await dwdRunIso(valid, Date.now(), f, caps);
   }
-  const url = buildWindGridUrl({ ...opts, source, timeIso }, caps);
-
-  const res = await f(url);
-  if (!res.ok) throw new Error(`fetchWindGrid: HTTP ${res.status}`);
-  const body = await res.text();
+  const get = async (run: string | null): Promise<string> => {
+    const res = await f(buildWindGridUrl({ ...opts, source, timeIso, runIso: run }, caps));
+    if (!res.ok) throw new Error(`fetchWindGrid: HTTP ${res.status}`);
+    return res.text();
+  };
   // GeoServer returns HTTP 200 with an ows:ExceptionReport XML body for
   // recoverable errors (out-of-bounds subset, invalid scaleSize, …).
   // Detect that explicitly so the caller's log line points at the real
   // cause instead of a downstream "missing Grid bounds line" parse fail.
-  if (body.startsWith('<?xml') || body.includes('ExceptionReport')) {
+  const isException = (b: string): boolean => b.startsWith('<?xml') || b.includes('ExceptionReport');
+
+  let body = await get(runIso);
+  // DWD lists a run before all its steps can be read (ICON 00Z, 2026-10-23:
+  // +6 h failed for 6 minutes after the run appeared), so a named run that
+  // can't answer gets one retry from the run before it.
+  if (runIso && isException(body)) {
+    const older = await dwdRunIso(valid, Date.now(), f, caps, Date.parse(runIso));
+    if (older) body = await get(older);
+  }
+  if (isException(body)) {
     // Stryker disable next-line OptionalChaining: `?.` on a null match already short-circuits the rest of the chain, and group 1 is always set on a match
     const msg = body.match(/<ows:ExceptionText>([\s\S]+?)<\/ows:ExceptionText>/)?.[1]?.trim();
     throw new Error(`fetchWindGrid: WCS returned exception — ${msg ?? 'see response body'}`);
@@ -492,7 +553,8 @@ export function resolveSourceForBbox(opts: FetchWindGridOptions): WindSource {
  * old. Its time axis is a period reaching days ahead (DescribeCoverage,
  * probed 2026-10-10), so the next step is always on it. NDFD has no
  * `timeStepHours`: it passes through here unchanged, and fetchWindGrid
- * picks its slice from the coverage's own time list (ndfdTimeIso).
+ * picks its slice from the coverage's own time list (ndfdTimeIso). The DWD
+ * model run that answers is named separately (dwdRunIso).
  *
  * Resolves the source from the bbox so an NDFD config that fell back to
  * AICON outside the US is timed too. */
@@ -558,6 +620,11 @@ export function buildWindGridUrl(opts: FetchWindGridOptions, caps = getWindSourc
   if (opts.timeIso) {
     // WCS 2.0 wants the time literal quoted: subset=time("2026-05-10T12:00:00Z")
     params.append('subset', `time("${opts.timeIso}")`);
+  }
+  if (opts.runIso) {
+    // A subset here: DIM_REFERENCE_TIME, which DWD's WMS takes for the
+    // radar's runs, is ignored by its WCS (probed 2026-10-23).
+    params.append('subset', `REFERENCE_TIME("${opts.runIso}")`);
   }
 
   // Adaptive downsample. If the native-resolution grid would exceed maxCells

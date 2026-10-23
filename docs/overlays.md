@@ -136,7 +136,7 @@ The wind overlay is **not coupled to the radar source** — both ICON and NDFD a
 
 ### Refresh cadence
 
-The overlay shows the model step nearest to now (ICON hourly, AICON 3-hourly, NDFD from its own time list), so what's shown is never more than half a step from the current time. A self-rescheduling timer wakes shortly after each half hour (HH:00:30 and HH:30:30): the half-hour tick is where the nearest step changes, and the top-of-hour tick also picks up a fresher run for the same step. A tick whose step hasn't changed is answered from the fetcher's cache; no fixed-interval polling.
+The overlay shows the model step nearest to now (ICON hourly, AICON 3-hourly, NDFD from its own time list), so what's shown is never more than half a step from the current time. For ICON and AICON the card asks for the newest model run that has that step; without a run, DWD answers from the oldest run it keeps, a forecast about 1.5 days old. A self-rescheduling timer wakes shortly after each half hour (HH:00:30 and HH:30:30): the half-hour tick is where the nearest step changes, and the top-of-hour tick also picks up a fresher run for the same step. A tick whose step hasn't changed is answered from the fetcher's cache; no fixed-interval polling.
 
 ### Reduced motion
 

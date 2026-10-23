@@ -122,14 +122,9 @@ The streamline overlay's per-particle interpolation uses `sampleWindGridBilinear
 
 ## Refresh cadence
 
-ICON publishes new model runs every **6 hours** at 00, 06, 12, 18 UTC (the coverage's listed runs, checked 2026-10-08), typically becoming available at the WCS endpoint within 30–60 minutes of model start. Our "current" time anchor is hour-bucketed (`Math.trunc(timeMs / 3 600 000)`), so the *requested* TIME parameter only changes once per hour.
+ICON publishes new model runs every **6 hours** at 00, 06, 12, 18 UTC (the coverage's listed runs, checked 2026-10-08); AICON every 3 hours. The requested TIME is the step nearest to now (`effectiveTimeIso`: ICON hourly, AICON 3-hourly), and both overlays self-schedule a refresh at **HH:00:30 and HH:30:30**, where that step changes.
 
-Both overlays self-schedule a refresh at **HH:00:30** of each clock hour — the moment when:
-
-- the hour bucket changes (so we ask for a new TIME), AND
-- DWD has had a chance to publish a fresher run for that hour (the 30-second offset).
-
-Polling more often than once per hour returns identical data; less often risks lag at the bucket rollover. Top-of-hour catches both signals at the moment they happen.
+Each DWD request also names the model run (`subset=REFERENCE_TIME(...)`, from the coverage's DescribeCoverage, re-read every 15 minutes): the newest run that holds the step. ICON's runs hold their start hour, AICON's begin 3 hours later (`runFirstStepHours`). Without a run, GeoServer answers from the **oldest** run it keeps, not the default its DescribeCoverage declares: live 2026-10-23, the 03Z wind came from the run of 21 Oct 12Z, a 39-hour forecast. DWD's WMS takes `DIM_REFERENCE_TIME` for the radar's runs; its WCS ignores that parameter. A new run is listed before all of its steps can be read (ICON's 00Z run, 2026-10-23: +0 and +3 h at once, +6 and +9 h six minutes later), and a run that can't answer gets an `ExceptionReport`, so `fetchWindGrid` retries once from the run before it.
 
 ---
 
