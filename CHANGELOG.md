@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A bad refresh override polled without a stop.** A negative or very small `alerts_refresh_seconds` or `wildfire_refresh_minutes` sent requests one after the other: with -60, about 1000 requests each second to api.weather.gov. A value that is not a positive number now keeps the adaptive interval. The minimum is 30 seconds for alerts and 1 minute for wildfires.
+- **NWS alerts: shapes of alerts in view did not load first.** Since 4.0.0-alpha3 the card counted every alert as in view, so zone shapes loaded in order of severity only.
+- **NWS alerts: old alerts stayed on the map.** When the last alert left the list during a pan or zoom, its outline stayed until the next refresh on a still map, up to 5 minutes later.
+- **NWS alerts: zone shapes stopped after a failed refresh.** A failed alerts request also stopped the shapes that were loading, and alerts on the map stayed without shapes until a refresh was successful.
+- **NWS alerts: the "zone shapes did not load" message stayed.** The message now goes away when the alerts with the missing shapes leave the list.
+- **NWS alerts: shapes from the browser store did not show.** When a refresh came while shapes loaded, shapes read from the store after that refresh were not drawn until the next refresh, and older stored shapes were not rewritten.
+- **NWS alerts: `alerts_radius_km` did not apply to zone alerts.** An alert that has only zones was drawn far outside the radius when its shapes arrived. Its distance is now checked when its shapes arrive.
+- **NWS alerts: the popup showed the wrong expiry time.** When the hazard's end time is earlier than the message's expiry time, the map removes the alert at the end time, but the popup showed the expiry time. The popup now shows the time when the alert leaves the map.
+- **NWS alerts: a browser store that did not answer stopped all zone shapes.** If the browser store does not answer in 10 seconds, the card now gets shapes from the network for the rest of the session.
+- **Wildfires: fire icon colours were not escaped.** `wildfire_color` and `wildfire_contained_color` went into the icon HTML as written. They are now escaped, as marker colours are since 3.7.3.
+- **Wildfires: a failed refresh closed an open fire popup.** The card redrew all fires after a failed request, also when nothing changed.
+- **Wildfires: `wildfire_radius_km` did not follow the map centre.** The fires shown changed only at the next refresh, up to 30 minutes later, when a tracked marker moved the map. The radius is now applied again on each Home Assistant update, as the design document tells.
+- **Wildfires: small fires redrew at zoom 11 and closer.** A fire too small to show as an outline was redrawn each time the map stopped moving.
+- **Wildfires: outlines were downloaded on each refresh** when the feed had a fire without a shape.
+- **Markers: latitude or longitude 0 was replaced on mobile.** A configured `0` (the equator or the Greenwich meridian) counted as not set, so the card used the user's device tracker for that axis.
+- **Markers: the tracking tie warning repeated on each update.** The card now logs it once for each tie.
+- **Markers: legacy entity-object positions were lost.** A `marker_latitude` or `mobile_marker_latitude` given as `{ entity: ... }` became a marker with no position. It now becomes a marker for that entity. Custom attribute names are not kept.
+- **Docs: the two-tracker example in markers.md did not work as told.** For viewers other than John, `person.john` has the same priority as the van, so the first marker wins. The example now lists the van first.
+
 ## [4.0.0-rc3] - 2026-10-23
 
 > **Release candidate 3 of 4.0.** 4.0.0-rc2 with a fix for DWD wind. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-rc2.

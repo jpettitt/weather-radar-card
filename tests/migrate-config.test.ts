@@ -329,3 +329,42 @@ describe('migrateConfig', () => {
     });
   });
 });
+
+describe('migrateConfig: legacy coordinates as entity objects', () => {
+  // The object form resolved through resolveCoordinatePair before markers[];
+  // migration dropped it, leaving a marker with no position.
+  it('keeps the entity of marker_latitude / marker_longitude objects', () => {
+    const out = migrateConfig({
+      ...base,
+      marker_latitude: { entity: 'device_tracker.van' },
+      marker_longitude: { entity: 'device_tracker.van' },
+    });
+    expect(out.markers).toEqual([{ entity: 'device_tracker.van' }]);
+  });
+
+  it('keeps the entity of mobile_marker_* objects', () => {
+    const out = migrateConfig({
+      ...base,
+      marker_latitude: -33.86,
+      marker_longitude: 151.21,
+      mobile_marker_latitude: { entity: 'device_tracker.phone' },
+      mobile_marker_longitude: { entity: 'device_tracker.phone' },
+    });
+    expect(out.markers).toEqual([
+      { latitude: -33.86, longitude: 151.21 },
+      { mobile_only: true, entity: 'device_tracker.phone' },
+    ]);
+  });
+
+  it('a mobile object naming the same entity as the desktop one adds no mobile marker', () => {
+    const out = migrateConfig({
+      ...base,
+      marker_latitude: { entity: 'device_tracker.van' },
+      marker_longitude: { entity: 'device_tracker.van' },
+      mobile_marker_latitude: { entity: 'device_tracker.van' },
+      mobile_marker_longitude: { entity: 'device_tracker.van' },
+    });
+    expect(out.markers).toEqual([{ entity: 'device_tracker.van' }]);
+  });
+});
+

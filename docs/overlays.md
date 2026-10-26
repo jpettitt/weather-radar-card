@@ -47,7 +47,7 @@ The overlay refreshes every 5 minutes when fires are visible (matching NIFC's up
 | `wildfire_color`           | `'#ff3300'` | Active fire colour (stroke + icon)              |
 | `wildfire_contained_color` | `'#888888'` | 100%-contained fire colour                      |
 | `wildfire_fill_opacity`    | `0.2`       | Polygon fill opacity (`0` = perimeter only)     |
-| `wildfire_refresh_minutes` | adaptive    | Override the adaptive 5/30-min refresh interval |
+| `wildfire_refresh_minutes` | adaptive    | Override the adaptive 5/30-min refresh interval (at least 1) |
 
 ## NWS Watches & Warnings
 
@@ -89,7 +89,7 @@ Both polygon-bearing alerts (most warnings) and zone-based alerts (most advisori
 | `alerts_min_severity`    | `'Minor'`           | One of `Extreme`, `Severe`, `Moderate`, `Minor`, `Unknown`. Hides alerts below the chosen severity floor.                                 |
 | `alerts_radius_km`       | unset               | Only show alerts within N km of the map center                                                                                            |
 | `alerts_fill_opacity`    | `0.25`              | Alert polygon fill opacity (`0` = outline only)                                                                                           |
-| `alerts_refresh_seconds` | adaptive            | Override the adaptive 60s/300s refresh interval                                                                                           |
+| `alerts_refresh_seconds` | adaptive            | Override the adaptive 60s/300s refresh interval (at least 30)                                                                             |
 
 ## Lightning (Blitzortung)
 

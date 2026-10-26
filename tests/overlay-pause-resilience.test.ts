@@ -296,6 +296,7 @@ describe('failure backoff ladders', () => {
     l._failureCount = 0;
     l._features = [];
     l._getConfig = () => ({});
+    l._resolveZones = vi.fn();   // this bare object has no zone state
     const realFetch = global.fetch;
     global.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as any;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -303,6 +304,7 @@ describe('failure backoff ladders', () => {
       await l._fetch();
       expect(l._failureCount).toBe(1);
       expect(l._timer).not.toBeNull();               // backoff retry armed
+      expect(l._resolveZones).toHaveBeenCalled();    // zones of the alerts kept on screen go on loading
       clearTimeout(l._timer);
     } finally {
       global.fetch = realFetch;

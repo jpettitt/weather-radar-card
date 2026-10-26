@@ -10,6 +10,7 @@ import { escapeHtml } from './string-utils';
 import { findInciwebPage, inciwebCandidates, inciwebUrl, knownInciwebPage } from './inciweb';
 import { mapsEqual } from './map-utils';
 import { hazardMarkerPane } from './hazard-marker-pane';
+import { refreshOverrideMs } from './refresh-override';
 
 const decisionsEqual = mapsEqual<string, 'polygon' | 'icon'>;
 
@@ -52,6 +53,8 @@ const OUTLINE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
 
 const DEFAULT_REFRESH_VISIBLE_MS = 5 * 60 * 1000;
 const DEFAULT_REFRESH_EMPTY_MS = 30 * 60 * 1000;
+// Floor for wildfire_refresh_minutes (see refresh-override.ts).
+const MIN_REFRESH_MS = 60 * 1000;
 const DEFAULT_MIN_ACRES = 10;
 const DEFAULT_FILL_OPACITY = 0.2;
 const DEFAULT_ACTIVE_COLOR = '#ff3300';
@@ -213,7 +216,9 @@ export class WildfireLayer {
   // the modest feature counts we deal with.
   updateHass(hass: HomeAssistant): void {
     this._hass = hass;
-    if (this._features.length === 0) return;
+    if (this._getConfig().wildfire_radius_km) this._features = this._filter(this._all);
+    // Fires still drawn while the filter now keeps none: render to remove them.
+    if (this._features.length === 0 && this._renderDecisions.size === 0) return;
     // HA pushes hass updates on every state change — frequent. Don't tear
     // down the layers (which would close any open popup) unless the
     // per-feature polygon-vs-icon decisions actually change. Pass the
@@ -246,7 +251,8 @@ export class WildfireLayer {
       // Back off instead of retrying on the normal cadence, mirroring
       // the alerts layer.
       this._failureCount++;
-      this._render();
+      // Nothing changed: a full rebuild here closed any open fire popup.
+      this._render({ skipIfDecisionsUnchanged: true });
       this._scheduleRetry();
       return;
     }
@@ -256,7 +262,10 @@ export class WildfireLayer {
     const drawn = renderSignature(this._features);
     if (outlines) {
       this._all = outlines.filter((f) => !!f.geometry);
-      this._outlineStamp = outlineStamp(this._all);
+      // Stamp what the feed sent, not what was kept: a fire without a
+      // geometry is in the attributes stamp too, and leaving it out here
+      // made every refresh fetch the outlines again.
+      this._outlineStamp = outlineStamp(outlines);
       this._outlinesAt = Date.now();
       for (const [id, d] of this._detail) {
         const f = this._all.find((a) => featureKey(a) === id);
@@ -283,7 +292,12 @@ export class WildfireLayer {
     });
     const have = (f: GeoJSON.Feature): boolean =>
       this._detail.get(featureKey(f))?.date === (f.properties as WildfireProps | null)?.poly_DateCurrent;
-    if (inView.some((f) => have(f) && !this._detailDrawn.has(featureKey(f)))) this._renderUnlessPopupOpen();
+    // Only a fire drawn as a polygon uses its outline. One drawn as an icon
+    // never enters _detailDrawn, and counting it rebuilt the layer on every
+    // map-quiet callback.
+    const undrawn = (f: GeoJSON.Feature): boolean => have(f) && !this._detailDrawn.has(featureKey(f))
+      && this._renderDecisions.get(featureKey(f)) === 'polygon';
+    if (inView.some(undrawn)) this._renderUnlessPopupOpen();
     const missing = inView.filter((f) => !have(f)).map(featureKey).filter((id) => /^\d+$/.test(id));
     if (missing.length > 0) void this._fetchDetail(missing);
   }
@@ -470,7 +484,8 @@ export class WildfireLayer {
         const size = iconSizeForAcres(acres);
         const color = isContained(props) ? containedColor : activeColor;
         const icon = L.divIcon({
-          html: `<svg viewBox="0 0 24 24" width="${size}" height="${size}" style="display:block"><path fill="${color}" d="${FIRE_PATH}"/></svg>`,
+          // Escaped: the colours are config strings, and divIcon html is innerHTML.
+          html: `<svg viewBox="0 0 24 24" width="${size}" height="${size}" style="display:block"><path fill="${escapeHtml(color)}" d="${FIRE_PATH}"/></svg>`,
           iconSize: [size, size],
           className: 'wildfire-icon',
         });
@@ -517,10 +532,8 @@ export class WildfireLayer {
     if (this._pausedAt != null) return;
     if (this._timer) clearTimeout(this._timer);
     const cfg = this._getConfig();
-    const overrideMin = cfg.wildfire_refresh_minutes;
-    const intervalMs = overrideMin
-      ? overrideMin * 60 * 1000
-      : (this._features.length > 0 ? DEFAULT_REFRESH_VISIBLE_MS : DEFAULT_REFRESH_EMPTY_MS);
+    const intervalMs = refreshOverrideMs(cfg.wildfire_refresh_minutes, 60_000, MIN_REFRESH_MS)
+      ?? (this._features.length > 0 ? DEFAULT_REFRESH_VISIBLE_MS : DEFAULT_REFRESH_EMPTY_MS);
     this._timer = setTimeout(() => void this._fetch(), intervalMs);
   }
 }
