@@ -11,7 +11,7 @@ const { geoJSON, built } = vi.hoisted(() => {
       features,
       addTo: vi.fn(),
       on: vi.fn(),
-      getLayers: () => features.map(() => ({ isPopupOpen: () => layer.popupOpen })),
+      getLayers: () => features.map(() => ({ isPopupOpen: () => layer.popupOpen, bringToBack: vi.fn() })),
       popupOpen: false,
     };
     built.push({ features, layer, options });
@@ -30,7 +30,7 @@ vi.mock('leaflet', () => {
   return { Layer, TileLayer, Control, geoJSON, canvas, default: { Layer, TileLayer, Control, geoJSON, canvas } };
 });
 
-import { NwsAlertsLayer, boundsIntersect, alertOverAt, alertInForceAt } from '../src/nws-alerts-layer';
+import { NwsAlertsLayer, boundsIntersect, alertOverAt, alertInForceAt, formatDateTime } from '../src/nws-alerts-layer';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -263,9 +263,9 @@ describe('each zone drawn once per event', () => {
   const drawn = (f: GeoJSON.Feature): number[] => (f.geometry as GeoJSON.MultiPolygon).coordinates.map((poly) => poly[0][0][0]).sort((a, b) => a - b);
   /** The popup HTML Leaflet would bind for a built feature. */
   const popupOf = (b: { options: any }, f: GeoJSON.Feature): string => {
-    let html = '';
-    b.options.onEachFeature(f, { bindPopup: (h: string) => { html = h; } });
-    return html;
+    let content: unknown = '';
+    b.options.onEachFeature(f, { bindPopup: (c: unknown) => { content = c; }, getPopup: () => ({ options: {} }) });
+    return typeof content === 'function' ? content() : content as string;
   };
 
   function layerWithZones(): any {
@@ -483,5 +483,49 @@ describe('status callback', () => {
     layer._setStatus({ kind: 'fetch', failures: 1 });
     layer.clear();
     expect(statuses[statuses.length - 1]).toBeNull();
+  });
+});
+
+describe('alert popups are built when opened', () => {
+  beforeEach(() => { built.length = 0; geoJSON.mockClear(); });
+
+  /** Binds a built feature's popup the way Leaflet does; open() runs what Leaflet runs before it lays the popup out. */
+  function bindOf(b: { options: any }, f: GeoJSON.Feature): { open: () => string; popup: { options: any } } {
+    let content: unknown;
+    const popup = { options: {} as any };
+    b.options.onEachFeature(f, { bindPopup: (c: unknown, o?: any) => { content = c; Object.assign(popup.options, o); }, getPopup: () => popup });
+    return { popup, open: () => (typeof content === 'function' ? content() : content as string) };
+  }
+
+  it('a rebuild builds no popup text; opening one builds it with the locale of that moment', () => {
+    const layer = makeLayer(fakeMap([-100, 30, -90, 40]));
+    let reads = 0;
+    const props: any = { event: 'Flood Warning', severity: 'Severe', effective: '2026-10-17T21:00:00Z' };
+    Object.defineProperty(props, 'description', { get: () => { reads++; return 'River above flood stage.'; } });
+    layer._features = [{ type: 'Feature', id: 'a', properties: props, geometry: polygonAt(-95, 35, 'a').geometry }];
+    layer._render();
+    const bound = bindOf(built[0], built[0].features[0]);
+    expect(reads).toBe(0);
+    const locale = { language: 'en', number_format: 'language', time_format: '24' } as any;
+    layer._hass = { locale } as any;
+    const html = bound.open();
+    expect(reads).toBe(1);
+    expect(html).toContain('River above flood stage.');
+    expect(html).toContain(formatDateTime('2026-10-17T21:00:00Z', locale));
+  });
+
+  it('the popup height cap follows the map height when it opens, not when the layer was built', () => {
+    const size = { x: 0, y: 0 };
+    const map = { ...fakeMap([-100, 30, -90, 40]), getSize: () => size };
+    const layer = makeLayer(map);
+    layer._features = [polygonAt(-95, 35, 'a')];
+    layer._render();   // built before layout: the cap would be the 200 px floor
+    const bound = bindOf(built[0], built[0].features[0]);
+    size.x = 800; size.y = 600;
+    bound.open();
+    expect(bound.popup.options.maxHeight).toBe(480);
+    size.x = 400; size.y = 300;
+    bound.open();
+    expect(bound.popup.options.maxHeight).toBe(240);
   });
 });

@@ -199,3 +199,21 @@ describe('wildfire layer', () => {
     l.clear();
   });
 });
+
+describe('wildfire popup height cap', () => {
+  it('follows the map height when the popup opens, not when the layer was built', () => {
+    const size = { x: 0, y: 0 };
+    const layer = Object.create(WildfireLayer.prototype) as any;
+    layer._map = { getSize: () => size };
+    let content: () => string = () => '';
+    const popup = { options: {} as any };
+    layer._bindPopup({
+      bindPopup: (fn: () => string, o?: any) => { content = fn; Object.assign(popup.options, o); },
+      on: vi.fn(),
+      getPopup: () => popup,
+    }, { poly_IncidentName: 'Test' });
+    size.x = 800; size.y = 600;
+    content();   // Leaflet runs the content function before it lays the popup out
+    expect(popup.options.maxHeight).toBe(480);
+  });
+});

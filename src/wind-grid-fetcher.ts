@@ -558,6 +558,19 @@ export function resolveSourceForBbox(opts: FetchWindGridOptions): WindSource {
  *
  * Resolves the source from the bbox so an NDFD config that fell back to
  * AICON outside the US is timed too. */
+/**
+ * The overlays' anchor as an hourly ISO time: a fixed `timeMs`, else now +
+ * `offsetMs` read at each call so a forecast anchor keeps up with the
+ * radar loop; null (current) when neither is a finite number.
+ * effectiveTimeIso rounds again to the source's step.
+ */
+export function anchorTimeIso(timeMs: number | undefined, offsetMs: number | undefined): string | null {
+  const ms = timeMs != null && Number.isFinite(timeMs) ? timeMs
+    : offsetMs != null && Number.isFinite(offsetMs) ? Date.now() + offsetMs : null;
+  if (ms === null) return null;
+  return new Date(Math.round(ms / 3_600_000) * 3_600_000).toISOString().split('.')[0] + 'Z';
+}
+
 export function effectiveTimeIso(opts: FetchWindGridOptions, nowMs: number): string | null {
   const stepH = getWindSourceCaps(resolveSourceForBbox(opts)).timeStepHours;
   if (stepH === undefined) return opts.timeIso || null;
@@ -585,14 +598,14 @@ export function buildWindGridUrl(opts: FetchWindGridOptions, caps = getWindSourc
   // cell. Costs more on the wire (server downsamples via adaptive
   // scaling), but wrap-prone viewports are already at low zoom where
   // the user has a coarse grid anyway.
-  let west: number;
-  let east: number;
-  if (opts.west < -180 || opts.east > 180) {
+  // A view wholly in a wrapped world copy (after a drag across the
+  // antimeridian) is shifted by k x 360 first: same cells, no world fetch.
+  const k = Math.floor((opts.west + 180) / 360);
+  let west = opts.west - k * 360;
+  let east = opts.east - k * 360;
+  if (east > 180) {
     west = -180;
     east = 180;
-  } else {
-    west = opts.west;
-    east = opts.east;
   }
 
   const params = new URLSearchParams({

@@ -7,7 +7,9 @@
 // trivial and Canvas2D `stroke()` is plenty fast (~5ms/frame on integrated
 // graphics). WebGL would only matter at 50k+ particles, full-screen.
 import * as L from 'leaflet';
-import { windGridFetcher, sampleWindGridBilinearInto, resolveSourceForBbox, type WindGrid } from './wind-grid-fetcher';
+import {
+  windGridFetcher, sampleWindGridBilinearInto, resolveSourceForBbox, anchorTimeIso, type WindGrid,
+} from './wind-grid-fetcher';
 import { webMercatorPixelToLatLng } from './mercator-pixel';
 import { getWindSourceCaps, DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
 
@@ -106,6 +108,8 @@ const REFRESH_TICK_OFFSET_MS = 30_000;
 export interface WindFlowOverlayOptions {
   /** Anchor time in epoch ms. Snapped to the hourly ICON boundary. Omit for "current". */
   timeMs?: number;
+  /** Anchor as an offset from now, re-read on each refresh. Ignored when timeMs is set. */
+  offsetMs?: number;
   /** Stroke for new line segments. Defaults to a neutral grey that reads on light or dark maps. */
   particleColor?: string;
   /** Wind data source. Defaults to ICON globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
@@ -139,7 +143,8 @@ export class WindFlowOverlay {
   private _lastDrawMs = 0;
   private _gen = 0;
   private _running = false;
-  private _timeIso: string | null = null;
+  private _timeMs: number | undefined;
+  private _offsetMs: number | undefined;
   private _color: string;
   private _source: WindSource;
   private _gridSource: WindSource;
@@ -148,7 +153,6 @@ export class WindFlowOverlay {
   private _onZoomStart: () => void;
   private _onZoomEnd: () => void;
   private _onResize: () => void;
-  private _isZooming = false;
   // prefers-reduced-motion: spinning particles 30×/s on lower-end devices is
   // exactly the kind of work the OS-level setting asks us to skip. We watch
   // the media query so toggling it in System Settings takes effect without
@@ -170,13 +174,8 @@ export class WindFlowOverlay {
     this._source = opts.source ?? DEFAULT_WIND_SOURCE;
     this._gridSource = this._source;
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
-    // NaN (an unparseable dwd_time_override) would throw in toISOString and
-    // abort the host's map init; show live wind instead.
-    if (opts.timeMs != null && Number.isFinite(opts.timeMs)) {
-      // Nearest hour; effectiveTimeIso rounds again to the source's step.
-      const snapped = Math.round(opts.timeMs / 3_600_000) * 3_600_000;
-      this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
-    }
+    this._timeMs = opts.timeMs;
+    this._offsetMs = opts.offsetMs;
 
     // Canvas lives in a custom Leaflet pane between tilePane (200) and
     // overlayPane (400) so streaks sit directly on top of the radar /
@@ -207,20 +206,13 @@ export class WindFlowOverlay {
     this._ctx = this._canvas.getContext('2d')!;
 
     this._onMoveStart = (): void => this._stopLoop();
-    this._onMoveEnd = (): void => {
-      if (this._isZooming) return; // zoomend handles the redraw
-      void this._restart();
-    };
+    this._onMoveEnd = (): void => { void this._restart(); };
     this._onZoomStart = (): void => {
-      this._isZooming = true;
       this._stopLoop();
       this._canvas.style.opacity = '0';
     };
-    this._onZoomEnd = (): void => {
-      this._isZooming = false;
-      this._canvas.style.opacity = '';
-      void this._restart();
-    };
+    // No restart here: Leaflet fires moveend right after zoomend, and that restarts.
+    this._onZoomEnd = (): void => { this._canvas.style.opacity = ''; };
     this._onResize = (): void => { void this._restart(); };
     map.on('movestart', this._onMoveStart);
     map.on('moveend', this._onMoveEnd);
@@ -255,7 +247,7 @@ export class WindFlowOverlay {
         // (only needs map.getBounds(), no canvas/pixel size involved) but
         // skip the canvas resize + particle respawn + animation restart
         // that a full _restart() would do into an invisible canvas.
-        void this._fetchGrid();
+        void this._fetchGrid(this._gen);
       } else {
         void this._restart();
       }
@@ -357,8 +349,9 @@ export class WindFlowOverlay {
     // disable the animation entirely rather than rendering a static frame.
     if (this._reducedMotionMql?.matches) return;
 
-    await this._fetchGrid();
-    if (myGen !== this._gen) return;
+    await this._fetchGrid(myGen);
+    // pause() does not bump _gen, so a fetch that lands after it must not start the loop.
+    if (myGen !== this._gen || this._paused) return;
 
     this._spawnParticles(size.x, size.y);
     this._running = true;
@@ -398,7 +391,8 @@ export class WindFlowOverlay {
     return Math.max(MIN_PX_PER_MPS_PER_FRAME, Math.min(MAX_PX_PER_MPS_PER_FRAME, scaled));
   }
 
-  private async _fetchGrid(): Promise<void> {
+  // Drops the result if a newer restart or destroy bumped _gen during the await.
+  private async _fetchGrid(gen: number = this._gen): Promise<void> {
     const b = this._map.getBounds();
     // Pad by one native cell on each side so particles drifting just past
     // the visible edge still find U/V before the next pan triggers a refetch.
@@ -409,10 +403,13 @@ export class WindFlowOverlay {
     const east = b.getEast() + pad;
 
     try {
-      const opts = { south, west, north, east, timeIso: this._timeIso, source: this._source };
-      this._grid = await windGridFetcher.fetch(opts);
+      const opts = { south, west, north, east, timeIso: anchorTimeIso(this._timeMs, this._offsetMs), source: this._source };
+      const grid = await windGridFetcher.fetch(opts);
+      if (gen !== this._gen) return;
+      this._grid = grid;
       this._gridSource = resolveSourceForBbox(opts);
     } catch (err) {
+      if (gen !== this._gen) return;
       console.warn('WindFlowOverlay: WCS fetch failed, skipping refresh', err);
       this._grid = { rows: 0, cols: 0, latMin: 0, lonMin: 0, step: ICON_GRID_DEG, cells: [] };
     }

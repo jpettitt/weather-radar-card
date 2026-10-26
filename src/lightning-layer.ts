@@ -146,6 +146,9 @@ export class LightningLayer {
   // Bound handlers kept as fields so clear() can detach exactly what
   // start() attached.
   private _onViewChange = (): void => this._repositionAndRedraw();
+  // A same-zoom jump past the map size resets the pixel origin without a
+  // zoomstart; hide the old view's pixels until the quiet repaint shows them.
+  private _onViewReset = (): void => { if (this._canvas) this._canvas.style.display = 'none'; };
   private _disposeQuiet: (() => void) | null = null;
   private _disposeHide: (() => void) | null = null;
   private _onMapClick = (e: L.LeafletMouseEvent): void => this._handleClick(e);
@@ -173,6 +176,7 @@ export class LightningLayer {
     // (see map-quiet.ts and hide-while-zooming.ts).
     this._disposeQuiet = onMapQuiet(this._map, this._onViewChange);
     this._disposeHide = hideElementWhileZooming(this._map, () => this._canvas ?? undefined);
+    this._map.on('viewreset', this._onViewReset);
     this._map.on('resize', this._onViewChange);
     this._map.on('click', this._onMapClick);
     this._map.on('mousemove', this._onMapMouseMove);
@@ -208,6 +212,7 @@ export class LightningLayer {
     this._disposeQuiet = null;
     this._disposeHide?.();
     this._disposeHide = null;
+    this._map.off('viewreset', this._onViewReset);
     this._map.off('resize', this._onViewChange);
     this._map.off('click', this._onMapClick);
     this._map.off('mousemove', this._onMapMouseMove);
@@ -224,11 +229,9 @@ export class LightningLayer {
   }
 
   // Stop the age timer while the host card is hidden. The painted canvas
-  // stays as-is (it'll repaint on the next visible tick). The strike-set
-  // diff still runs on hass updates because the card's
-  // IntersectionObserver doesn't gate updateHass calls — but a hidden
-  // card receives few hass-update render passes anyway, so this is not
-  // worth defensive guarding.
+  // stays as-is. The strike-set diff still runs on hass updates (a card
+  // scrolled off-screen gets every one), but it neither schedules a repaint
+  // nor starts a pulse; resume() repaints through _refreshAges.
   pause(): void {
     if (this._pausedAt != null) return;
     this._pausedAt = Date.now();
@@ -271,18 +274,23 @@ export class LightningLayer {
       if (strike.ts <= this._bufferMaxTs) this._bufferDirty = true;
     }
 
-    // Removals: strikes we tracked that hass no longer has (integration
-    // dropped them past its max-age cap). Removed strikes may be baked
-    // into the buffer, so removals always rebuild it.
-    for (const id of Array.from(this._strikes.keys())) {
-      if (!current.has(id)) {
-        this._strikes.delete(id);
+    // Removals: strikes we tracked that are gone from `current`. One past
+    // the display cap aged out (_collectStrikes drops it; in a storm that is
+    // one per arrival): leave it in the buffer for the 30 s age pass to
+    // fold out. Only a strike hass dropped inside the cap must be erased now.
+    let maxAgeSec: number | undefined;
+    const now = Date.now();
+    for (const [id, strike] of this._strikes) {
+      if (current.has(id)) continue;
+      this._strikes.delete(id);
+      maxAgeSec ??= this._displayMaxAgeSec();
+      if ((now - strike.ts) / 1000 <= maxAgeSec) {
         changed = true;
         this._bufferDirty = true;
       }
     }
 
-    if (changed) this._scheduleRedraw();
+    if (changed && this._pausedAt == null) this._scheduleRedraw();
   }
 
   // Walk hass.states once. Only entity_ids matching geo_location.* with
@@ -296,7 +304,8 @@ export class LightningLayer {
     if (!this._hass?.states) return out;
     const maxAgeSec = this._displayMaxAgeSec();
     const now = Date.now();
-    const pulseOk = this._getConfig().lightning_pulse !== false && !prefersReducedMotion();
+    const pulseOk = this._pausedAt == null
+      && this._getConfig().lightning_pulse !== false && !prefersReducedMotion();
     // for-in with an early prefix test rather than Object.entries: this
     // runs on EVERY hass tick (any state change in the whole install),
     // and Object.entries allocates a [key, value] pair array for

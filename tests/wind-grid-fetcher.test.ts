@@ -959,6 +959,21 @@ describe('buildWindGridUrl', () => {
     it('expands to the full world when only the east edge passes +180', () => {
       expect(subsetFor(170, 190)).toContain('subset=Long(-180,180)');
     });
+
+    // Leaflet reports a view in a wrapped world copy after a drag across the antimeridian.
+    it('asks for the same cells as the unwrapped view when the view lies wholly in a wrapped copy', () => {
+      expect(subsetFor(-200, -190)).toContain('subset=Long(160,170)');
+      expect(subsetFor(190, 200)).toContain('subset=Long(-170,-160)');
+      expect(subsetFor(530, 540)).toContain('subset=Long(170,180)');
+      const hawaii = (west: number, east: number): string =>
+        buildWindGridUrl({ south: 18.75, west, north: 22.25, east, source: 'ndfd_wind' });
+      expect(hawaii(199.75, 205.25)).toBe(hawaii(-160.25, -154.75));
+    });
+
+    it('still fetches the whole world for a wrapped copy of a view that straddles 180', () => {
+      expect(subsetFor(535, 545)).toContain('subset=Long(-180,180)');   // Fiji, 175..185, one world east
+      expect(subsetFor(-185, -175)).toContain('subset=Long(-180,180)');
+    });
   });
 
   it('DEFAULT_WIND_COVERAGE is the dwd_icon coverage id', () => {

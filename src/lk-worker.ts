@@ -238,15 +238,17 @@ export function createLkWorker(): { worker: Worker; blobUrl: string } | null {
   if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') {
     return null;
   }
+  let blobUrl: string | null = null;
   try {
     const source = LK_ALGORITHM_SOURCE + MESSAGE_HANDLER_SOURCE;
     const blob = new Blob([source], { type: 'application/javascript' });
-    const blobUrl = URL.createObjectURL(blob);
+    blobUrl = URL.createObjectURL(blob);
     const worker = new Worker(blobUrl);
     return { worker, blobUrl };
   } catch {
     // Some CSP setups block blob: workers. Caller falls back to
     // synchronous main-thread execution.
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
     return null;
   }
 }
@@ -268,6 +270,11 @@ export class LkWorkerClient {
   private _blobUrl: string;
   private _pending = new Map<number, PendingLkRequest>();
   private _nextId = 0;
+  /**
+   * The worker fired 'error'. Chrome reports a CSP-blocked blob: worker this
+   * way, after construction, not as a throw; it never answers after that.
+   */
+  failed = false;
 
   constructor(worker: Worker, blobUrl: string) {
     this._worker = worker;
@@ -287,6 +294,7 @@ export class LkWorkerClient {
     opts: LkOptions = {},
   ): Promise<LkResult & { elapsedMs: number }> {
     return new Promise((resolve, reject) => {
+      if (this.failed) { reject(new Error('LK worker failed')); return; }
       const id = this._nextId++;
       this._pending.set(id, { resolve, reject });
       this._worker.postMessage(
@@ -320,6 +328,7 @@ export class LkWorkerClient {
   private _onError = (e: ErrorEvent): void => {
     // A worker-level error fails ALL pending requests — the worker
     // process is dead, no in-flight request will ever resolve.
+    this.failed = true;
     const err = new Error(`LK worker error: ${e.message}`);
     for (const pending of this._pending.values()) pending.reject(err);
     this._pending.clear();
@@ -344,7 +353,7 @@ export async function estimateMotionLk(
   opts: LkOptions = {},
   client: LkWorkerClient | null = null,
 ): Promise<LkResult> {
-  if (client) {
+  if (client && !client.failed) {
     return client.estimate(I0, I1, width, height, opts);
   }
   // Synchronous fallback — wrap in a microtask so the API surface is

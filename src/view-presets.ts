@@ -148,6 +148,11 @@ export class ViewPresets {
 
   constructor(private readonly _host: PresetHost) {}
 
+  /** The stop holding the map, or null at rest. */
+  get held(): 'default' | number | null {
+    return this._held;
+  }
+
   /** True while a stop other than rest holds the map; tracking must not pan it. */
   get isHolding(): boolean {
     return this._held !== null;

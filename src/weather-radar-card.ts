@@ -30,7 +30,7 @@ import {
   vectorLabelsAbove,
 } from './basemap-styles';
 import { attachMapTilesLayer, isMapTilesLoaded } from './map-tiles-token';
-import { startVectorBasemap } from './vector-basemap';
+import { cardAssetUrl, instanceOrigin, startVectorBasemap } from './vector-basemap';
 import { CreditsPopup } from './credits-popup';
 import { isWheelZoomEnabled } from './map-interaction';
 import { WindOverlay } from './wind-overlay';
@@ -131,7 +131,7 @@ import { NwsAlertsLayer, type AlertsStatus } from './nws-alerts-layer';
 import { LightningLayer } from './lightning-layer';
 import { getRegionWarnings } from './region-warning';
 import { escapeHtml } from './string-utils';
-import { resolveCardLayout, isValidCssSize } from './card-layout';
+import { resolveCardLayout, isValidCssSize, DEFAULT_GRID_ROWS } from './card-layout';
 import { PopupPanRestore } from './popup-pan-restore';
 import { isOnlyKeysChanged } from './config-diff';
 import {
@@ -174,6 +174,11 @@ const IDENTITY_KEYS = new Set(['_layer_state_id']);
 // Presets are read live by ViewPresets, so editing them needs no rebuild;
 // the editor writes them on every keystroke and map drag.
 const PRESET_KEYS = new Set(['presets', 'preset_timeout']);
+
+// Map-container events that start, or end, a possible user move.
+const USER_MOVE_EVENTS = ['pointerdown', 'pointerup', 'pointercancel', 'wheel'] as const;
+// Longer than pointerup to a click-driven movestart, even on a slow tablet.
+const USER_MOVE_GRACE_MS = 500;
 
 // The dashboard's grid for a section config. HA rebuilds the preview on
 // every edit, and finding the grid walks the whole dashboard.
@@ -224,6 +229,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @property({ attribute: false }) private _config!: WeatherRadarCardConfig;
   @property({ attribute: false }) public editMode?: boolean;
+  // hui-card sets 'grid' in a sections view (and its edit preview), 'panel' in a panel view.
+  @property({ attribute: false }) public layout?: string;
 
   // ── Map / player state ────────────────────────────────────────────────────
 
@@ -248,6 +255,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // The re-centre rotation: tracked marker, Default, presets.
   private _viewPresets: ViewPresets | null = null;
   private _rangeRings: L.Circle[] = [];
+  // The marker the rings centre on: the first one drawn.
+  private _rangeRingsIdx = -1;
   private _player: RadarPlayer | null = null;
   // Per-user, per-card preference store. Created lazily on the first
   // setConfig because the constructor doesn't have hass yet. Dormant
@@ -269,13 +278,19 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _editorOpenedHandler: (() => void) | null = null;
   private _editorClosedHandler: (() => void) | null = null;
   private _userMoveInProgress = false;
+  // A movestart came after the flag was set, so a moveend will clear it.
+  private _userMoveStarted = false;
+  private _userMoveGraceTimer: ReturnType<typeof setTimeout> | null = null;
 
   private _navReloadTimer: ReturnType<typeof setTimeout> | null = null;
   private _visObserver: IntersectionObserver | null = null;
   private _resizeObserver: ResizeObserver | null = null;
   private _visibilityHandler: (() => void) | null = null;
+  // Last IntersectionObserver reading, and whether onHide paused the card.
+  private _offScreen = false;
+  private _viewHidden = false;
   private _navContainer: HTMLElement | null = null;
-  private _markUserMove: (() => void) | null = null;
+  private _markUserMove: ((e: Event) => void) | null = null;
   private _darkModeQuery: MediaQueryList | null = null;
   private _credits = new CreditsPopup(() => ({
     toggle: this.shadowRoot?.getElementById('credits-toggle') ?? null,
@@ -526,7 +541,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   } {
     return {
       columns: 12,        // full row by default
-      rows: 7,            // ≈ 392 px at 56 px/row — close to the 400 px height default
+      rows: DEFAULT_GRID_ROWS,   // 7 rows ≈ 392 px at 56 px/row — close to the 400 px height default
       min_columns: 6,     // half a row minimum
       min_rows: 4,        // ≈ 224 px — readable even at the smallest
     };
@@ -535,7 +550,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   protected shouldUpdate(changedProps: PropertyValues): boolean {
     if (!this._config) return false;
     return changedProps.has('_config') || changedProps.has('hass')
-      || changedProps.has('editMode');
+      || changedProps.has('editMode') || changedProps.has('layout');
   }
 
   protected firstUpdated(): void {
@@ -658,7 +673,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     if (this._isInPickerPreview()) {
       return html`
         <ha-card>
-          <img src="/local/community/weather-radar-card/preview.jpg"
+          <img src=${cardAssetUrl(this.hass, 'preview.jpg')}
                style="width:100%; display:block; border-radius: var(--ha-card-border-radius, 12px); object-fit: cover;"
                alt="Weather Radar Card preview" />
         </ha-card>
@@ -669,11 +684,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const dataSource = this._config.data_source ?? 'RainViewer';
     const showColourBar = this._config.show_color_bar !== false;
     const progressBarTouchHeight = resolveProgressBarTouchHeight(this._config.progress_bar_touch_height);
-    const colourBarSrc = dataSource === 'NOAA'
-      ? '/local/community/weather-radar-card/radar-colour-bar-nws.png'
+    // On the instance, not the page: on Cast the page is not served by it.
+    const colourBarSrc = cardAssetUrl(this.hass, dataSource === 'NOAA'
+      ? 'radar-colour-bar-nws.png'
       : dataSource === 'DWD'
-        ? '/local/community/weather-radar-card/radar-colour-bar-dwd.png'
-        : '/local/community/weather-radar-card/radar-colour-bar-universalblue.png';
+        ? 'radar-colour-bar-dwd.png'
+        : 'radar-colour-bar-universalblue.png');
     // Layout mode:
     //   aspect-mode → square_map without an explicit height. The map div
     //                 carries aspect-ratio:1/1 and the card grows to its
@@ -691,7 +707,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // min-height) and ignore both `height:` and `square_map` — applying them
     // would only make the card overflow or underflow the cell. resolveCardLayout
     // encodes that precedence; see card-layout.ts.
-    const layout = resolveCardLayout(this._config);
+    const layout = resolveCardLayout(this._config, this.layout);
     const isAspectMode = layout.mode === 'aspect';
     const cardClasses = [
       isMapDark ? 'map-dark' : '',
@@ -755,6 +771,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _initMap(): void {
     const mapEl = this.shadowRoot?.getElementById('mapid');
     if (!mapEl || this._map) return;
+    // HA keeps passing hass to a card its visibility conditions detached, and
+    // a card connected before hass would open at 0,0 with no viewer store.
+    if (!this.isConnected || !this.hass) return;
 
     const cfg = this._config;
     const mapStyle = this._effectiveMapStyle();
@@ -826,6 +845,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       // (no prop changed), leaving the map blank until the next hass update —
       // same trap as connectedCallback's reconnect, see there.
       this._darkModeHandler = () => {
+        // HA's dark-mode hass update may have rebuilt already, and a pinned
+        // theme_mode or HA theme ignores the OS.
+        if (this._effectiveMapStyle() === this._currentMapStyle) return;
         this._teardown();
         this._initMap();
       };
@@ -924,6 +946,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         this._lightningLayer.start();
         break;
     }
+    // onHide paused only the overlays that existed then (one started after
+    // hydrate would poll off-screen); pause() is idempotent.
+    if (this._viewHidden) this._pauseOverlays();
   }
 
   private _stopOverlay(key: OverlayKey): void {
@@ -973,11 +998,14 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._visibilityHandler = null;
     }
     if (this._navContainer && this._markUserMove) {
-      this._navContainer.removeEventListener('pointerdown', this._markUserMove);
-      this._navContainer.removeEventListener('wheel', this._markUserMove);
+      for (const type of USER_MOVE_EVENTS) this._navContainer.removeEventListener(type, this._markUserMove);
       this._navContainer = null;
       this._markUserMove = null;
     }
+    if (this._userMoveGraceTimer) clearTimeout(this._userMoveGraceTimer);
+    this._userMoveGraceTimer = null;
+    this._userMoveInProgress = false;
+    this._userMoveStarted = false;
     if (this._darkModeQuery && this._darkModeHandler) {
       this._darkModeQuery.removeEventListener('change', this._darkModeHandler);
       this._darkModeQuery = null;
@@ -1042,7 +1070,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       );
     }
     const { url, subdomains, labelUrl, labelsBakedIn } = getBasemapTiles(
-      mapStyle, cfg.carto_api_key, cfg.custom_tile_url,
+      mapStyle, cfg.carto_api_key, cfg.custom_tile_url, instanceOrigin(this.hass),
     );
     const className = isInvertedBasemap(mapStyle, cfg.custom_tile_theme) ? CUSTOM_INVERT_CLASS : '';
 
@@ -1122,15 +1150,15 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // The dwd_time_override / forecast_minutes anchors are still honoured
     // when DWD radar is the source; for other sources the wind shows live.
 
-    // Anchor matches the radar's latest playback frame: override (or now) plus forecast.
-    // Override + forecast only meaningful when DWD radar is selected; otherwise live.
+    // Anchor: override (or now) plus forecast. Override + forecast only
+    // meaningful when DWD radar is selected; otherwise live.
     const isDwdRadar = cfg.data_source === 'DWD';
     const forecastMs = isDwdRadar ? (cfg.forecast_minutes ?? 0) * 60_000 : 0;
     // An invalid override falls back to now, as the loop does (it warns).
-    const baseMs = (isDwdRadar ? parseDwdTimeOverride(cfg.dwd_time_override) : null) ?? Date.now();
-    const anchorMs = baseMs + forecastMs;
-    const useAnchor = isDwdRadar && (cfg.dwd_time_override != null || forecastMs > 0);
-    const timeMs = useAnchor ? anchorMs : undefined;
+    const overrideMs = isDwdRadar ? parseDwdTimeOverride(cfg.dwd_time_override) : null;
+    // Without an override the anchor is relative to now, so it moves on as the loop does.
+    const timeMs = overrideMs !== null ? overrideMs + forecastMs : undefined;
+    const offsetMs = overrideMs === null && forecastMs > 0 ? forecastMs : undefined;
 
     const windSource = cfg.wind_source ?? DEFAULT_WIND_SOURCE;
     const mode = cfg.dwd_wind ?? 'off';
@@ -1140,6 +1168,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         density: cfg.dwd_wind_density,
         size: cfg.dwd_wind_size,
         timeMs,
+        offsetMs,
         source: windSource,
         preloadWhileHidden: cfg.preload_while_hidden === true,
       });
@@ -1170,6 +1199,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       }
       this._windFlow = new WindFlowOverlay(this._map, {
         timeMs,
+        offsetMs,
         particleColor: customColor ?? defaultColor,
         source: windSource,
         preloadWhileHidden: cfg.preload_while_hidden === true,
@@ -1333,6 +1363,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
           );
         }
         rangeRingsSet = true;
+        this._rangeRingsIdx = i;
       }
     }
   }
@@ -1345,6 +1376,12 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       const markerCfg = markers[i];
       if (!markerCfg) continue;
       const { lat, lon } = resolveMarkerPosition(markerCfg, this.hass, haLat, haLon);
+      if (i === this._rangeRingsIdx) {
+        for (const ring of this._rangeRings) {
+          const c = ring.getLatLng();
+          if (c.lat !== lat || c.lng !== lon) ring.setLatLng([lat, lon]);
+        }
+      }
 
       // Skip setLatLng for clustered markers while spiderfied. During spiderfy,
       // markercluster calls setLatLng(spiderPosition) on each marker to place it
@@ -1432,6 +1469,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const savedSpeed = loadPlaybackSpeed(this._viewerState, this._config.playback_speed);
 
     this._toolbar = new RadarToolbar({
+      assetUrl: (file) => cardAssetUrl(this.hass, file),
       showRecenter,
       showPlayback,
       initialPlaying: cfg.start_paused !== true,
@@ -1618,16 +1656,33 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // pointerdown and wheel fire for real user gestures but NOT for programmatic
     // moves like invalidateSize() or setView(). Use them to gate the save button.
     this._navContainer = (this._map as any).getContainer() as HTMLElement;
-    this._markUserMove = (): void => {
-      this._userMoveInProgress = true;
-      this._viewPresets?.touch();
+    this._markUserMove = (e: Event): void => {
+      if (e.type === 'pointerdown' || e.type === 'wheel') {
+        this._userMoveInProgress = true;
+        this._viewPresets?.touch();
+      }
+      if (this._userMoveGraceTimer) clearTimeout(this._userMoveGraceTimer);
+      this._userMoveGraceTimer = null;
+      if (e.type === 'pointerdown') return;
+      // A tap or wheel that moves nothing gets no moveend to clear the flag, and
+      // tracking would stop. Wait first: a click-driven move (zoom button,
+      // double-click zoom) starts after pointerup, one animation frame later.
+      this._userMoveGraceTimer = setTimeout(() => {
+        this._userMoveGraceTimer = null;
+        if (this._userMoveStarted || !this._userMoveInProgress) return;
+        this._userMoveInProgress = false;
+        // A hass update skipped while the flag was set may be the last one for a while.
+        if ((this._config?.markers ?? []).some(m => m.track)) this._resolveTracking();
+        this._viewPresets?.follow();
+      }, USER_MOVE_GRACE_MS);
     };
-    this._navContainer.addEventListener('pointerdown', this._markUserMove, { passive: true });
-    if (isWheelZoomEnabled(this._config)) {
-      this._navContainer.addEventListener('wheel', this._markUserMove, { passive: true });
+    for (const type of USER_MOVE_EVENTS) {
+      if (type === 'wheel' && !isWheelZoomEnabled(this._config)) continue;
+      this._navContainer.addEventListener(type, this._markUserMove, { passive: true });
     }
 
     this._map.on('movestart zoomstart', () => {
+      if (this._userMoveInProgress) this._userMoveStarted = true;
       if (this._navReloadTimer) clearTimeout(this._navReloadTimer);
       this._player?.onNavPaused();
     });
@@ -1644,11 +1699,13 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       // the card's centre.
       const presetFocus = this._userMoveInProgress ? this._previewPresetFocus() : null;
       if (presetFocus !== null) {
-        this._pushMapToPreset(presetFocus);
+        // Re-centre can move the preview to another stop while this preset stays open.
+        if (this._viewPresets?.held === presetFocus) this._pushMapToPreset(presetFocus);
       } else if (this._userMoveInProgress && this.editMode && this._editorOpen && !this._viewPresets?.isHolding) {
         this._pushCenterToEditor();
       }
       this._userMoveInProgress = false;
+      this._userMoveStarted = false;
       this._updateRecenterTitle();
     });
   }
@@ -1666,6 +1723,16 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const map = this._map;
     if (!map) return;
     map.on('popupopen', () => this._popupPanRestore.onOpen(() => map.getCenter()));
+    // Leaflet fires autopanstart just before the autoPan's movestart; any
+    // other movestart is a move the restore must not undo.
+    let autoPanning = false;
+    map.on('autopanstart', () => { autoPanning = true; });
+    map.on('movestart', () => {
+      if (!autoPanning) this._popupPanRestore.cancel();
+      autoPanning = false;
+    });
+    // A sub-pixel autoPan rounds to no move and fires only moveend.
+    map.on('moveend', () => { autoPanning = false; });
     map.on('popupclose', () => {
       const token = this._popupPanRestore.onClose();
       setTimeout(() => {
@@ -1685,20 +1752,19 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // overlay-layer polling timers. Tile fetches for the basemap and
     // labels naturally stop too — Leaflet only requests new tiles when
     // the view changes, which doesn't happen while the card is hidden.
+    // Resuming needs both signals clear.
+    this._offScreen = false;
+    this._viewHidden = false;
     const onHide = (): void => {
+      this._viewHidden = true;
       this._player?.onVisibilityHidden();
-      this._wildfireLayer?.pause();
-      this._alertsLayer?.pause();
-      this._lightningLayer?.pause();
-      // Wind overlays were missing from this roster — and it matters
-      // most for the streamline canvas: requestAnimationFrame is only
-      // throttled when the TAB is hidden, not when the card is merely
-      // scrolled off-screen, so the 15 fps particle loop used to keep
-      // running at full rate into an invisible canvas indefinitely.
-      this._windOverlay?.pause();
-      this._windFlow?.pause();
+      this._pauseOverlays();
     };
     const onShow = (): void => {
+      // The observer does not fire again on a tab switch, so a card that
+      // is still scrolled away must stay paused.
+      if (this._offScreen || document.hidden) return;
+      this._viewHidden = false;
       this._player?.onVisibilityVisible();
       this._wildfireLayer?.resume();
       this._alertsLayer?.resume();
@@ -1707,6 +1773,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._windFlow?.resume();
     };
     this._visObserver = new IntersectionObserver((entries) => {
+      this._offScreen = !entries[0].isIntersecting;
       if (entries[0].isIntersecting) onShow();
       else onHide();
     }, { threshold: 0.1 });
@@ -1716,6 +1783,19 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       else onShow();
     };
     document.addEventListener('visibilitychange', this._visibilityHandler);
+  }
+
+  private _pauseOverlays(): void {
+    this._wildfireLayer?.pause();
+    this._alertsLayer?.pause();
+    this._lightningLayer?.pause();
+    // Wind overlays were missing from this roster — and it matters
+    // most for the streamline canvas: requestAnimationFrame is only
+    // throttled when the TAB is hidden, not when the card is merely
+    // scrolled off-screen, so the 15 fps particle loop used to keep
+    // running at full rate into an invisible canvas indefinitely.
+    this._windOverlay?.pause();
+    this._windFlow?.pause();
   }
 
   // ⚠️  Do not "simplify" by removing the requestAnimationFrame defer or

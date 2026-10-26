@@ -3,6 +3,7 @@ import { HomeAssistant } from 'custom-card-helpers';
 import { Marker } from './types';
 import { escapeHtml } from './string-utils';
 import { isDarkBasemapStyle } from './basemap-styles';
+import { instanceOrigin } from './vector-basemap';
 
 const ICON_BASE = '/local/community/weather-radar-card/';
 
@@ -76,6 +77,10 @@ export function createMarkerIconForMarker(
   const svgFile = isDarkMap ? 'home-circle-light.svg' : 'home-circle-dark.svg';
   const defaultColour = isDarkMap ? '#EEEEEE' : '#333333';
   const colour = markerCfg.color ?? defaultColour;
+  // On the instance, not the page: on Cast the page is not served by it.
+  const onInstance = (path: string): string => {
+    try { return new URL(path, instanceOrigin(hass)).href; } catch { return path; }
+  };
 
   // For default icon: use inline SVG when a custom colour is set, external file otherwise.
   if (iconType === 'default') {
@@ -86,15 +91,15 @@ export function createMarkerIconForMarker(
         className: 'marker-mdi-icon',
       });
     }
-    return L.icon({ iconUrl: `${ICON_BASE}${svgFile}`, iconSize: [16, 16] });
+    return L.icon({ iconUrl: onInstance(`${ICON_BASE}${svgFile}`), iconSize: [16, 16] });
   }
 
   if (iconType === 'entity_picture') {
     const entityId = markerCfg.icon_entity || markerCfg.entity;
     const resolved = entityId ? resolveToPersonEntity(entityId, hass) : undefined;
     const pictureUrl = resolveEntityPicture(resolved, hass);
-    if (!pictureUrl) return L.icon({ iconUrl: `${ICON_BASE}${svgFile}`, iconSize: [16, 16] });
-    return L.icon({ iconUrl: pictureUrl, iconSize: [32, 32], className: 'marker-entity-picture' });
+    if (!pictureUrl) return L.icon({ iconUrl: onInstance(`${ICON_BASE}${svgFile}`), iconSize: [16, 16] });
+    return L.icon({ iconUrl: onInstance(pictureUrl), iconSize: [32, 32], className: 'marker-entity-picture' });
   }
 
   if (iconType.startsWith('mdi:') && iconType.length > 4) {
@@ -107,6 +112,6 @@ export function createMarkerIconForMarker(
     });
   }
 
-  return L.icon({ iconUrl: `${ICON_BASE}${svgFile}`, iconSize: [16, 16] });
+  return L.icon({ iconUrl: onInstance(`${ICON_BASE}${svgFile}`), iconSize: [16, 16] });
 }
 

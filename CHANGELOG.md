@@ -27,6 +27,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Markers: the tracking tie warning repeated on each update.** The card now logs it once for each tie.
 - **Markers: legacy entity-object positions were lost.** A `marker_latitude` or `mobile_marker_latitude` given as `{ entity: ... }` became a marker with no position. It now becomes a marker for that entity. Custom attribute names are not kept.
 - **Docs: the two-tracker example in markers.md did not work as told.** For viewers other than John, `person.john` has the same priority as the van, so the first marker wins. The example now lists the van first.
+- **Radar: no radar with one frame.** With `past_minutes: 0`, the map showed no radar until a pan. The first frame now also shows while the other frames load.
+- **Radar: the loop dropped to one frame in widespread rain** with `motion_compensation`. Frames whose view was full of rain counted as copies of each other.
+- **Radar: a paused card went blank** when `motion_compensation` removed a duplicate frame that was on screen.
+- **Radar: a new frame showed under the stopped loop while it loaded,** and a new frame that did not load stayed on the map until it left the loop.
+- **Radar: a frame that did not load downloaded tiles on each pan and zoom.** It is now removed.
+- **Radar: RainViewer with `past_minutes: 120` and `frame_stride_minutes` above 10 rebuilt the full loop** at each new RainViewer frame.
+- **Radar: a frame list that did not answer stopped the radar updates.** The card now stops waiting for a NOAA or RainViewer list after 10 seconds and tries again; NOAA uses its fallback times.
+- **Radar: when the browser's tile store did not answer, each tile waited 5 seconds.** The card now stops using the store for the session.
+- **Radar: the play button showed the wrong icon** after a double-tap with `double_tap_action: toggle_play`.
+- **Motion compensation: a strict CSP that stopped the worker after it started stopped motion compensation and the radar refresh** with no message. Both now continue without the worker.
+- **Motion compensation measured frames at the wrong position** when their tiles loaded during playback, and could use the wrong frame pair after the card removed or added a frame.
+- **Tracking: a tap that did not move the map stopped tracking.** After a toolbar button, or any tap on a static map, the map did not follow a tracked marker or preset until the next pan.
+- **Tracking: a `mobile_only` marker moved the map on a desktop.**
+- **Markers: range rings stayed where the first marker was when the map opened.**
+- **Map: closing a hazard popup undid a preset change, a tracker move or a drag** that happened while the popup was open.
+- **Map: an OS change between light and dark rebuilt the map too often.** It now rebuilds only when the basemap changes.
+- **Map: a card hidden by visibility conditions built its map while hidden,** and a card that got Home Assistant's data after it was added opened at 0,0 without its viewer settings.
+- **Map: a card scrolled off the screen started again** when you went back to its browser tab, and overlays that started while the card was hidden did not pause.
+- **Sections view: a card that you did not resize did not fit its cell.** In a sections view the card now ignores `height` and `square_map`, and the editor disables them.
+- **Cast: the MapTiles basemap, marker icons, entity pictures, the toolbar and the colour bar did not load.** They now load from Home Assistant, not from the Cast page.
+- **Editor: typing "-" in a number or coordinate field saved NaN,** and the field showed "NaN". Fields now keep the minus sign and the decimal point while you type: before, "-0.1" was saved as 0.1. Clearing a field whose value is 0 now removes the setting.
+- **Editor: "Use entity picture" could not be turned off** for a person that has a photo.
+- **Editor preview: a pan after re-centre wrote the position of another stop into the open preset.**
+- **Alerts and wildfires: the layer drawn last was on top.** Fire outlines now always show above alert areas, so you can tap a fire inside an alert area.
+- **Alerts: a zoom or refresh with many alerts was slow.** The card now makes the text of an alert popup only when you open it. Alert and wildfire popups also fit the map size at the time you open them.
+- **Wind: DWD with `forecast_minutes` kept the wind time of when the map opened.** It now moves forward with the radar.
+- **Wind streamlines: a slow or failed request for an earlier map view replaced the wind of the current view,** and the animation started when the card was hidden while it loaded.
+- **Wind: a map moved across the date line got wind data for the full world.**
+- **Lightning: after a jump to a far place at the same zoom, the strikes of the old place showed for 1 second.** In a storm the card also did more work than necessary on each update, and a card out of view animated new strikes.
 
 ## [4.0.0-rc3] - 2026-10-23
 

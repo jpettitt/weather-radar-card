@@ -12,7 +12,13 @@ const proto = (Object.values(editorModule).find(
 ) as any).prototype;
 
 function ctxWith(config: Record<string, unknown>): any {
-  return { _config: config, hass: {}, dispatchEvent: vi.fn() };
+  return {
+    _config: config,
+    hass: {},
+    dispatchEvent: vi.fn(),
+    _numberDrafts: new Map(),
+    _readNumberField: proto._readNumberField,
+  };
 }
 
 describe('_valueChangedCoordinate', () => {

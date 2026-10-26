@@ -17,7 +17,7 @@ vi.mock('leaflet', () => {
       features,
       addTo: vi.fn(),
       on: vi.fn(),
-      getLayers: () => features.map(() => ({ isPopupOpen: () => false })),
+      getLayers: () => features.map(() => ({ isPopupOpen: () => false, bringToBack: vi.fn() })),
     };
     built.push({ features, layer });
     return layer;

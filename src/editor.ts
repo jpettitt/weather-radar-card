@@ -17,6 +17,7 @@ import {
   VECTOR_STYLES, vectorLabelsAbove, vectorStyleName,
 } from './basemap-styles';
 import { isSectionHeightPinned } from './card-layout';
+import { closestAncestor } from './dom-ancestry';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
 import { FORECAST_REFRESH_CHOICES } from './forecast-refresh';
 import { WIND_SOURCE_CAPS, getWindSourceCaps, DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
@@ -37,9 +38,11 @@ const DEFAULT_CHOICE = 'default';
 // the key out of the YAML.
 const PRESET_TIMEOUT_CHOICES_MIN = [0, 1, 2, DEFAULT_PRESET_TIMEOUT_MIN, 10, 15, 30, 60];
 
-// '' and anything unparseable clear the field rather than storing NaN.
-function parseCoordinate(raw: string): number | undefined {
-  const n = parseFloat(raw.trim());
+// Strict, so '12abc' or '1,5' is not read as 12 or 1; callers treat '' as "clear".
+function parseNumberText(raw: string): number | undefined {
+  const s = raw.trim();
+  if (s === '') return undefined;
+  const n = Number(s);
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -116,6 +119,18 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
   @state() private _presetDrag: { from: number; to: number } | null = null;
 
   private _initialized = false;
+
+  // The typed text of each number field, so a re-render does not turn '37.' into '37' or '-0' into '0'.
+  private _numberDrafts = new Map<string, string>();
+
+  // The layout HA gives the card being edited: 'grid' when hui-card-element-editor
+  // holds a grid section, the same test HA uses to show its Layout tab.
+  private _cardLayout(): string | undefined {
+    const host = closestAncestor(this, 'hui-card-element-editor') as
+      (Element & { sectionConfig?: { type?: string } }) | null;
+    const section = host?.sectionConfig;
+    return section && (section.type === undefined || section.type === 'grid') ? 'grid' : undefined;
+  }
 
   public setConfig(config: WeatherRadarCardConfig): void {
     // Run the same migration as the card so synthesised defaults (e.g. an
@@ -367,14 +382,14 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
         <div class="side-by-side">
           <ha-input
             label=${localize('editor.location.centre_latitude')}
-            .value=${this._formatCoordinateValue(config.center_latitude)}
+            .value=${this._coordinateText('center_latitude', config.center_latitude)}
             .configValue=${'center_latitude'}
             @input=${this._valueChangedCoordinate}
             hint=${localize('editor.location.number_or_entity')}
           ></ha-input>
           <ha-input
             label=${localize('editor.location.centre_longitude')}
-            .value=${this._formatCoordinateValue(config.center_longitude)}
+            .value=${this._coordinateText('center_longitude', config.center_longitude)}
             .configValue=${'center_longitude'}
             @input=${this._valueChangedCoordinate}
             hint=${localize('editor.location.number_or_entity')}
@@ -510,7 +525,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             // so the user isn't left wondering why nothing happened.
             // grid_options.rows: 'auto' means HA gave the card freedom
             // to pick — that counts as un-pinned.
-            const heightPinned = !!config.height || isSectionHeightPinned(config);
+            const heightPinned = !!config.height || isSectionHeightPinned(config, this._cardLayout());
             return html`
               <label class=${heightPinned ? 'disabled-row' : ''}
                      title=${heightPinned ? localize('editor.display.square_map_disabled_helper') : ''}>
@@ -565,14 +580,14 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
         <div class="side-by-side">
           <ha-input
             label=${localize('editor.animation.frame_delay')}
-            .value=${config.frame_delay ? config.frame_delay : ''}
+            .value=${this._numberText('frame_delay', config.frame_delay)}
             .configValue=${'frame_delay'}
             @input=${this._valueChangedNumber}
             hint=${localize('editor.animation.default_500')}
           ></ha-input>
           <ha-input
             label=${localize('editor.animation.restart_delay')}
-            .value=${config.restart_delay ? config.restart_delay : ''}
+            .value=${this._numberText('restart_delay', config.restart_delay)}
             .configValue=${'restart_delay'}
             @input=${this._valueChangedNumber}
             hint=${localize('editor.animation.default_1000')}
@@ -600,7 +615,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
         ${config.low_power_mode !== true && config.animated_transitions !== false ? html`
           <ha-input
             label=${localize('editor.animation.transition_time')}
-            .value=${config.transition_time !== undefined ? config.transition_time : ''}
+            .value=${this._numberText('transition_time', config.transition_time)}
             .configValue=${'transition_time'}
             @input=${this._valueChangedNumber}
             hint=${localize('editor.animation.transition_time_helper')}
@@ -686,7 +701,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             // treatment as the square_map toggle above. Gated on the
             // section constraint only — an explicit height must stay
             // editable so the user can clear or change it.
-            const sectionLocked = isSectionHeightPinned(config);
+            const sectionLocked = isSectionHeightPinned(config, this._cardLayout());
             return html`
               <ha-input
                 class=${sectionLocked ? 'disabled-row' : ''}
@@ -846,14 +861,14 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           <div class="side-by-side">
             <ha-input
               label=${localize('editor.overlays.wildfire_min_acres')}
-              .value=${config.wildfire_min_acres !== undefined ? String(config.wildfire_min_acres) : ''}
+              .value=${this._numberText('wildfire_min_acres', config.wildfire_min_acres)}
               hint=${localize('editor.overlays.wildfire_min_acres_helper')}
               .configValue=${'wildfire_min_acres'}
               @input=${this._valueChangedNumber}
             ></ha-input>
             <ha-input
               label=${localize('editor.overlays.wildfire_radius_km')}
-              .value=${config.wildfire_radius_km !== undefined ? String(config.wildfire_radius_km) : ''}
+              .value=${this._numberText('wildfire_radius_km', config.wildfire_radius_km)}
               hint=${localize('editor.overlays.wildfire_radius_km_helper')}
               .configValue=${'wildfire_radius_km'}
               @input=${this._valueChangedNumber}
@@ -890,7 +905,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           ></ha-selector>
           <ha-input
             label=${localize('editor.overlays.alerts_radius_km')}
-            .value=${config.alerts_radius_km !== undefined ? String(config.alerts_radius_km) : ''}
+            .value=${this._numberText('alerts_radius_km', config.alerts_radius_km)}
             hint=${localize('editor.overlays.alerts_radius_km_helper')}
             .configValue=${'alerts_radius_km'}
             @input=${this._valueChangedNumber}
@@ -927,7 +942,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       ${config.show_lightning === true && integrationLoaded ? html`
         <ha-input
           label=${localize('editor.overlays.lightning_max_age_minutes')}
-          .value=${config.lightning_max_age_minutes !== undefined ? String(config.lightning_max_age_minutes) : ''}
+          .value=${this._numberText('lightning_max_age_minutes', config.lightning_max_age_minutes)}
           hint=${localize('editor.overlays.lightning_max_age_minutes_helper')}
           .configValue=${'lightning_max_age_minutes'}
           @input=${this._valueChangedNumber}
@@ -1074,13 +1089,13 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
             <div class="side-by-side">
               <ha-input
                 label=${localize('editor.markers.latitude')}
-                .value=${p.latitude !== undefined ? String(p.latitude) : ''}
-                @input=${(ev: Event) => this._setPresetField(i, 'latitude', parseCoordinate((ev.target as HTMLInputElement).value))}
+                .value=${this._numberText(`presets.${i}.latitude`, p.latitude)}
+                @input=${(ev: Event) => this._presetCoordinateInput(i, 'latitude', (ev.target as HTMLInputElement).value)}
               ></ha-input>
               <ha-input
                 label=${localize('editor.markers.longitude')}
-                .value=${p.longitude !== undefined ? String(p.longitude) : ''}
-                @input=${(ev: Event) => this._setPresetField(i, 'longitude', parseCoordinate((ev.target as HTMLInputElement).value))}
+                .value=${this._numberText(`presets.${i}.longitude`, p.longitude)}
+                @input=${(ev: Event) => this._presetCoordinateInput(i, 'longitude', (ev.target as HTMLInputElement).value)}
               ></ha-input>
             </div>
           ` : ''}
@@ -1185,6 +1200,11 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     this._setPresets(presets);
   }
 
+  private _presetCoordinateInput(i: number, field: 'latitude' | 'longitude', raw: string): void {
+    const num = this._readNumberField(`presets.${i}.${field}`, raw);
+    if (num !== undefined) this._setPresetField(i, field, num ?? undefined);
+  }
+
   private _setPresets(presets: ViewPreset[]): void {
     if (!this._config) return;
     const config: WeatherRadarCardConfig = { ...this._config, presets };
@@ -1254,14 +1274,14 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           <div class="side-by-side">
             <ha-input
               label=${localize('editor.markers.latitude')}
-              .value=${m.latitude !== undefined ? String(m.latitude) : ''}
+              .value=${this._numberText(`markers.${i}.latitude`, m.latitude)}
               .markerIndex=${i}
               .markerField=${'latitude'}
               @input=${this._updateMarkerFieldNumber}
             ></ha-input>
             <ha-input
               label=${localize('editor.markers.longitude')}
-              .value=${m.longitude !== undefined ? String(m.longitude) : ''}
+              .value=${this._numberText(`markers.${i}.longitude`, m.longitude)}
               .markerIndex=${i}
               .markerField=${'longitude'}
               @input=${this._updateMarkerFieldNumber}
@@ -1363,10 +1383,10 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     const target = ev.target;
     const i: number = target.markerIndex;
     const field: string = target.markerField;
-    const raw: string = target.value?.trim() ?? '';
-    const num = raw === '' ? undefined : parseFloat(raw);
+    const num = this._readNumberField(`markers.${i}.${field}`, target.value);
+    if (num === undefined) return;
     const markers = [...(this._config.markers ?? [])];
-    markers[i] = { ...markers[i], [field]: num };
+    markers[i] = { ...markers[i], [field]: num ?? undefined };
     this._config = { ...this._config, markers };
     fireEvent(this, 'config-changed', { config: this._config });
   }
@@ -1429,9 +1449,11 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     const i = target.markerIndex;
     const markers = [...(this._config.markers ?? [])];
     const cur = markers[i];
+    // A person's default is its photo, so turning the photo off needs the plain person icon.
+    const iconOff = this._defaultIconForEntity(cur.entity ?? '');
     markers[i] = target.checked
       ? { ...cur, icon: 'entity_picture' }
-      : { ...cur, icon: this._defaultIconForEntity(cur.entity ?? '') };
+      : { ...cur, icon: iconOff === 'entity_picture' ? 'mdi:account' : iconOff };
     this._config = { ...this._config, markers };
     fireEvent(this, 'config-changed', { config: this._config });
   }
@@ -1735,22 +1757,20 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     }
     const target = ev.target;
     const configValue = target.configValue;
-    const value = target.value;
-    if (this._config[configValue] === Number(value)) {
-      return;
-    }
-
-    if (configValue) {
-      if (value === '' || value === null) {
-        const newConfig = { ...this._config };
-        delete newConfig[configValue];
-        this._config = newConfig;
-      } else {
-        this._config = {
-          ...this._config,
-          [configValue]: Number(value),
-        };
-      }
+    if (!configValue) return;
+    const num = this._readNumberField(configValue, target.value);
+    if (num === undefined) return;
+    if (num === null) {
+      if (!(configValue in this._config)) return;
+      const newConfig = { ...this._config };
+      delete newConfig[configValue];
+      this._config = newConfig;
+    } else {
+      if (this._config[configValue] === num) return;
+      this._config = {
+        ...this._config,
+        [configValue]: num,
+      };
     }
     fireEvent(this, 'config-changed', { config: this._config });
   }
@@ -1779,6 +1799,28 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
       }
     }
     fireEvent(this, 'config-changed', { config: this._config });
+  }
+
+  /**
+   * Reads a number field and keeps its text for _numberText.
+   * Returns null for an empty field and undefined for text that is not a
+   * number yet ('-', '1,5'), which callers ignore so NaN is never saved.
+   */
+  private _readNumberField(key: string, raw: string | undefined): number | null | undefined {
+    const text = raw ?? '';
+    this._numberDrafts.set(key, text);
+    return text.trim() === '' ? null : parseNumberText(text);
+  }
+
+  // Lit writes .value whenever the bound text changes, so bind the typed text while it still means the saved value.
+  private _numberText(key: string, value: number | null | undefined): string {
+    const draft = this._numberDrafts.get(key);
+    if (draft !== undefined && parseNumberText(draft) === (value ?? undefined)) return draft;
+    return value == null ? '' : String(value);
+  }
+
+  private _coordinateText(key: string, value: CoordinateConfig | undefined): string {
+    return typeof value === 'number' ? this._numberText(key, value) : this._formatCoordinateValue(value);
   }
 
   /**
@@ -1811,9 +1853,10 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     }
     const target = ev.target;
     if (target.configValue) {
-      const value = target.value?.trim();
+      const value = target.value?.trim() ?? '';
+      const numValue = this._readNumberField(target.configValue, target.value);
 
-      if (value === '' || value === null) {
+      if (numValue === null) {
         // Remove it from a copy: this._config can be the object HA holds,
         // and an in-place delete fires config-changed with an unchanged
         // reference that nothing re-renders from.
@@ -1822,9 +1865,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
         this._config = next;
       } else {
         // Check if it's a number or entity ID
-        const numValue = parseFloat(value);
-
-        if (!isNaN(numValue)) {
+        if (numValue !== undefined) {
           // Store as number (backwards compatible)
           this._config = {
             ...this._config,

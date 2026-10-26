@@ -505,10 +505,13 @@ export class WildfireLayer {
       [props?.attr_POOJurisdictionalUnit, props?.attr_POOProtectingUnit],
       [props?.poly_IncidentName, props?.attr_CpxName],
     );
-    layer.bindPopup(
-      () => buildPopupHtml(props, knownInciwebPage(candidates), this._hass),
-      { autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight() },
-    );
+    // Leaflet calls this before it lays the popup out, so the cap follows
+    // the map's size at open, not at the last rebuild.
+    layer.bindPopup(() => {
+      const popup = layer.getPopup();
+      if (popup) popup.options.maxHeight = this._popupMaxHeight();
+      return buildPopupHtml(props, knownInciwebPage(candidates), this._hass);
+    }, { autoPan: true, autoPanPadding: [12, 12] });
     layer.on('popupopen', () => {
       findInciwebPage(candidates)
         .then((slug) => { if (slug && layer.isPopupOpen()) layer.getPopup()?.update(); })

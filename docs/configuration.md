@@ -170,7 +170,7 @@ Tune for your basemap: lighter bases benefit from lower `smooth_overlap` to avoi
 
 The motion vector is recovered from the frame pair itself — pyramidal Lucas-Kanade optical flow on a 96 × 96 intensity grid extracted from the visible tiles. No external wind data, no source-specific dispatch. Works for **all three radar sources** (DWD, RainViewer, NOAA).
 
-Runs in a Web Worker by default so the LK compute (~2 ms on a fast desktop, ~10–25 ms on a low-end mobile/tablet) doesn't block the main thread during the animation. Falls back to synchronous main-thread execution if Worker construction is blocked (e.g. by a strict CSP); a console line records the fallback.
+Runs in a Web Worker by default so the LK compute (~2 ms on a fast desktop, ~10–25 ms on a low-end mobile/tablet) doesn't block the main thread during the animation. Falls back to synchronous main-thread execution if the worker is blocked (e.g. by a strict CSP), at construction or when it fails to load; a console line records the fallback.
 
 Auto-skipped on frame pairs where LK doesn't find enough gradient signal to produce a confident vector (light rain, clear skies, near-uniform palette). Those transitions render as the regular static crossfade — no jitter, no slide on noise.
 
@@ -278,6 +278,6 @@ double_tap_action:
 
 The card declares `getGridOptions()` so HA's sections-view grid can resize it without warnings. Defaults: 12 columns × 7 rows (≈ 392 px at the default 56 px row height), min 6 columns × 4 rows. The card's flex layout fills the grid cell vertically — the chrome (colour bar, progress bar, bottom row) stays at fixed heights and the map div absorbs whatever space is left.
 
-**The grid cell wins.** When a sections-grid cell has a fixed row count (any value other than `auto`), that cell's height owns the card — the `height:` config field and `square_map` are ignored, and the card sizes itself to the cell. Use the row slider in the grid layout editor to resize it. (`height:` and `square_map` still apply in masonry/panel views, and in a sections cell set to `auto` rows.)
+**The grid cell wins.** When a sections-grid cell has a fixed row count (any value other than `auto`), that cell's height owns the card — the `height:` config field and `square_map` are ignored, and the card sizes itself to the cell. A card you never resized has the default 7 fixed rows, so this applies to it too. Use the row slider in the grid layout editor to resize it. (`height:` and `square_map` still apply in masonry/panel views, and in a sections cell set to `auto` rows.)
 
 When the user pins the card height (either via the `height:` config field or by giving a sections-grid cell a fixed row count), the `square_map` toggle in the editor is disabled and dimmed — square_map's aspect-ratio override has no effect once another constraint is pinning the height.

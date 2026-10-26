@@ -899,16 +899,26 @@ export class NwsAlertsLayer {
         // autoPan defaults to true — when an off-edge popup opens, Leaflet
         // pans the map so it's fully visible inside the card. autoPanPadding
         // adds a small inset so the popup never butts right against the card
-        // edge (looks awkward). maxHeight caps the popup at 90% of the map
+        // edge (looks awkward). maxHeight caps the popup at 80% of the map
         // height so a long alert description never spills outside the card;
         // Leaflet adds an internal scrollbar past the cap.
-        layer.bindPopup(
-          buildGroupPopupHtml(alertsOf.get(feature) ?? [feature.properties as AlertProps | null], this._hass?.locale),
-          { autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight() },
-        );
+        const alerts = alertsOf.get(feature) ?? [feature.properties as AlertProps | null];
+        // Built when opened: building every popup made up ~73% of a
+        // 450-alert rebuild. Leaflet calls this before it lays the popup
+        // out, so the cap also follows the map's size at that moment.
+        layer.bindPopup(() => {
+          const popup = layer.getPopup();
+          if (popup) popup.options.maxHeight = this._popupMaxHeight();
+          return buildGroupPopupHtml(alerts, this._hass?.locale);
+        }, { autoPan: true, autoPanPadding: [12, 12] });
       },
     } as L.GeoJSONOptions);
     this._polygonLayer.addTo(this._map);
+    // Under the fire perimeters on the shared canvas, whichever layer
+    // rebuilt last, so a fire inside an alert zone stays tappable. In
+    // reverse, so the alerts keep their severity order.
+    const paths = this._polygonLayer.getLayers() as L.Path[];
+    for (let i = paths.length - 1; i >= 0; i--) paths[i].bringToBack();
     this._polygonLayer.on('popupclose', this._onPopupClose);
   }
 

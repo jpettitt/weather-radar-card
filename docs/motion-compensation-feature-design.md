@@ -189,7 +189,15 @@ land before the next tick fires.
 Stale results from a previous viewport (pan, zoom, resize between
 call and resolve) are discarded via the `_snapshotGen` counter —
 bumped on every invalidation, captured at call time, compared on
-resolve.
+resolve. A result lands on the frame pair it measured, found by its two
+layers: a refresh shift or `_dedupFrames` that renumbered the frames
+meanwhile moves it to the new index, or drops it if the pair is gone.
+
+Snapshots place each tile with `getBoundingClientRect`, which includes
+the layer's own slide translate (playback leaves each layer at the end
+of its last slide). `_captureFrameSnapshot` subtracts the layer's
+computed translate, so a frame captured during playback lines up with
+one captured at rest.
 
 ### Crossfade translate
 
@@ -258,7 +266,7 @@ Disabled when:
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| Worker construction blocked by CSP | Low (HA is permissive by default) | Sync fallback path; logged once at startup |
+| Worker blocked by CSP | Low (HA is permissive by default) | Sync fallback path, whether `new Worker` throws or the worker fires `error` later (Chrome does the latter); logged once, at the first LK request or the failure |
 | LK assumes brightness constancy; palette intensity transitions slightly violate this | Low impact | Pyramid averaging absorbs most of the residual; bias is sub-pixel |
 | Heterogeneous storm with cells moving in opposite directions | Real but uncommon | Single vector approximates bulk; visible mismatch is the entry condition for a future dense-flow project |
 | Algorithm-vs-string drift between `lk.ts` and `LK_ALGORITHM_SOURCE` | Low (caught by CI) | Parity test in `tests/lk.test.ts` evaluates the embedded source and asserts equivalence |

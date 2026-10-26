@@ -464,7 +464,9 @@ describe('LightningLayer buffer invalidation', () => {
 
   it('a removal dirties the buffer (strike may be baked in)', async () => {
     const l = await bareLightning();
-    l._strikes.set('geo_location.gone', { ts: 40_000, lat: 0, lon: 0, pulseUntil: 0 });
+    // Inside the 30 min cap, so hass dropped it: an age-out is tested in lightning-layer.test.ts.
+    l._getConfig = () => ({});
+    l._strikes.set('geo_location.gone', { ts: Date.now() - 60_000, lat: 0, lon: 0, pulseUntil: 0 });
     l._collectStrikes = () => new Map();
     l._refreshFromHass();
     expect(l._bufferDirty).toBe(true);

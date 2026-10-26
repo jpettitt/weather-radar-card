@@ -327,6 +327,8 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
     rows?: number | 'auto';
     columns?: number | 'full';
   };
+  /** Pre-2024.11 form of grid_options; HA still reads it when grid_options is absent. */
+  layout_options?: { grid_rows?: number | 'auto' };
 
   // ── Per-user viewer state (3.7+) ─────────────────────────────────────────
   // See docs/viewer-state-api.md. Dormant by default — no behaviour change

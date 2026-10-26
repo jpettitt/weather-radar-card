@@ -1,5 +1,5 @@
 import * as L from 'leaflet';
-import { windGridFetcher, sampleWindGridBilinear, type WindGrid } from './wind-grid-fetcher';
+import { windGridFetcher, sampleWindGridBilinear, anchorTimeIso, type WindGrid } from './wind-grid-fetcher';
 import { DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
 import { hazardMarkerPane } from './hazard-marker-pane';
 
@@ -38,6 +38,8 @@ export interface WindOverlayOptions {
   size?: number;
   /** Anchor time in epoch ms. Snapped to the hourly ICON boundary. Omit for "current". */
   timeMs?: number;
+  /** Anchor as an offset from now, re-read on each refresh. Ignored when timeMs is set. */
+  offsetMs?: number;
   /** Wind data source. Defaults to ICON globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
   source?: WindSource;
   /** Keep the hourly refresh running while the host card is hidden. See preload_while_hidden. */
@@ -50,7 +52,8 @@ export class WindOverlay {
   private _style: WindStyle;
   private _density: number;
   private _sizeMult: number;
-  private _timeIso: string | null;
+  private _timeMs: number | undefined;
+  private _offsetMs: number | undefined;
   private _source: WindSource;
   private _gen = 0;
   private _moveHandler: () => void;
@@ -68,16 +71,8 @@ export class WindOverlay {
     this._density = Number.isFinite(d) && d > 0 ? Math.max(0.25, Math.min(4, d)) : 1;
     const s = Number(opts.size);
     this._sizeMult = Number.isFinite(s) && s > 0 ? Math.max(0.5, Math.min(2, s)) : 1;
-    // NaN (an unparseable dwd_time_override) would throw in toISOString and
-    // abort the host's map init; show live wind instead.
-    if (opts.timeMs != null && Number.isFinite(opts.timeMs)) {
-      // Nearest hour; effectiveTimeIso rounds again to the source's step
-      // (DWD answers an off-step time with its oldest slice).
-      const snapped = Math.round(opts.timeMs / 3_600_000) * 3_600_000;
-      this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
-    } else {
-      this._timeIso = null;
-    }
+    this._timeMs = opts.timeMs;
+    this._offsetMs = opts.offsetMs;
     this._source = opts.source ?? DEFAULT_WIND_SOURCE;
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
     this._layer = L.layerGroup().addTo(map);
@@ -166,7 +161,7 @@ export class WindOverlay {
     try {
       grid = await windGridFetcher.fetch({
         south, west, north, east,
-        timeIso: this._timeIso,
+        timeIso: anchorTimeIso(this._timeMs, this._offsetMs),
         source: this._source,
       });
     } catch (err) {

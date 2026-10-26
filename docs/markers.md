@@ -11,7 +11,7 @@ The `markers` option accepts a list. Each entry can have:
 | `icon_entity` | string        | Entity ID to read the photo from when `icon: entity_picture`. Defaults to `entity` if blank.                                                                                                                                                                                                     |
 | `color`       | string        | CSS colour for `mdi:*` and default icons (e.g. `#ff0000`, `red`). Ignored for `entity_picture`.                                                                                                                                                                                                  |
 | `track`       | string / bool | `'entity'` — pan the map to follow this marker; `true` — lowest-priority always-on fallback                                                                                                                                                                                                      |
-| `mobile_only` | boolean       | Only show this marker on mobile devices                                                                                                                                                                                                                                                          |
+| `mobile_only` | boolean       | Only show this marker on mobile devices. On other devices it is not tracked either                                                                                                                                                                                                               |
 
 ## Track resolution
 

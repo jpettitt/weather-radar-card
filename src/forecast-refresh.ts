@@ -6,14 +6,11 @@
 // (the plain REFERENCE_TIME name is ignored by DWD's GeoServer) and refetched
 // only when GetCapabilities lists a newer run.
 
+import { LISTING_TIMEOUT_MS, withTimeout } from './fetch-timeout';
+
 const DWD_GEOSERVER = 'https://maps.dwd.de/geoserver/dwd';
 
 export const FORECAST_REFRESH_CHOICES = [5, 10, 15, 30, 60];
-
-// DWD init and every update wait for the run list, so a stalled request
-// would hold the radar blank and stop the update chain; give up and fall
-// back as if it had failed.
-const RUN_LIST_TIMEOUT_MS = 10_000;
 
 /** Epoch seconds as the ISO form DWD accepts for TIME / DIM_REFERENCE_TIME. */
 export function dwdIsoTime(epochSec: number): string {
@@ -48,20 +45,15 @@ export function parseLatestRun(xml: string): number | null {
 /** Newest run listed for `layerName`, or null on any failure (refresh just skips a tick). */
 export async function fetchLatestRun(layerName: string, signal?: AbortSignal): Promise<number | null> {
   const layer = encodeURIComponent(layerName.replace(/^dwd:/, ''));
-  // setTimeout rather than AbortSignal.timeout(): older tablet WebViews lack it.
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), RUN_LIST_TIMEOUT_MS);
-  const onAbort = (): void => ctrl.abort();
-  signal?.addEventListener('abort', onAbort);
   try {
-    const res = await fetch(`${DWD_GEOSERVER}/${layer}/ows?service=WMS&version=1.3.0&request=GetCapabilities`, { signal: ctrl.signal });
-    if (!res.ok) return null;
-    return parseLatestRun(await res.text());
+    // DWD init and every update wait for the run list: a timeout falls back as if it had failed.
+    return await withTimeout(LISTING_TIMEOUT_MS, signal, async (sig) => {
+      const res = await fetch(`${DWD_GEOSERVER}/${layer}/ows?service=WMS&version=1.3.0&request=GetCapabilities`, { signal: sig });
+      if (!res.ok) return null;
+      return parseLatestRun(await res.text());
+    });
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', onAbort);
   }
 }
 
