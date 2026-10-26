@@ -462,15 +462,23 @@ describe('LightningLayer buffer invalidation', () => {
     expect(l._bufferDirty).toBe(true);
   });
 
-  it('a removal dirties the buffer (strike may be baked in)', async () => {
+  it('a buffered removal waits for the age pass: no rebuild, no repaint', async () => {
     const l = await bareLightning();
-    // Inside the 30 min cap, so hass dropped it: an age-out is tested in lightning-layer.test.ts.
-    l._getConfig = () => ({});
-    l._strikes.set('geo_location.gone', { ts: Date.now() - 60_000, lat: 0, lon: 0, pulseUntil: 0 });
+    l._strikes.set('geo_location.gone', { ts: 40_000, lat: 0, lon: 0, pulseUntil: 0 });
     l._collectStrikes = () => new Map();
     l._refreshFromHass();
-    expect(l._bufferDirty).toBe(true);
+    expect(l._bufferDirty).toBe(false);
+    expect(l._scheduleRedraw).not.toHaveBeenCalled();
     expect(l._strikes.size).toBe(0);
+  });
+
+  it('a live removal repaints without a rebuild', async () => {
+    const l = await bareLightning();
+    l._strikes.set('geo_location.gone', { ts: 60_000, lat: 0, lon: 0, pulseUntil: 0 });
+    l._collectStrikes = () => new Map();
+    l._refreshFromHass();
+    expect(l._bufferDirty).toBe(false);
+    expect(l._scheduleRedraw).toHaveBeenCalled();
   });
 
   it('a no-op tick neither dirties nor schedules', async () => {

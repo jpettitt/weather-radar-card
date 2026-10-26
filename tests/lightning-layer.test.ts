@@ -109,19 +109,52 @@ describe('LightningLayer storm cost', () => {
     l.clear();
   });
 
-  it('a strike hass drops inside the cap is erased at once', () => {
+  // lightning_max_age_minutes at or above the integration's window: the
+  // integration drops a visible strike per arrival.
+  it('a storm tick where hass drops a strike inside the cap does not rebuild; the age pass erases it', () => {
     const map = fakeMap();
-    const kept = strikeState(Date.now() - 180_000, 0.2, 0.2);
-    const states: Record<string, any> = { 'geo_location.a': strikeState(Date.now() - 120_000, 0.5, 0.5), 'geo_location.b': kept };
+    const states: Record<string, any> = {};
+    let n = 0;
+    for (let i = 0; i < 300; i++) states[`geo_location.s${n++}`] = strikeState(Date.now() - i * 1000 - 60_000, (i % 17) / 17, (i % 23) / 23);
     const l: any = new LightningLayer(map, () => ({ show_lightning: true } as any), { states: { ...states } } as any);
     l.start();
     vi.advanceTimersByTime(50);
     const bctx = ctxByCanvas.get(l._buffer);
     const before = bctx.setTransforms;
+    let oldest = 299;
+    for (let step = 0; step < 10; step++) {
+      vi.advanceTimersByTime(2000);
+      delete states[`geo_location.s${oldest--}`];
+      states[`geo_location.s${n++}`] = strikeState(Date.now(), 0.5, 0.5);
+      l.updateHass({ states: { ...states } } as any);
+    }
+    vi.advanceTimersByTime(50);
+    // 20 s: no age pass yet, so no rebuild.
+    expect(bctx.setTransforms).toBe(before);
+    expect(l._strikes.size).toBe(300);
+    vi.advanceTimersByTime(10_000);
+    expect(bctx.setTransforms).toBeGreaterThan(before);
+    l.clear();
+  });
+
+  it('a live strike hass drops is erased by the next repaint, without a rebuild', () => {
+    const map = fakeMap();
+    const kept = strikeState(Date.now() - 180_000, 0.2, 0.2);
+    const states: Record<string, any> = { 'geo_location.b': kept };
+    const l: any = new LightningLayer(map, () => ({ show_lightning: true } as any), { states: { ...states } } as any);
+    l.start();
+    vi.advanceTimersByTime(50);
+    l.updateHass({ states: { ...states, 'geo_location.a': strikeState(Date.now(), 0.5, 0.5) } } as any);
+    vi.advanceTimersByTime(1000);
+    const bctx = ctxByCanvas.get(l._buffer);
+    const ctx = ctxByCanvas.get(l._canvas);
+    const before = bctx.setTransforms;
+    const clears = ctx.clears;
     l.updateHass({ states: { 'geo_location.b': kept } } as any);
     vi.advanceTimersByTime(50);
     expect(l._strikes.size).toBe(1);
-    expect(bctx.setTransforms).toBeGreaterThan(before);
+    expect(ctx.clears).toBeGreaterThan(clears);
+    expect(bctx.setTransforms).toBe(before);
     l.clear();
   });
 });

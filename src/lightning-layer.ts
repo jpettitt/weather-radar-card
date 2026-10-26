@@ -296,20 +296,15 @@ export class LightningLayer {
       if (strike.ts <= this._bufferMaxTs) this._bufferDirty = true;
     }
 
-    // Removals: strikes we tracked that are gone from `current`. One past
-    // the display cap aged out (_collectStrikes drops it; in a storm that is
-    // one per arrival): leave it in the buffer for the 30 s age pass to
-    // fold out. Only a strike hass dropped inside the cap must be erased now.
-    let maxAgeSec: number | undefined;
-    const now = Date.now();
+    // Removals: leave a buffered strike for the 30 s age pass to fold out.
+    // In a storm one goes per arrival: past the card cap, or past the
+    // integration's window when that is the shorter one. Erasing each at
+    // once rebuilt the whole buffer on nearly every tick. A live strike
+    // is drawn from _strikes, so a repaint erases it without a rebuild.
     for (const [id, strike] of this._strikes) {
       if (current.has(id)) continue;
       this._strikes.delete(id);
-      maxAgeSec ??= this._displayMaxAgeSec();
-      if ((now - strike.ts) / 1000 <= maxAgeSec) {
-        changed = true;
-        this._bufferDirty = true;
-      }
+      if (strike.ts > this._bufferMaxTs) changed = true;
     }
 
     if (changed && this._pausedAt == null) this._scheduleRedraw();
