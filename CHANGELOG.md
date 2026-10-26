@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lightning: on an iPad Pro panel view the strikes could fail to draw, and on phones the strike layer used much memory.** On touch screens the strike layer now extends a quarter view past the edges instead of half, and it draws at most at 2x. After a long pan, new strikes show 1 second after the map stops, as radar tiles do on mobile.
 - **Alerts and wildfires: the layer drawn last was on top.** Fire outlines now always show above alert areas, so you can tap a fire inside an alert area.
 - **Alerts: a zoom or refresh with many alerts was slow.** The card now makes the text of an alert popup only when you open it. Alert and wildfire popups also fit the map size at the time you open them.
-- **Wind: DWD with `forecast_minutes` kept the wind time of when the map opened.** It now moves forward with the radar.
+- **Wind: with DWD radar and `forecast_minutes`, the wind showed the time at the end of the forecast, fixed at the time the map opened.** The wind now always shows the model time step closest to now, also when the radar shows forecast frames.
 - **Wind streamlines: a slow or failed request for an earlier map view replaced the wind of the current view,** and the animation started when the card was hidden while it loaded.
 - **Wind: a map moved across the date line got wind data for the full world.**
 - **Lightning: after a jump to a far place at the same zoom, the strikes of the old place showed for 1 second.** In a storm the card also did more work than necessary on each update, and a card out of view animated new strikes.

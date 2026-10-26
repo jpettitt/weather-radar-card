@@ -559,16 +559,14 @@ export function resolveSourceForBbox(opts: FetchWindGridOptions): WindSource {
  * Resolves the source from the bbox so an NDFD config that fell back to
  * AICON outside the US is timed too. */
 /**
- * The overlays' anchor as an hourly ISO time: a fixed `timeMs`, else now +
- * `offsetMs` read at each call so a forecast anchor keeps up with the
- * radar loop; null (current) when neither is a finite number.
+ * The overlays' fixed anchor (dwd_time_override) as an hourly ISO time, or
+ * null for "now", which each fetch resolves at call time. NaN (an
+ * unparseable override) would throw in toISOString, so it means now too.
  * effectiveTimeIso rounds again to the source's step.
  */
-export function anchorTimeIso(timeMs: number | undefined, offsetMs: number | undefined): string | null {
-  const ms = timeMs != null && Number.isFinite(timeMs) ? timeMs
-    : offsetMs != null && Number.isFinite(offsetMs) ? Date.now() + offsetMs : null;
-  if (ms === null) return null;
-  return new Date(Math.round(ms / 3_600_000) * 3_600_000).toISOString().split('.')[0] + 'Z';
+export function anchorTimeIso(timeMs: number | undefined): string | null {
+  if (timeMs == null || !Number.isFinite(timeMs)) return null;
+  return new Date(Math.round(timeMs / 3_600_000) * 3_600_000).toISOString().split('.')[0] + 'Z';
 }
 
 export function effectiveTimeIso(opts: FetchWindGridOptions, nowMs: number): string | null {

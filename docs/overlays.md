@@ -124,7 +124,7 @@ When `dwd_wind` is set to `barbs` or `arrows`, or `dwd_wind_flow: true` is set, 
 
 Existing configs that don't set `wind_source` continue to use ICON — the field is purely additive, no migration runs.
 
-The wind overlay is **not coupled to the radar source** — both ICON and NDFD are independent of the radar tiles, so the wind layer stacks usefully on RainViewer / NOAA / DWD radars alike. (For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time as the radar playback frame; for the other sources the wind always shows live.)
+The wind overlay is **not coupled to the radar source** — both ICON and NDFD are independent of the radar tiles, so the wind layer stacks usefully on RainViewer / NOAA / DWD radars alike. The wind always shows the model time step closest to now, forward or back, also when the radar shows forecast frames. (With DWD radar, `dwd_time_override` moves "now" for the wind too.)
 
 ### Three styles
 

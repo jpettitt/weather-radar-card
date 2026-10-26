@@ -1,6 +1,7 @@
-// DWD + forecast_minutes with no dwd_time_override: the radar's newest frame
-// is now + forecast and moves on with the clock. The wind anchor was computed
-// once at map init, so hours later the overlays still asked for that slice.
+// The wind shows the model step closest to now, whatever the radar's
+// forecast_minutes (owner decision, 2026-10-26). Before, a DWD radar with
+// forecast_minutes asked for now + forecast, frozen at map init, so hours
+// later the overlays still asked for that slice.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
 import { cardHass, mountCard, tick } from './helpers/mount-card';
@@ -10,8 +11,6 @@ import { windGridFetcher } from '../src/wind-grid-fetcher';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const grid = { rows: 1, cols: 1, latMin: 50, lonMin: 10, step: 1, cells: [[{ u: 1, v: 1 }]] };
-const hourIso = (ms: number): string =>
-  new Date(Math.round(ms / 3_600_000) * 3_600_000).toISOString().split('.')[0] + 'Z';
 
 // happy-dom has no 2D canvas; the streamline overlay only needs calls to succeed.
 const fakeCtx = (): unknown => new Proxy({}, {
@@ -51,17 +50,18 @@ async function windTimesAfterSixHours(extra: Record<string, unknown>): Promise<{
 }
 
 describe('DWD wind anchor', () => {
-  it('a forecast-only anchor follows the clock', async () => {
+  it('with forecast_minutes the wind asks for now, and follows the clock', async () => {
     const { first, last } = await windTimesAfterSixHours({ forecast_minutes: 60 });
-    expect(first).toBe('2026-10-26T11:00:00Z');
-    expect(last).toBe(hourIso(Date.parse('2026-10-26T17:10:00Z')));
+    // null: the fetcher resolves now at call time to the source's nearest step.
+    expect(first).toBeNull();
+    expect(last).toBeNull();
   });
 
   it('a dwd_time_override anchor stays fixed', async () => {
     const { first, last } = await windTimesAfterSixHours({
       forecast_minutes: 60, dwd_time_override: '2026-10-25T08:00:00Z',
     });
-    expect(first).toBe('2026-10-25T09:00:00Z');
-    expect(last).toBe('2026-10-25T09:00:00Z');
+    expect(first).toBe('2026-10-25T08:00:00Z');
+    expect(last).toBe('2026-10-25T08:00:00Z');
   });
 });

@@ -108,8 +108,6 @@ const REFRESH_TICK_OFFSET_MS = 30_000;
 export interface WindFlowOverlayOptions {
   /** Anchor time in epoch ms. Snapped to the hourly ICON boundary. Omit for "current". */
   timeMs?: number;
-  /** Anchor as an offset from now, re-read on each refresh. Ignored when timeMs is set. */
-  offsetMs?: number;
   /** Stroke for new line segments. Defaults to a neutral grey that reads on light or dark maps. */
   particleColor?: string;
   /** Wind data source. Defaults to ICON globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
@@ -144,7 +142,6 @@ export class WindFlowOverlay {
   private _gen = 0;
   private _running = false;
   private _timeMs: number | undefined;
-  private _offsetMs: number | undefined;
   private _color: string;
   private _source: WindSource;
   private _gridSource: WindSource;
@@ -175,7 +172,6 @@ export class WindFlowOverlay {
     this._gridSource = this._source;
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
     this._timeMs = opts.timeMs;
-    this._offsetMs = opts.offsetMs;
 
     // Canvas lives in a custom Leaflet pane between tilePane (200) and
     // overlayPane (400) so streaks sit directly on top of the radar /
@@ -403,7 +399,7 @@ export class WindFlowOverlay {
     const east = b.getEast() + pad;
 
     try {
-      const opts = { south, west, north, east, timeIso: anchorTimeIso(this._timeMs, this._offsetMs), source: this._source };
+      const opts = { south, west, north, east, timeIso: anchorTimeIso(this._timeMs), source: this._source };
       const grid = await windGridFetcher.fetch(opts);
       if (gen !== this._gen) return;
       this._grid = grid;

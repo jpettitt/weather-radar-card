@@ -1148,18 +1148,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const cfg = this._config;
     // Wind overlay is data-source-independent: ICON (10 m wind) is a
     // global product, so it stacks usefully on RainViewer / NOAA radars too.
-    // The dwd_time_override / forecast_minutes anchors are still honoured
-    // when DWD radar is the source; for other sources the wind shows live.
-
-    // Anchor: override (or now) plus forecast. Override + forecast only
-    // meaningful when DWD radar is selected; otherwise live.
+    // The wind shows the model step closest to now, forward or back, whatever
+    // the radar's forecast_minutes. A DWD radar's dwd_time_override moves
+    // "now"; an invalid one falls back to now, as the loop does (it warns).
     const isDwdRadar = cfg.data_source === 'DWD';
-    const forecastMs = isDwdRadar ? (cfg.forecast_minutes ?? 0) * 60_000 : 0;
-    // An invalid override falls back to now, as the loop does (it warns).
-    const overrideMs = isDwdRadar ? parseDwdTimeOverride(cfg.dwd_time_override) : null;
-    // Without an override the anchor is relative to now, so it moves on as the loop does.
-    const timeMs = overrideMs !== null ? overrideMs + forecastMs : undefined;
-    const offsetMs = overrideMs === null && forecastMs > 0 ? forecastMs : undefined;
+    const timeMs = (isDwdRadar ? parseDwdTimeOverride(cfg.dwd_time_override) : null) ?? undefined;
 
     const windSource = cfg.wind_source ?? DEFAULT_WIND_SOURCE;
     const mode = cfg.dwd_wind ?? 'off';
@@ -1169,7 +1162,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
         density: cfg.dwd_wind_density,
         size: cfg.dwd_wind_size,
         timeMs,
-        offsetMs,
         source: windSource,
         preloadWhileHidden: cfg.preload_while_hidden === true,
       });
@@ -1200,7 +1192,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       }
       this._windFlow = new WindFlowOverlay(this._map, {
         timeMs,
-        offsetMs,
         particleColor: customColor ?? defaultColor,
         source: windSource,
         preloadWhileHidden: cfg.preload_while_hidden === true,

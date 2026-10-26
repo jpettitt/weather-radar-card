@@ -38,8 +38,6 @@ export interface WindOverlayOptions {
   size?: number;
   /** Anchor time in epoch ms. Snapped to the hourly ICON boundary. Omit for "current". */
   timeMs?: number;
-  /** Anchor as an offset from now, re-read on each refresh. Ignored when timeMs is set. */
-  offsetMs?: number;
   /** Wind data source. Defaults to ICON globally; pass 'ndfd_wind' for NWS NDFD over US regions. */
   source?: WindSource;
   /** Keep the hourly refresh running while the host card is hidden. See preload_while_hidden. */
@@ -53,7 +51,6 @@ export class WindOverlay {
   private _density: number;
   private _sizeMult: number;
   private _timeMs: number | undefined;
-  private _offsetMs: number | undefined;
   private _source: WindSource;
   private _gen = 0;
   private _moveHandler: () => void;
@@ -72,7 +69,6 @@ export class WindOverlay {
     const s = Number(opts.size);
     this._sizeMult = Number.isFinite(s) && s > 0 ? Math.max(0.5, Math.min(2, s)) : 1;
     this._timeMs = opts.timeMs;
-    this._offsetMs = opts.offsetMs;
     this._source = opts.source ?? DEFAULT_WIND_SOURCE;
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
     this._layer = L.layerGroup().addTo(map);
@@ -161,7 +157,7 @@ export class WindOverlay {
     try {
       grid = await windGridFetcher.fetch({
         south, west, north, east,
-        timeIso: anchorTimeIso(this._timeMs, this._offsetMs),
+        timeIso: anchorTimeIso(this._timeMs),
         source: this._source,
       });
     } catch (err) {
