@@ -17,6 +17,7 @@ import {
   VECTOR_STYLES, vectorLabelsAbove, vectorStyleName,
 } from './basemap-styles';
 import { isSectionHeightPinned } from './card-layout';
+import { layerStateIdValid, newLayerStateId } from './viewer-state';
 import { closestAncestor } from './dom-ancestry';
 import { getSourceCaps, getEffectiveTimeRange } from './source-caps';
 import { FORECAST_REFRESH_CHOICES } from './forecast-refresh';
@@ -138,7 +139,23 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     // in the editor UI.
     this._config = migrateConfig(config);
     this.loadCardHelpers();
+    // Once per editor: a card turned on before the editor minted ids, moved
+    // to another dashboard, or with its id deleted gets one now. HA marks
+    // the dialog changed, and Save writes the id to the YAML.
+    if (!this._layerStateIdChecked) {
+      this._layerStateIdChecked = true;
+      const withId = this._withLayerStateId(this._config);
+      if (withId !== this._config) {
+        queueMicrotask(() => {
+          if (!this._config || layerStateIdValid(this._config)) return;
+          this._config = this._withLayerStateId(this._config);
+          fireEvent(this, 'config-changed', { config: this._config });
+        });
+      }
+    }
   }
+
+  private _layerStateIdChecked = false;
 
   private _boundCenterUpdate = (e: Event): void => {
     const ev = e as CustomEvent;
@@ -1744,11 +1761,19 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     if (!this._config || !this.hass || !target) {
       return;
     }
-    this._config = {
+    this._config = this._withLayerStateId({
       ...this._config,
       [target.configValue]: target.checked,
-    };
+    });
     fireEvent(this, 'config-changed', { config: this._config });
+  }
+
+  // viewer_layer_control needs an _layer_state_id for this dashboard. Only
+  // the editor can add one: HA listens for config-changed on the editor
+  // element alone, so the card's own event was never saved.
+  private _withLayerStateId(config: WeatherRadarCardConfig): WeatherRadarCardConfig {
+    if (config.viewer_layer_control !== true || layerStateIdValid(config)) return config;
+    return { ...config, _layer_state_id: newLayerStateId() };
   }
 
   private _valueChangedNumber(ev): void {

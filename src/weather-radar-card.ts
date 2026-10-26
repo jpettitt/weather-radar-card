@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { LitElement, html, css, unsafeCSS, TemplateResult, PropertyValues } from 'lit';
 import { property, customElement, state } from 'lit/decorators.js';
-import { HomeAssistant, LovelaceCardEditor, LovelaceCard, handleAction, ActionConfig, fireEvent } from 'custom-card-helpers';
+import { HomeAssistant, LovelaceCardEditor, LovelaceCard, handleAction, ActionConfig } from 'custom-card-helpers';
 import * as L from 'leaflet';
 // @ts-expect-error — rollup-plugin-string imports CSS as a raw string
 import leafletCss from 'leaflet/dist/leaflet.css';
@@ -389,11 +389,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._viewerState?.ensureIdentity();
       return;
     }
-    // The identity-only fast path: ensureIdentity wrote a new
-    // _layer_state_id and Lovelace round-tripped it back. Register the
-    // nonce (activating the store) and hydrate so a persisted override
-    // loads now that the storage key is stable — without tearing the
-    // map down again. Nothing else visible changes.
     if (this._map && oldConfig && isOnlyKeysChanged(oldConfig, this._config, PRESET_KEYS)
       && recenterRequested(oldConfig) === recenterRequested(this._config)) {
       // Keep the preview on the preset being edited: typed coordinates move
@@ -405,6 +400,9 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._viewerState?.ensureIdentity();
       return;
     }
+    // The identity-only fast path: the editor wrote a new _layer_state_id.
+    // Register the nonce (activating the store) and hydrate so a persisted
+    // override loads, without tearing the map down again.
     if (this._map && oldConfig && isOnlyKeysChanged(oldConfig, this._config, IDENTITY_KEYS)) {
       this._viewerState?.ensureIdentity();
       void this._hydrateViewerState();
@@ -453,14 +451,6 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._viewerState = new ViewerState({
       hass: this.hass,
       getConfig: () => this._config,
-      onIdentityMinted: (id) => {
-        // Dispatch config-changed so Lovelace persists the new id to
-        // YAML. The next setConfig() (after the round-trip) carries the
-        // id and ensureIdentity activates the storage.
-        fireEvent(this, 'config-changed', {
-          config: { ...this._config, _layer_state_id: id },
-        });
-      },
     });
   }
 

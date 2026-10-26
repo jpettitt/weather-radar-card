@@ -12,12 +12,13 @@
 //
 // Two responsibilities:
 //
-// 1. **Card identity** — mint and validate a per-card storage nonce. Stored
-//    in YAML as `_layer_state_id: { dash, nonce }`. The card auto-mints it
-//    on first `setConfig` (when the admin opt-in `viewer_layer_control` is
-//    on) and dispatches `config-changed` so Lovelace writes it back to YAML.
-//    Re-mints when the card moves to a different dashboard URL, and when a
-//    within-dashboard copy-paste collides on nonce.
+// 1. **Card identity** — validate a per-card storage nonce, stored in YAML
+//    as `_layer_state_id: { dash, nonce }`. The EDITOR mints it
+//    (newLayerStateId) when `viewer_layer_control` is turned on, or opened
+//    with no id valid for this dashboard. The card cannot: HA listens for
+//    `config-changed` only on the editor element, so a card's event reached
+//    nothing and the id was never saved. A card with no valid id, or one
+//    whose nonce another live card holds (a copy), stays inactive.
 //
 // 2. **Storage primitive** — debounced reads/writes through `hass.callWS`
 //    against `frontend/{get,set}_user_data`. In-memory cache for sync
@@ -54,13 +55,6 @@ export type Unsubscribe = () => void;
 export interface ViewerStateOptions {
   hass: HomeAssistant;
   getConfig: () => WeatherRadarCardConfig | undefined;
-  /**
-   * Called when ensureIdentity() mints or re-mints `_layer_state_id`.
-   * The card should dispatch `config-changed` with the new id so Lovelace
-   * persists it to YAML. Will fire synchronously from inside
-   * ensureIdentity(); the next setConfig() carries the new id.
-   */
-  onIdentityMinted: (id: LayerStateId) => void;
 }
 
 // ── Module-scoped state ───────────────────────────────────────────────────
@@ -77,12 +71,29 @@ const DEBOUNCE_WRITE_MS = 500;
 /** Namespace prefix for the WS storage key. */
 const STORAGE_KEY_PREFIX = 'weather-radar-card.viewer-state.';
 
+// ── Identity helpers (the editor mints, the card validates) ───────────────
+
+/** The dashboard path an id is bound to; '' without a window. */
+export function currentDashPath(): string {
+  return typeof window !== 'undefined' ? window.location.pathname : '';
+}
+
+/** True when `config` carries an `_layer_state_id` made for `dash`. */
+export function layerStateIdValid(config: WeatherRadarCardConfig | undefined, dash = currentDashPath()): boolean {
+  const id = config?._layer_state_id;
+  return !!id && typeof id.nonce === 'string' && typeof id.dash === 'string' && id.dash === dash;
+}
+
+/** A fresh id for the dashboard at `dash`, for the editor to write into the config. */
+export function newLayerStateId(dash = currentDashPath()): LayerStateId {
+  return { dash, nonce: makeNonce() };
+}
+
 // ── Implementation ────────────────────────────────────────────────────────
 
 export class ViewerState {
   private readonly _hass: HomeAssistant;
   private readonly _getConfig: () => WeatherRadarCardConfig | undefined;
-  private readonly _onIdentityMinted: (id: LayerStateId) => void;
   private readonly _listeners = new Set<(e: ViewerStateChange) => void>();
 
   /** In-memory cache. Written by hydrate/set/delete/reset. */
@@ -110,7 +121,6 @@ export class ViewerState {
   constructor(opts: ViewerStateOptions) {
     this._hass = opts.hass;
     this._getConfig = opts.getConfig;
-    this._onIdentityMinted = opts.onIdentityMinted;
   }
 
   // ── Status ──────────────────────────────────────────────────────────────
@@ -141,14 +151,12 @@ export class ViewerState {
    * Outcomes:
    *
    * - Admin toggle off → ensures we're deregistered, no-op otherwise.
-   * - Admin on, no id yet → mints + fires `onIdentityMinted`. Returns;
-   *   the next setConfig (after Lovelace writes back the new id) will
-   *   register the nonce and the cache becomes useable.
-   * - Admin on, dashboard path changed → re-mints + fires onIdentityMinted.
-   * - Admin on, nonce already claimed by another live instance (copy-paste
-   *   within the same dashboard) → re-mints on this instance, leaves the
-   *   original alone.
-   * - Admin on, id stable and not colliding → registers and returns.
+   * - Admin on, no id valid for this dashboard → inactive until the editor
+   *   writes one (layerStateIdValid / newLayerStateId).
+   * - Admin on, nonce already claimed by another live instance (a copy on
+   *   the same dashboard, or the edit dialog's preview) → inactive; the
+   *   original keeps its identity.
+   * - Admin on, id valid and not colliding → registers and returns.
    */
   ensureIdentity(): void {
     const config = this._getConfig();
@@ -157,22 +165,14 @@ export class ViewerState {
       return;
     }
 
-    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-    const id = config._layer_state_id;
-
-    if (!id || typeof id.nonce !== 'string' || typeof id.dash !== 'string') {
-      this._mint(currentPath);
+    if (!layerStateIdValid(config)) {
+      this._deregister();
       return;
     }
-    if (id.dash !== currentPath) {
-      this._mint(currentPath);
-      return;
-    }
+    const id = config._layer_state_id!;
     const claimant = liveCardsByNonce.get(id.nonce);
     if (claimant && claimant !== this) {
-      // Two live cards with the same nonce → within-dashboard copy-paste.
-      // Re-mint on this instance; original keeps its identity untouched.
-      this._mint(currentPath);
+      this._deregister();
       return;
     }
 
@@ -182,16 +182,6 @@ export class ViewerState {
       this._registeredNonce = id.nonce;
       liveCardsByNonce.set(id.nonce, this);
     }
-  }
-
-  private _mint(dash: string): void {
-    const fresh: LayerStateId = { dash, nonce: makeNonce() };
-    // We don't register the new nonce yet — wait for the next setConfig
-    // (post config-changed round-trip) to see it back from the config
-    // and call ensureIdentity again. This keeps the in-memory state
-    // strictly consistent with what's persisted in YAML.
-    this._deregister();
-    this._onIdentityMinted(fresh);
   }
 
   private _deregister(): void {
