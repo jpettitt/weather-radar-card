@@ -4,6 +4,10 @@
 
 ## What changes
 
+### Home Assistant 2026.4 or later
+
+4.0 needs Home Assistant 2026.4 or later: the editor's text fields use `ha-input`, which HA added in 2026.4. On older Home Assistant, use 3.x. The card works there, but from 3.6.3 the 3.x editor's text fields are empty before HA 2026.4, so set those options in YAML.
+
 ### A second file
 
 4.0 ships two files: `weather-radar-card.js` and `weather-radar-card-maplibre.js`. The second file holds the vector map renderer. The card loads it only when a card uses `map_style: MapTilesVector` or `Satellite`. HACS installs both files. A manual install must copy both into `www/community/weather-radar-card/`, next to each other. See [Install](../README-4.0.md#install).
