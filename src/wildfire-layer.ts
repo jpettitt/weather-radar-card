@@ -11,6 +11,7 @@ import { findInciwebPage, inciwebCandidates, inciwebUrl, knownInciwebPage } from
 import { mapsEqual } from './map-utils';
 import { hazardMarkerPane } from './hazard-marker-pane';
 import { refreshOverrideMs } from './refresh-override';
+import { DATA_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 
 const decisionsEqual = mapsEqual<string, 'polygon' | 'icon'>;
 
@@ -351,9 +352,13 @@ export class WildfireLayer {
       // no-cache: WFIGS allows 5 min of reuse, and outlines fetched because
       // a perimeter changed must not come from before the change. The
       // ETag still makes an unchanged feed a body-less 304.
-      const res = await fetch(url, { signal, cache: 'no-cache' });
-      if (!res.ok) throw new Error(`NIFC fetch ${res.status}`);
-      const data = await res.json() as GeoJSON.FeatureCollection;
+      // A time limit rejects with TimeoutError, not AbortError, so a request
+      // that never answers takes the failure path and its backoff.
+      const data = await withTimeout(DATA_TIMEOUT_MS, signal, async (sig) => {
+        const res = await fetch(url, { signal: sig, cache: 'no-cache' });
+        if (!res.ok) throw new Error(`NIFC fetch ${res.status}`);
+        return await res.json() as GeoJSON.FeatureCollection;
+      });
       return (data?.features ?? []).filter((f): f is GeoJSON.Feature => !!f);
     } catch (err) {
       // Deliberate cancellation (teardown / superseded by a fresh fetch).

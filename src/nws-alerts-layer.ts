@@ -29,6 +29,7 @@ function idle(): Promise<void> {
 import { escapeHtml, truncate } from './string-utils';
 import { mapsEqual } from './map-utils';
 import { refreshOverrideMs } from './refresh-override';
+import { DATA_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 
 const decisionsEqual = mapsEqual<string, string>;
 
@@ -321,12 +322,13 @@ export class NwsAlertsLayer {
     this._abortCtrl = ctrl;
     let features: GeoJSON.Feature[] = [];
     try {
-      const res = await fetch(NWS_ALERTS_URL, {
-        headers: { Accept: 'application/geo+json' },
-        signal: ctrl.signal,
+      // A time limit rejects with TimeoutError, not AbortError, so a list
+      // request that never answers takes the failure path and its backoff.
+      const data = await withTimeout(DATA_TIMEOUT_MS, ctrl.signal, async (signal) => {
+        const res = await fetch(NWS_ALERTS_URL, { headers: { Accept: 'application/geo+json' }, signal });
+        if (!res.ok) throw new Error(`NWS fetch ${res.status}`);
+        return await res.json() as GeoJSON.FeatureCollection;
       });
-      if (!res.ok) throw new Error(`NWS fetch ${res.status}`);
-      const data = await res.json() as GeoJSON.FeatureCollection;
       features = data?.features ?? [];
     } catch (err) {
       // Deliberate cancellation (teardown / superseded). Drop silently;
@@ -570,12 +572,12 @@ export class NwsAlertsLayer {
         return;
       }
       const myGen = this._gen;
-      const res = await fetch(url, {
-        headers: { Accept: 'application/geo+json' },
-        signal,
+      // A zone that never answers held its worker, and the batch, forever.
+      const data = await withTimeout(DATA_TIMEOUT_MS, signal, async (sig) => {
+        const res = await fetch(url, { headers: { Accept: 'application/geo+json' }, signal: sig });
+        if (!res.ok) throw new Error(`zone fetch ${res.status}`);
+        return res.json();
       });
-      if (!res.ok) throw new Error(`zone fetch ${res.status}`);
-      const data = await res.json();
       if (myGen !== this._gen) return;
       const geom = normalizeZoneGeometry(data?.geometry);
       if (geom) {

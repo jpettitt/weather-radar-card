@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Radar: a frame that did not load downloaded tiles on each pan and zoom.** It is now removed.
 - **Radar: RainViewer with `past_minutes: 120` and `frame_stride_minutes` above 10 rebuilt the full loop** at each new RainViewer frame.
 - **Radar: a frame list that did not answer stopped the radar updates.** The card now stops waiting for a NOAA or RainViewer list after 10 seconds and tries again; NOAA uses its fallback times.
+- **Overlays: a request that did not answer stopped an overlay.** Alerts and wildfires stopped their refreshes, zone shapes stopped loading, a fire's InciWeb link never came, and wind stopped for every view that asked for the same area. The card now stops waiting after 30 seconds (60 seconds for wind) and tries again.
 - **Radar: when the browser's tile store did not answer, each tile waited 5 seconds.** The card now stops using the store for the session.
 - **Radar: the play button showed the wrong icon** after a double-tap with `double_tap_action: toggle_play`.
 - **Motion compensation: a strict CSP that stopped the worker after it started stopped motion compensation and the radar refresh** with no message. Both now continue without the worker.

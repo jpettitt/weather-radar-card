@@ -22,6 +22,7 @@ import {
   getWindSourceCaps,
   bboxInUsCoverage,
 } from './wind-source-caps';
+import { WIND_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 
 // Re-exported for callers that don't need the full caps lookup. Equivalent to
 // `getWindSourceCaps('dwd_icon').coverageId`.
@@ -818,7 +819,14 @@ export class WindGridFetcher {
       if (entry.expiresAt <= now) this._cache.delete(k);
     }
 
-    const promise = this._fetchImpl(opts);
+    // A request that never answers stayed cached as the shared promise until
+    // its TTL, and the overlays awaiting it got no wind. The limit aborts the
+    // requests and rejects, which drops the entry so the next caller retries.
+    const base = opts.fetchImpl ?? fetch;
+    const promise = withTimeout(WIND_TIMEOUT_MS, null, (signal) => this._fetchImpl({
+      ...opts,
+      fetchImpl: ((input: RequestInfo | URL, init?: RequestInit) => base(input, { ...init, signal })) as typeof fetch,
+    }));
     // Set expiry now so concurrent calls during the in-flight window all
     // share. On rejection, drop the entry so the next caller retries.
     const entry: CacheEntry = { promise, expiresAt: now + this._ttlMs };
