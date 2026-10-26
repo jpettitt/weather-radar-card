@@ -1,7 +1,6 @@
 // In the edit preview, a hand pan writes the view into the preset open in
-// the editor. Re-centre can move the preview to another stop while that
-// preset stays open; a pan there must not write the other stop's place
-// into the open preset.
+// the editor. Re-centre there returns to the open preset instead of
+// rotating, so a pan never lands at another stop.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
 import { cardHass, mountCard } from './helpers/mount-card';
@@ -34,14 +33,18 @@ const handPan = (el: any): void => {
 };
 
 describe('re-centre in the preview with a preset open', () => {
-  it('a pan at another stop does not write into the open preset', async () => {
+  it('re-centre returns to the open preset, and a pan there writes into it', async () => {
     const { el, pushed, stop } = await previewWithPresetOpen();
     expect(el._map.getCenter().lat).toBeCloseTo(34, 1);
     el._onRecenter();
-    expect(el._map.getCenter().lat).toBeCloseTo(47, 1);
+    expect(el._map.getCenter().lat).toBeCloseTo(34, 1);
+    el._map.setView([40, -100], 6, { animate: false });
+    el._onRecenter();
+    expect(el._map.getCenter().lat).toBeCloseTo(34, 1);
     handPan(el);
     stop();
-    expect(pushed).toEqual([]);
+    expect(pushed.length).toBe(1);
+    expect(pushed[0].index).toBe(0);
   });
 
   it('a pan on the open preset still writes into it', async () => {

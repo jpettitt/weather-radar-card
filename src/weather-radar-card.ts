@@ -1691,7 +1691,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       // the card's centre.
       const presetFocus = this._userMoveInProgress ? this._previewPresetFocus() : null;
       if (presetFocus !== null) {
-        // Re-centre can move the preview to another stop while this preset stays open.
+        // Only while the preview shows this preset: a pan elsewhere must not land in it.
         if (this._viewPresets?.held === presetFocus) this._pushMapToPreset(presetFocus);
       } else if (this._userMoveInProgress && this.editMode && this._editorOpen && !this._viewPresets?.isHolding
         && this._dialogRadarCards() < 2) {

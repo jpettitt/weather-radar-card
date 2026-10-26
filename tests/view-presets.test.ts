@@ -471,6 +471,22 @@ describe('ViewPresets rotation', () => {
       expect(vp.isHolding).toBe(false);
     });
 
+    it('re-centre and the chip return to the open preset instead of rotating', () => {
+      const { map, vp, view } = setup({ presets: [BAY, { latitude: 40, longitude: -100 }] });
+      vp.edit(0);
+      expect(vp.nextLabel()).toBe('Bay Area');
+      vp.recenter();
+      expect(view()).toEqual({ lat: 37.6, lon: -122.2, zoom: 9 });
+      expect(vp.held).toBe(0);
+      map.setView([30, -90], 5);
+      vp.recenter();
+      expect(view()).toEqual({ lat: 37.6, lon: -122.2, zoom: 9 });
+      map.setView([30, -90], 5);
+      vp.clear();
+      expect(view()).toEqual({ lat: 37.6, lon: -122.2, zoom: 9 });
+      expect(vp.held).toBe(0);
+    });
+
     it('null with nothing open leaves the map alone', () => {
       const { vp, changes } = setup({ presets: [BAY] });
       vp.recenter();
