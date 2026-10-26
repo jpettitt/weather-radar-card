@@ -1051,7 +1051,11 @@ export class RadarPlayer {
       if (genAtStart !== this._snapshotGen) return;
       const at = pairIndex();
       if (at < 0) return;
-      if (result.confidence < RadarPlayer.CONFIDENCE_FLOOR) {
+      // A shift of a whole grid leaves the two snapshots no overlap, so it is
+      // not a measurement: LK past ~10 px returns such vectors with high
+      // confidence, and the slide threw the frame across the map.
+      const plausible = Math.abs(result.dx) < grid && Math.abs(result.dy) < grid;
+      if (result.confidence < RadarPlayer.CONFIDENCE_FLOOR || !plausible) {
         this._frameMotion[at] = null;
         return;
       }

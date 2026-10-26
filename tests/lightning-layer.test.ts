@@ -10,7 +10,7 @@ vi.mock('leaflet', () => {
   return { DomUtil, default: { DomUtil } };
 });
 
-import { LightningLayer } from '../src/lightning-layer';
+import { LightningLayer, lightningCanvasDpr, lightningCanvasPad } from '../src/lightning-layer';
 import { MAP_QUIET_MS } from '../src/map-quiet';
 
 const ctxByCanvas = new WeakMap<object, any>();
@@ -146,5 +146,53 @@ describe('LightningLayer pause', () => {
     vi.advanceTimersByTime(50);
     expect(ctx.clears - c0).toBe(1);
     l.clear();
+  });
+});
+
+describe('LightningLayer canvas size', () => {
+  // WebKit draws nothing on a canvas above this many pixels.
+  const WEBKIT_MAX_CANVAS_PX = 16_777_216;
+  const setTouchPoints = (n: number): void => {
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: n, configurable: true });
+  };
+  afterEach(() => { setTouchPoints(0); });
+
+  // The margin is rounded per side, as the layer does.
+  const cssSide = (view: number, pad: number): number => view + 2 * Math.round(view * pad);
+
+  function canvasFor(view: { x: number; y: number }, dpr: number, touchPoints: number): HTMLCanvasElement {
+    vi.stubGlobal('devicePixelRatio', dpr);
+    setTouchPoints(touchPoints);
+    const l: any = new LightningLayer(fakeMap(view), () => ({ show_lightning: true } as any), { states: {} } as any);
+    l.start();
+    const c = l._canvas as HTMLCanvasElement;
+    l.clear();
+    return c;
+  }
+
+  it('an iPad Pro 12.9 panel view (2x, touch) stays under the WebKit canvas limit', () => {
+    const c = canvasFor({ x: 1366, y: 970 }, 2, 5);
+    expect(c.width * c.height).toBeLessThan(WEBKIT_MAX_CANVAS_PX);
+    expect(c.width).toBe(cssSide(1366, 0.25) * 2);
+  });
+
+  it('a 3x phone draws at 2x with a quarter-view margin', () => {
+    const c = canvasFor({ x: 390, y: 455 }, 3, 5);
+    expect(c.width).toBe(cssSide(390, 0.25) * 2);
+    expect(c.height).toBe(cssSide(455, 0.25) * 2);
+    expect(c.style.width).toBe(`${cssSide(390, 0.25)}px`);   // CSS size: glyphs keep their size
+  });
+
+  it('a desktop without touch keeps the half-view margin', () => {
+    const c = canvasFor({ x: 1366, y: 970 }, 1, 0);
+    expect(c.width).toBe(cssSide(1366, 0.5));
+    expect(c.height).toBe(cssSide(970, 0.5));
+  });
+
+  it('helpers: the pixel ratio is capped at 2 and falls back to 1', () => {
+    for (const [raw, want] of [[1, 1], [1.5, 1.5], [2, 2], [3, 2], [4, 2], [0, 1], [-1, 1], [NaN, 1], [undefined, 1]] as const) {
+      expect(lightningCanvasDpr(raw)).toBe(want);
+    }
+    expect(lightningCanvasPad(true)).toBeLessThan(lightningCanvasPad(false));
   });
 });

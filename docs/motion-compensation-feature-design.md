@@ -120,6 +120,12 @@ from prototype experiments) are dropped — the gradient field is too
 flat for the estimate to be trustworthy. Those transitions render as
 the regular static crossfade, no jitter.
 
+A vector of a full snapshot grid (96 px) or more on either axis is
+dropped too, whatever its confidence: the two snapshots would not
+overlap, so it is not a measurement. LK diverges past ~10 grid px and
+returned such vectors with high confidence (5 in 1000 fuzz runs over
+48 px, up to 194 px); the slide then threw the frame across the map.
+
 ### Why linear distance-from-white, not squared
 
 Empirically observed during dev: outlines drift smoothly while storm

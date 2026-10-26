@@ -335,9 +335,20 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   }
 
   // The edit dialog's preview, the one card the open editor talks to: cards
-  // on the dashboard behind the dialog hear the same window events.
+  // on the dashboard behind the dialog hear the same window events. Not when
+  // the dialog holds two or more radar cards (a stack): the window events
+  // do not say which card they are for, so a pan of one card was written
+  // into the other card's editor.
   private _isEditorPreview(): boolean {
-    return hasAncestor(this, 'hui-dialog-edit-card');
+    return this._dialogRadarCards() === 1;
+  }
+
+  /** Radar cards in the edit dialog that holds this card; 0 outside one. */
+  private _dialogRadarCards(): number {
+    const dialog = closestAncestor(this, 'hui-dialog-edit-card');
+    if (!dialog) return 0;
+    const roots: ParentNode[] = dialog.shadowRoot ? [dialog, dialog.shadowRoot] : [dialog];
+    return roots.reduce((n, r) => n + deepQueryAll(r, 'weather-radar-card').length, 0);
   }
 
   /** The preset open in this card's editor, when this card is its preview. */
@@ -1691,7 +1702,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       if (presetFocus !== null) {
         // Re-centre can move the preview to another stop while this preset stays open.
         if (this._viewPresets?.held === presetFocus) this._pushMapToPreset(presetFocus);
-      } else if (this._userMoveInProgress && this.editMode && this._editorOpen && !this._viewPresets?.isHolding) {
+      } else if (this._userMoveInProgress && this.editMode && this._editorOpen && !this._viewPresets?.isHolding
+        && this._dialogRadarCards() < 2) {
         this._pushCenterToEditor();
       }
       this._userMoveInProgress = false;

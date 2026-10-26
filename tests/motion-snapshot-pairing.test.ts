@@ -203,3 +203,35 @@ describe('snapshot of a layer left at a slide translate', () => {
     container.remove();
   });
 });
+
+describe('LK vector plausibility', () => {
+  // The snapshots are GRID px square: a shift of GRID or more on an axis
+  // leaves no overlap, so no real motion is that large.
+  const replyXY = (dx: number, dy: number): unknown => ({ dx, dy, confidence: 100, magnitude: Math.hypot(dx, dy), angleDeg: 0, perLevel: [] });
+
+  it.each([
+    [GRID, 0], [-GRID, 0], [0, GRID], [0, -GRID], [194, 30], [NaN, 0], [0, Infinity],
+  ])('drops a confident (%s, %s) grid-px vector', async (dx, dy) => {
+    const p = makePlayer();
+    seed(p, [null, null, null, null, null]);
+    const client = deferredClient();
+    p._lkClient = client;
+    p._lkWorkerInitTried = true;
+    p._computeMotionForFrame(4);
+    client.pending[0](replyXY(dx, dy));
+    await flush();
+    expect(p._frameMotion[4]).toBeNull();
+  });
+
+  it('keeps a confident vector just inside the grid', async () => {
+    const p = makePlayer();
+    seed(p, [null, null, null, null, null]);
+    const client = deferredClient();
+    p._lkClient = client;
+    p._lkWorkerInitTried = true;
+    p._computeMotionForFrame(4);
+    client.pending[0](replyXY(GRID - 1, -(GRID - 1)));
+    await flush();
+    expect(p._frameMotion[4]).toMatchObject({ dx: GRID - 1, dy: -(GRID - 1) });
+  });
+});
