@@ -25,7 +25,7 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 
 ### Breaking changes
 
-- **Home Assistant 2026.4 or later.** The editor's text fields use HA's `ha-input`, which HA added in 2026.4. On older Home Assistant, use 3.x: the card works there. From 3.6.3, the 3.x editor's text fields are empty on HA before 2026.4, so set those options in YAML.
+- **Home Assistant 2025.3 or later.** 3.x needs 2024.1. On older Home Assistant, use 3.x. From 3.6.3, the 3.x editor's text fields are empty on HA before 2026.4, so set those options in YAML.
 - **Re-centre with a tracked marker.** The button now switches between the tracked marker and Default, the configured centre. Default holds, with tracking paused, until the next press or until `preset_timeout` idle minutes (default 5) return the map to the tracked marker. Set `preset_timeout: 0` to hold Default until the next press. Cards without a tracked marker re-centre as before.
 - **Manual installs need a second file.** `weather-radar-card-maplibre.js` must sit next to `weather-radar-card.js`. HACS installs it. See [Install](#install).
 

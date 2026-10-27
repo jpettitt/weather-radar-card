@@ -4,9 +4,9 @@
 
 ## What changes
 
-### Home Assistant 2026.4 or later
+### Home Assistant 2025.3 or later
 
-4.0 needs Home Assistant 2026.4 or later: the editor's text fields use `ha-input`, which HA added in 2026.4. On older Home Assistant, use 3.x. The card works there, but from 3.6.3 the 3.x editor's text fields are empty before HA 2026.4, so set those options in YAML.
+4.0 needs Home Assistant 2025.3 or later. 3.x needs 2024.1. On older Home Assistant, use 3.x. From 3.6.3, the 3.x editor's text fields are empty before HA 2026.4, so set those options in YAML. The 4.0 editor works on all supported versions.
 
 ### A second file
 

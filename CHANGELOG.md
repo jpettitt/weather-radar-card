@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking: 4.0 needs Home Assistant 2026.4 or later.** The editor's text fields use HA's `ha-input`, which HA added in 2026.4. On older HA every text field in the editor was empty, and `hacs.json` gave 2024.1 as the minimum. The card works on older HA with 3.x. From 3.6.3, the 3.x editor's text fields are also empty there, so set those options in YAML.
+- **Breaking: 4.0 needs Home Assistant 2025.3 or later.** `hacs.json` gave 2024.1 as the minimum. On older HA, use 3.x. From 3.6.3, the 3.x editor's text fields are empty before HA 2026.4, so set those options in YAML.
 
 ### Fixed
 
+- **The editor's text fields were empty on Home Assistant before 2026.4.** They used HA's `ha-input`, which HA added in 2026.4. On older HA the editor now uses `ha-textfield`, as before 3.6.3.
 - **A bad refresh override polled without a stop.** A negative or very small `alerts_refresh_seconds` or `wildfire_refresh_minutes` sent requests one after the other: with -60, about 1000 requests each second to api.weather.gov. A value that is not a positive number now keeps the adaptive interval. The minimum is 30 seconds for alerts and 1 minute for wildfires.
 - **NWS alerts: shapes of alerts in view did not load first.** Since 4.0.0-alpha3 the card counted every alert as in view, so zone shapes loaded in order of severity only.
 - **NWS alerts: old alerts stayed on the map.** When the last alert left the list during a pan or zoom, its outline stayed until the next refresh on a still map, up to 5 minutes later.
