@@ -24,7 +24,12 @@ In 3.13, the re-centre button moved the map to the configured centre, and the ne
 
 ### Everything else is off until you turn it on
 
-The vector map, the classic style, `theme_mode`, `extra_labels` on the vector map, presets and layer toggles are all options. A 3.13 configuration gives the same picture on 4.0, with two exceptions: `Satellite` draws its labels from HA's map tiles above the radar when it can, and dark tile maps keep less of their colour.
+The vector map, the classic style, `theme_mode`, `extra_labels` on the vector map, presets and layer toggles are all options. A 3.13 configuration gives the same picture on 4.0, with these exceptions:
+
+- `Satellite` draws its labels from HA's map tiles above the radar when it can.
+- Dark tile maps keep less of their colour.
+- In a sections view, a card that you did not resize fills its cell. 4.0 ignores `height` and `square_map` there, unless the card has `grid_options.rows: auto`.
+- Fire outlines always show above alert areas.
 
 ## How to try 4.0
 
@@ -37,6 +42,8 @@ The card's sign-on line in the browser console shows the version that runs.
 ## How to go back
 
 In HACS, open the card, select 3.13.0 and install it. The extra file does no harm when it stays. Presets and layer toggles are ignored by 3.13, so a configuration that uses them still loads.
+
+3.13 does not know `map_style: MapTilesVector`. It draws CARTO Light instead, which is a blank map with no message when the card has no `carto_api_key`. Before you go back, change `map_style` on those cards, for example to `MapTiles`.
 
 ## What is new
 

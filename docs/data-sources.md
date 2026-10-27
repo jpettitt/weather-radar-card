@@ -46,7 +46,7 @@ If the frame listing is unavailable (an error, or no answer within 10 s), the ca
 
 The optional wind overlay (`dwd_wind` / `dwd_wind_flow`) pulls from a SECOND DWD endpoint — the WCS coverage `dwd__Icon_reg025_fd_sl_UV10M` (10 m wind from DWD's global ICON forecast model at 0.25°, a new run every 6 hours). It is **independent of `data_source`** — the same wind layer stacks usefully on RainViewer / NOAA / DWD radars alike, since ICON's coverage is global.
 
-For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time bucket as the radar playback frame. Other sources always show live wind.
+The wind always shows the model time step closest to now, also when the radar shows forecast frames. For DWD radar, `dwd_time_override` moves "now" for the wind too.
 
 See [Hazard & Layer Overlays — Wind](overlays.md#wind) for the user-facing knobs and [Wind feature design](wind-feature-design.md) for the bulk-fetch architecture and zoom-aware rendering.
 

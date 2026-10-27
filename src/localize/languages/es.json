@@ -271,7 +271,7 @@
       "smooth_overlap": "Solapamiento de transición",
       "smooth_overlap_helper": "Solo en modo suave. 0 = secuencial (sin caída de brillo, fotograma mantenido). 1 = simultáneo (breve caída a mitad de transición). Predeterminado: 1",
       "playback_speed": "Velocidad de reproducción",
-      "playback_speed_helper": "Multiplicador aplicado al retardo entre fotogramas. El botón de velocidad de la barra de herramientas también puede cambiarlo en tiempo de ejecución; esa elección se recuerda por navegador y anula este valor predeterminado.",
+      "playback_speed_helper": "Multiplicador aplicado al retardo entre fotogramas. El botón de velocidad de la barra de herramientas también puede cambiarlo en tiempo de ejecución; esa elección anula este valor predeterminado hasta que se recarga la página, o se guarda por usuario con viewer_layer_control.",
       "playback_speed_quarter": "¼× (más lento)",
       "playback_speed_half": "½× (lento)",
       "playback_speed_normal": "1× (normal)",

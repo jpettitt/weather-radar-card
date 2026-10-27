@@ -429,7 +429,7 @@ export class LightningLayer {
     if (!plusPath || !boltPath) return;   // no Path2D (ancient browser) → skip painting
 
     // Rebuild the settled-strike buffer when invalidated (add-to-
-    // backlog, removal, view change, age pass). Everything at or below
+    // backlog, view change, age pass; a removal waits for the age pass). Everything at or below
     // the cutoff is in its + phase by construction, so the buffer only
     // ever needs the two + passes.
     if (this._bufferDirty || !this._buffer

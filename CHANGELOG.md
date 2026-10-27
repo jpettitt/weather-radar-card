@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Map: an OS change between light and dark rebuilt the map too often.** It now rebuilds only when the basemap changes.
 - **Map: a card hidden by visibility conditions built its map while hidden,** and a card that got Home Assistant's data after it was added opened at 0,0 without its viewer settings.
 - **Map: a card scrolled off the screen started again** when you went back to its browser tab, and overlays that started while the card was hidden did not pause.
-- **Sections view: a card that you did not resize did not fit its cell.** In a sections view the card now ignores `height` and `square_map`, and the editor disables them.
+- **Sections view: a card that you did not resize did not fit its cell.** In a sections view with a fixed row count (the default), the card now ignores `height` and `square_map`, and the editor disables them. With `grid_options.rows: auto` they still apply.
 - **Cast: the MapTiles basemap, marker icons, entity pictures, the toolbar and the colour bar did not load.** They now load from Home Assistant, not from the Cast page.
 - **Editor: typing "-" in a number or coordinate field saved NaN,** and the field showed "NaN". Fields now keep the minus sign and the decimal point while you type: before, "-0.1" was saved as 0.1. Clearing a field whose value is 0 now removes the setting.
 - **Editor: "Use entity picture" could not be turned off** for a person that has a photo.
@@ -72,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wildfires: fire shapes stayed on the map after the wildfire toggle was turned off,** when an outline arrived while a fire popup was open. You could still tap them.
 - **Wind arrows and wildfires: a hidden card downloaded data when its map moved** to follow a tracked marker. It now waits until the card shows again.
 - **Wildfires: a fire popup did not open** when the feed gave a fire cause such as `constructor`.
+- **Editor: the playback speed help said that the toolbar choice is kept for each browser.** The choice is kept until the page reloads, or for each user with `viewer_layer_control`.
 - **`viewer_layer_control` added in the editor's code view got no id.** The editor now adds `_layer_state_id` when you go back to the visual editor. A save from the code view still keeps no id: open the card in the editor again and save.
 - **Map tiles: each tile request sent the full dashboard address to the tile server,** with its path and query. Tile requests now send only the address of your Home Assistant. OSM needs that much: with no address it sends a "blocked" tile.
 
@@ -1252,7 +1253,25 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-rc3...HEAD
+[4.0.0-rc3]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-rc2...v4.0.0-rc3
+[4.0.0-rc2]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-rc1...v4.0.0-rc2
+[4.0.0-rc1]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-alpha4...v4.0.0-rc1
+[4.0.0-alpha4]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-alpha3...v4.0.0-alpha4
+[4.0.0-alpha3]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-alpha2...v4.0.0-alpha3
+[4.0.0-alpha2]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-alpha1...v4.0.0-alpha2
+[4.0.0-alpha1]: https://github.com/jpettitt/weather-radar-card/compare/v3.13.0...v4.0.0-alpha1
+[3.13.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.12.0...v3.13.0
+[3.12.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.11.0...v3.12.0
+[3.11.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.10.0...v3.11.0
+[3.10.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.10.0-beta1...v3.10.0
+[3.10.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.9.1-beta1...v3.10.0-beta1
+[3.9.1-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.9.0...v3.9.1-beta1
+[3.9.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.8.0...v3.9.0
+[3.8.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.8.0-beta3...v3.8.0
+[3.8.0-beta3]: https://github.com/jpettitt/weather-radar-card/compare/v3.8.0-beta2...v3.8.0-beta3
+[3.8.0-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.8.0-beta1...v3.8.0-beta2
+[3.8.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3...v3.8.0-beta1
 [3.7.3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta3...v3.7.3
 [3.7.3-beta3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta2...v3.7.3-beta3
 [3.7.3-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta1...v3.7.3-beta2

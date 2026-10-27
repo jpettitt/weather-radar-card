@@ -271,7 +271,7 @@
       "smooth_overlap": "Sobreposição da transição",
       "smooth_overlap_helper": "Apenas no modo suave. 0 = sequencial (sem queda de brilho, quadro mantido). 1 = simultâneo (breve queda no meio da transição). Padrão: 1",
       "playback_speed": "Velocidade de reprodução",
-      "playback_speed_helper": "Multiplicador aplicado ao atraso entre quadros. O botão de velocidade da barra de ferramentas também pode alterá-lo em tempo de execução; essa escolha é lembrada por navegador e substitui este padrão.",
+      "playback_speed_helper": "Multiplicador aplicado ao atraso entre quadros. O botão de velocidade da barra de ferramentas também pode alterá-lo em tempo de execução; essa escolha substitui este padrão até a página ser recarregada, ou é salva por usuário com viewer_layer_control.",
       "playback_speed_quarter": "¼× (mais lento)",
       "playback_speed_half": "½× (lento)",
       "playback_speed_normal": "1× (normal)",

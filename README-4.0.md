@@ -98,7 +98,7 @@ Download the files from the [latest release](https://github.com/jpettitt/weather
             └── skip-next.png
 ```
 
-Copy the `.js.gz` files too if you have them: HA serves the compressed copy when one sits next to the file. `weather-radar-card-maplibre.js` is only loaded for `map_style: MapTilesVector` and for Satellite labels; without it those show `MapTiles` and CARTO labels instead.
+Copy the `.js.gz` files too if you have them: HA serves the compressed copy when one sits next to the file, also when it is older than the `.js` file. When you upgrade, replace both `.gz` files or delete them. `weather-radar-card-maplibre.js` is only loaded for `map_style: MapTilesVector` and for Satellite labels; without it those show `MapTiles` and CARTO labels instead.
 
 > **Upgrading from v2?** Delete `leaflet.js`, `leaflet.css`, `leaflet.toolbar.min.js`, and `leaflet.toolbar.min.css` from `www/community/weather-radar-card/` — they are bundled into `weather-radar-card.js` in v3 and the old files are no longer used.
 
@@ -106,9 +106,11 @@ Then add the following to your Lovelace resources:
 
 ```yaml
 resources:
-  - url: /local/community/weather-radar-card/weather-radar-card.js
+  - url: /local/community/weather-radar-card/weather-radar-card.js?v=4.0.0
     type: module
 ```
+
+Browsers keep files from `/local` for up to 31 days. After each manual upgrade, change the `?v=` value in the resource URL (for example to the new version), or reload each browser and companion app with Ctrl+F5. HACS installs do this for you.
 
 ## Minimal config
 

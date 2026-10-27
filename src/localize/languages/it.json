@@ -271,7 +271,7 @@
       "smooth_overlap": "Sovrapposizione dissolvenza",
       "smooth_overlap_helper": "Solo in modalità fluida. 0 = sequenziale (nessun calo di luminosità, fotogramma mantenuto). 1 = simultaneo (breve calo a metà transizione). Predefinito: 1",
       "playback_speed": "Velocità di riproduzione",
-      "playback_speed_helper": "Moltiplicatore applicato al ritardo tra i fotogrammi. Il pulsante velocità nella barra degli strumenti può cambiarlo anche durante l’uso; quella scelta viene ricordata per browser e sostituisce questo valore predefinito.",
+      "playback_speed_helper": "Moltiplicatore applicato al ritardo tra i fotogrammi. Il pulsante velocità nella barra degli strumenti può cambiarlo anche durante l’uso; quella scelta sostituisce questo valore predefinito fino al ricaricamento della pagina, oppure viene salvata per utente con viewer_layer_control.",
       "playback_speed_quarter": "¼× (più lento)",
       "playback_speed_half": "½× (lento)",
       "playback_speed_normal": "1× (normale)",

@@ -72,8 +72,8 @@ export interface FetchWindGridOptions {
   west: number;
   north: number;
   east: number;
-  /** Optional time anchor (ISO 8601). WindGridFetcher floors it to the
-   * source's slice step, and fills in "now" for DWD sources when omitted
+  /** Optional time anchor (ISO 8601). WindGridFetcher rounds it to the
+   * nearest slice step of the source, and fills in "now" for DWD sources when omitted
    * (see effectiveTimeIso). */
   timeIso?: string | null;
   /** Model run (ISO 8601) to read the slice from. fetchWindGrid sets it from

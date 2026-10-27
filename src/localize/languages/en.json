@@ -271,7 +271,7 @@
       "smooth_overlap": "Cross-fade Overlap",
       "smooth_overlap_helper": "Smooth-mode only. 0 = sequential (no brightness dip, cushion held). 1 = simultaneous (brief mid-transition dip). Default: 1",
       "playback_speed": "Playback Speed",
-      "playback_speed_helper": "Multiplier applied to frame delay. The toolbar speed button can also change this at runtime; that runtime choice is remembered per browser and overrides this default.",
+      "playback_speed_helper": "Multiplier applied to frame delay. The toolbar speed button can also change this at runtime; that runtime choice overrides this default until the page reloads, or is saved per user with viewer_layer_control.",
       "playback_speed_quarter": "¼× (slowest)",
       "playback_speed_half": "½× (slower)",
       "playback_speed_normal": "1× (normal)",

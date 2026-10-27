@@ -271,7 +271,7 @@
       "smooth_overlap": "Prekrytie prechodu",
       "smooth_overlap_helper": "Iba v plynulom režime. 0 = sekvenčne (bez poklesu jasu, snímka udržaná). 1 = súčasne (krátky pokles v strede prechodu). Predvolené: 1",
       "playback_speed": "Rýchlosť prehrávania",
-      "playback_speed_helper": "Násobiteľ oneskorenia medzi snímkami. Tlačidlo rýchlosti na paneli nástrojov ho môže zmeniť aj za behu; táto voľba sa pamätá pre každý prehliadač a prepíše toto predvolené nastavenie.",
+      "playback_speed_helper": "Násobiteľ oneskorenia medzi snímkami. Tlačidlo rýchlosti na paneli nástrojov ho môže zmeniť aj za behu; táto voľba prepíše toto predvolené nastavenie do opätovného načítania stránky, alebo sa s viewer_layer_control uloží pre každého používateľa.",
       "playback_speed_quarter": "¼× (najpomalšie)",
       "playback_speed_half": "½× (pomalšie)",
       "playback_speed_normal": "1× (normálne)",

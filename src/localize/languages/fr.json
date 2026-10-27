@@ -271,7 +271,7 @@
       "smooth_overlap": "Chevauchement du fondu",
       "smooth_overlap_helper": "Mode fluide uniquement. 0 = séquentiel (pas de baisse de luminosité, image maintenue). 1 = simultané (brève baisse en milieu de transition). Par défaut : 1",
       "playback_speed": "Vitesse de lecture",
-      "playback_speed_helper": "Multiplicateur appliqué au délai entre les images. Le bouton de vitesse de la barre d'outils peut aussi le modifier à l'exécution ; ce choix est mémorisé par navigateur et remplace cette valeur par défaut.",
+      "playback_speed_helper": "Multiplicateur appliqué au délai entre les images. Le bouton de vitesse de la barre d'outils peut aussi le modifier à l'exécution ; ce choix remplace cette valeur par défaut jusqu'au rechargement de la page, ou est enregistré par utilisateur avec viewer_layer_control.",
       "playback_speed_quarter": "¼× (le plus lent)",
       "playback_speed_half": "½× (plus lent)",
       "playback_speed_normal": "1× (normale)",

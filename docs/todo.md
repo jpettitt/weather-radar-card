@@ -196,10 +196,12 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
   The framework + identity + sparse-override semantics + WS hydrate are
   proven.
 
-  **What's still pending:** the layer-control panel UI itself (an on-map
-  `mdi:layers` button → expanding panel listing the active overlays with
-  per-row toggles) plus the per-overlay wiring (construct / tear down
-  layers based on the override-or-YAML resolution).
+  **v1 shipped in 4.0** as a toggle row, not the panel:
+  `show_layer_toggles` puts one button per configured overlay (alerts,
+  wind, wildfires, lightning) at the map's top-right, and a hidden overlay
+  stops fetching. Choices are saved per user with `viewer_layer_control`.
+  **Still open:** radar, range rings and DWD coverage rows, and "Reset to
+  defaults".
 
   Full design in [`layer-control-design.md`](layer-control-design.md) —
   UX, composition semantics (subset of YAML-authorised layers), storage
@@ -349,8 +351,13 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 - DWD wind shows the model step nearest to now, refreshed every half hour ✅ — 3.13.0
 - Forecast-tile reuse window tied to `forecast_refresh_minutes` ([#279](https://github.com/jpettitt/weather-radar-card/issues/279)) ✅ — 3.13.0
 - Native-zoom pin dropped: zooming out no longer multiplies tile requests; thirteen fixes from the 2026-10-10 whole-project review ✅ — 3.13.0
+- `map_style: MapTilesVector` (HA's vector map under the radar, with labels over it), `vector_style` and the Classic style, `theme_mode` ✅ — 4.0.0-alpha1
+- View presets on the re-centre button, with the editor's *Presets* page ✅ — 4.0.0-alpha1
+- Layer toggles (`show_layer_toggles`), v1 of the per-user layer control ✅ — 4.0.0-alpha1
 
 ## Canvas rendering for lightning + hazard layers
+
+**Status: shipped in 3.7.0-beta1.** Lightning draws on one canvas, and alert and wildfire shapes use one shared Leaflet canvas renderer per map. The text below is the original design note.
 
 Motivation (observed live on alpha2, 2026-06-09): with `lightning_max_age_minutes: 20`
 during an active storm, every strike is two DOM markers with inline SVG —

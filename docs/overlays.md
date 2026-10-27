@@ -44,10 +44,10 @@ The overlay refreshes every 5 minutes when fires are visible (matching NIFC's up
 | `show_wildfires`           | `false`     | Enable the overlay                              |
 | `wildfire_min_acres`       | `10`        | Hide incidents smaller than this acreage        |
 | `wildfire_radius_km`       | unset       | Only show fires within N km of the map center   |
-| `wildfire_color`           | `'#ff3300'` | Active fire colour (stroke + icon)              |
-| `wildfire_contained_color` | `'#888888'` | 100%-contained fire colour                      |
-| `wildfire_fill_opacity`    | `0.2`       | Polygon fill opacity (`0` = perimeter only)     |
-| `wildfire_refresh_minutes` | adaptive    | Override the adaptive 5/30-min refresh interval (at least 1) |
+| `wildfire_color`           | `'#ff3300'` | YAML-only. Active fire colour (stroke + icon)   |
+| `wildfire_contained_color` | `'#888888'` | YAML-only. 100%-contained fire colour           |
+| `wildfire_fill_opacity`    | `0.2`       | YAML-only. Polygon fill opacity (`0` = perimeter only) |
+| `wildfire_refresh_minutes` | adaptive    | YAML-only. Override the adaptive 5/30-min refresh interval (at least 1) |
 
 ## NWS Watches & Warnings
 
@@ -85,11 +85,11 @@ Both polygon-bearing alerts (most warnings) and zone-based alerts (most advisori
 |--------------------------|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | `show_alerts`            | `false`             | Enable the overlay                                                                                                                        |
 | `alerts_categories`      | all except `marine` | Allowlist of category keys (`tornado`, `thunderstorm`, `flood`, `winter`, `tropical`, `fire_weather`, `heat`, `wind`, `marine`, `other`). |
-| `alerts_types`           | unset               | Explicit event-string allowlist; overrides `alerts_categories` when set                                                                   |
+| `alerts_types`           | unset               | YAML-only. Explicit event-string allowlist; overrides `alerts_categories` when set                                                        |
 | `alerts_min_severity`    | `'Minor'`           | One of `Extreme`, `Severe`, `Moderate`, `Minor`, `Unknown`. Hides alerts below the chosen severity floor.                                 |
 | `alerts_radius_km`       | unset               | Only show alerts within N km of the map center                                                                                            |
-| `alerts_fill_opacity`    | `0.25`              | Alert polygon fill opacity (`0` = outline only)                                                                                           |
-| `alerts_refresh_seconds` | adaptive            | Override the adaptive 60s/300s refresh interval (at least 30)                                                                             |
+| `alerts_fill_opacity`    | `0.25`              | YAML-only. Alert polygon fill opacity (`0` = outline only)                                                                                |
+| `alerts_refresh_seconds` | adaptive            | YAML-only. Override the adaptive 60s/300s refresh interval (at least 30)                                                                  |
 
 ## Lightning (Blitzortung)
 
@@ -105,7 +105,7 @@ The toggle in the editor's Hazard Overlays subpage is greyed out when the Blitzo
 |-----------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `show_lightning`            | `false` | Enable the overlay                                                                                                                                                                                             |
 | `lightning_max_age_minutes` | `30`    | Hide strikes older than this many minutes. **Card-side cap only — does NOT change the Blitzortung integration's own max-age setting**, which the integration itself controls and may differ (default 120 min). |
-| `lightning_pulse`           | `true`  | One-shot brightness flash on new-strike appearance. Honours `prefers-reduced-motion`.                                                                                                                          |
+| `lightning_pulse`           | `true`  | YAML-only. One-shot brightness flash on new-strike appearance. Honours `prefers-reduced-motion`.                                                                                                               |
 | `lightning_icon_size`       | `14`    | YAML-only. Pixel size for the + sign; the bolt renders at 1.3× this size.                                                                                                                                      |
 
 > [!NOTE]

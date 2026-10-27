@@ -167,7 +167,7 @@ export class ViewPresets {
     this._go(nextStop(this._stops(), current, !view || this._isAt(view)));
   }
 
-  /** Back to rest: the live tracked marker, else Default. */
+  /** Back to rest: the live tracked marker, else Default; the preset open in the editor while one is. */
   clear(): void {
     this._go(this._editing ?? this._stops()[0]);
   }

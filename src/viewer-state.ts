@@ -416,7 +416,7 @@ export class ViewerState {
  * collision probability ~1 in 70 billion for a single dashboard's worth
  * of cards). crypto.randomUUID() would be nicer but isn't available in
  * every HA-shipped browser baseline; Math.random fits the threat model
- * (collisions are caught by liveCardsByNonce and re-minted).
+ * (a collision is caught by liveCardsByNonce, and that card stays inactive).
  */
 function makeNonce(): string {
   return Math.random().toString(36).slice(2, 9);
