@@ -227,7 +227,8 @@ describe('alerts_radius_km on zone alerts', () => {
     const layer = makeLayer(fakeMap([-110, 20, -70, 50], 5), { alerts_radius_km: 50 });
     const far = zoneAlert('far', 'Wind Advisory', 'Moderate', [ZONE('FAR')]);
     const near = zoneAlert('near', 'Wind Advisory', 'Moderate', [ZONE('NEAR')]);
-    layer._features = layer._filter([far, near]);
+    layer._fetched = [far, near];   // as _fetch leaves it
+    layer._features = layer._filter(layer._fetched);
     expect(layer._features.map((f: GeoJSON.Feature) => f.id)).toEqual(['far', 'near']);   // no shapes yet: kept
 
     await layer._resolveZones();

@@ -813,7 +813,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // it. hass is guaranteed present here (this method only runs after
     // it's assigned), so this is the reliable construction site —
     // setConfig usually can't build it because hass isn't set yet on
-    // first call. ensureIdentity mints / registers the nonce; hydrate
+    // first call. ensureIdentity registers the nonce the editor minted; hydrate
     // (kicked below, async) fills the cache so a persisted speed
     // override applies once the WS round-trip resolves.
     this._ensureViewerState();
@@ -1765,9 +1765,11 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._windOverlay?.resume();
       this._windFlow?.resume();
     };
+    // A map built in a tab that is already hidden gets no visibilitychange,
+    // and the observer's first entry is intersecting: pause it here.
     this._visObserver = new IntersectionObserver((entries) => {
       this._offScreen = !entries[0].isIntersecting;
-      if (entries[0].isIntersecting) onShow();
+      if (entries[0].isIntersecting && !document.hidden) onShow();
       else onHide();
     }, { threshold: 0.1 });
     this._visObserver.observe(this);

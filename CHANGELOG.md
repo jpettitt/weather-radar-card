@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wind streamlines: a slow or failed request for an earlier map view replaced the wind of the current view,** and the animation started when the card was hidden while it loaded.
 - **Wind: a map moved across the date line got wind data for the full world.**
 - **Lightning: after a jump to a far place at the same zoom, the strikes of the old place showed for 1 second.** In a storm the card also did more work than necessary on each update, and a card out of view animated new strikes.
+- **Map: a card built in a background tab did not pause.** Alerts, wildfires and the radar loop ran until you showed the tab and left it again. This also occurred when a hidden card rebuilt its map.
+- **NWS alerts: `alerts_radius_km` used the map centre of the last refresh.** After the map moved, alerts near the new centre stayed hidden for up to 5 minutes. They now show when the map stops.
+- **Alerts and wildfires: after a pause, the refresh interval started again from zero.** Alerts on a card that was shown for 50 seconds and hidden for 50 seconds in turn did not refresh. Wildfires refreshed at once after 5 minutes hidden, also with a longer `wildfire_refresh_minutes`. After a pause the card now waits only for the time that is left.
+- **Wind streamlines: a failed refresh removed the streamlines** until the next pan or refresh, up to 30 minutes later. The card now keeps the last wind data, as the wind arrows do.
+- **Wildfires: fire shapes stayed on the map after the wildfire toggle was turned off,** when an outline arrived while a fire popup was open. You could still tap them.
+- **Wind arrows and wildfires: a hidden card downloaded data when its map moved** to follow a tracked marker. It now waits until the card shows again.
+- **Wildfires: a fire popup did not open** when the feed gave a fire cause such as `constructor`.
 
 ## [4.0.0-rc3] - 2026-10-23
 

@@ -406,8 +406,10 @@ export class WindFlowOverlay {
       this._gridSource = resolveSourceForBbox(opts);
     } catch (err) {
       if (gen !== this._gen) return;
+      // Keep the last grid, as the arrows overlay does: blanking it hid the
+      // streamlines until the next pan or tick, up to 30 min. The grid is
+      // geo-referenced, so after a pan it still draws where it covers.
       console.warn('WindFlowOverlay: WCS fetch failed, skipping refresh', err);
-      this._grid = { rows: 0, cols: 0, latMin: 0, lonMin: 0, step: ICON_GRID_DEG, cells: [] };
     }
   }
 

@@ -73,6 +73,9 @@ export class WindOverlay {
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
     this._layer = L.layerGroup().addTo(map);
     this._moveHandler = (): void => {
+      // A hidden card's map still pans to follow a tracked marker; resume()
+      // refreshes for the view it finds.
+      if (this._paused) return;
       if (this._debounceTimer) clearTimeout(this._debounceTimer);
       this._debounceTimer = setTimeout(() => this._refresh(), MOVE_DEBOUNCE_MS);
     };

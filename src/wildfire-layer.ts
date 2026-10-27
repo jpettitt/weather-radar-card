@@ -113,6 +113,10 @@ export class WildfireLayer {
   private _detailDrawn = new Set<string>();
   private _detailCtrl: AbortController | null = null;
   private _renderOnPopupClose = false;
+  private _onPopupCloseRender = (): void => {
+    this._renderOnPopupClose = false;
+    this._render();
+  };
   // Per-feature render decision from the last _render() pass — keyed by
   // featureKey(feature). Used to skip re-rendering (which would close any
   // open popup) when zoomend fires but no feature actually crossed the
@@ -124,6 +128,8 @@ export class WildfireLayer {
   // act on their result. Used by resume() to decide whether to refetch
   // immediately (data went stale during the pause) or just reschedule.
   private _pausedAt: number | null = null;
+  // When the armed fetch is due, kept across a pause; null while one runs.
+  private _dueAt: number | null = null;
   // Generation guard — incremented on every fetch start. If the value at the
   // resolve point doesn't match, the fetch is stale (config changed mid-flight,
   // teardown happened, etc.) and we discard the result.
@@ -154,6 +160,9 @@ export class WildfireLayer {
     // threshold, which preserves any open popup when the user zooms (e.g.
     // via double-tap) without crossing it; then fetch detail for the view.
     this._disposeQuiet = onMapQuiet(this._map, () => {
+      // A hidden card's map still pans to follow a tracked marker: no
+      // outline fetches then; resume() catches up with the view.
+      if (this._pausedAt != null) return;
       this._render({ skipIfDecisionsUnchanged: true });
       this._showDetail();
     });
@@ -161,7 +170,14 @@ export class WildfireLayer {
   }
 
   clear(): void {
+    // Removing the layers below closes an open popup, which fired a deferred
+    // render inside clear(): it drew new fire layers that stayed on the map.
+    if (this._renderOnPopupClose) {
+      this._map.off('popupclose', this._onPopupCloseRender);
+      this._renderOnPopupClose = false;
+    }
     this._gen++;   // invalidate any in-flight fetches
+    this._dueAt = null;
     this._abortCtrl?.abort();   // cancel the HTTP requests too, not just the response handling
     this._abortCtrl = null;
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
@@ -196,19 +212,20 @@ export class WildfireLayer {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
   }
 
-  // Resume after a pause. If we were paused longer than the
-  // refresh-when-visible interval, the displayed features are presumed
-  // stale and we refetch immediately. Otherwise just reschedule the
-  // next periodic refresh.
+  // Resume after a pause: fetch now if the next refresh came due while
+  // hidden, else wait only what is left of it. A fixed 5 min staleness test
+  // ignored wildfire_refresh_minutes and restarted the full interval.
   resume(): void {
     if (this._pausedAt == null) return;
-    const pausedMs = Date.now() - this._pausedAt;
     this._pausedAt = null;
-    if (pausedMs >= DEFAULT_REFRESH_VISIBLE_MS) {
-      void this._fetch();
-    } else {
-      this._scheduleNext();
-    }
+    // The view may have changed while paused (see start()).
+    this._render({ skipIfDecisionsUnchanged: true });
+    this._showDetail();
+    // null: a fetch is in flight, and its end arms the next one.
+    if (this._dueAt === null) return;
+    const left = this._dueAt - Date.now();
+    if (left <= 0) void this._fetch();
+    else this._timer = setTimeout(() => void this._fetch(), left);
   }
 
   // Re-filter and re-render in response to a hass change. Currently only
@@ -229,6 +246,7 @@ export class WildfireLayer {
 
   private async _fetch(): Promise<void> {
     const myGen = ++this._gen;
+    this._dueAt = null;
     // Abort any previous in-flight fetches so their bytes stop hitting
     // the wire — the gen check below would discard the response anyway,
     // but on mobile we'd rather not pay the bandwidth.
@@ -325,10 +343,7 @@ export class WildfireLayer {
     if (!open) { this._render(); return; }
     if (this._renderOnPopupClose) return;
     this._renderOnPopupClose = true;
-    this._map.once('popupclose', () => {
-      this._renderOnPopupClose = false;
-      this._render();
-    });
+    this._map.once('popupclose', this._onPopupCloseRender);
   }
 
   /** Backoff delay for the Nth consecutive failure (1-based): 5 min
@@ -339,9 +354,16 @@ export class WildfireLayer {
   }
 
   private _scheduleRetry(): void {
+    this._arm(this._retryDelayMs(this._failureCount));
+  }
+
+  // Arm the next fetch. While paused only its due time is kept: a fetch in
+  // flight when pause() ran ends here, and resume() arms what is left.
+  private _arm(ms: number): void {
+    this._dueAt = Date.now() + ms;
     if (this._pausedAt != null) return;
     if (this._timer) clearTimeout(this._timer);
-    this._timer = setTimeout(() => void this._fetch(), this._retryDelayMs(this._failureCount));
+    this._timer = setTimeout(() => void this._fetch(), ms);
   }
 
   // Returns null on failure so the caller can keep the existing feature
@@ -530,19 +552,14 @@ export class WildfireLayer {
   }
 
   private _scheduleNext(): void {
-    // Paused → don't re-arm. pause() only cancels the ARMED timer; a
-    // fetch that was already in flight when pause() ran completes and
-    // its tail calls _scheduleNext — without this guard that re-armed
-    // the chain and the layer kept polling NIFC at full cadence for as
-    // long as the card stayed hidden. resume() decides between an
-    // immediate refetch and a reschedule, so dropping the re-arm here
-    // is safe.
-    if (this._pausedAt != null) return;
-    if (this._timer) clearTimeout(this._timer);
+    // Paused: _arm does not re-arm. pause() only cancels the ARMED timer; a
+    // fetch that was already in flight when pause() ran completes and its
+    // tail calls _scheduleNext. Re-arming there kept the layer polling NIFC
+    // at full cadence for as long as the card stayed hidden.
     const cfg = this._getConfig();
     const intervalMs = refreshOverrideMs(cfg.wildfire_refresh_minutes, 60_000, MIN_REFRESH_MS)
       ?? (this._features.length > 0 ? DEFAULT_REFRESH_VISIBLE_MS : DEFAULT_REFRESH_EMPTY_MS);
-    this._timer = setTimeout(() => void this._fetch(), intervalMs);
+    this._arm(intervalMs);
   }
 }
 
@@ -616,7 +633,9 @@ function buildPopupHtml(
     || [props?.attr_POOCounty, props?.attr_POOState?.replace(/^US-/, '')].filter(Boolean).join(', ');
   const personnel = props?.attr_TotalIncidentPersonnel;
   const cause = props?.attr_FireCause;
-  const causeKey = cause ? CAUSE_KEYS[cause] : undefined;
+  // Own keys only: a feed value such as 'constructor' found an inherited
+  // function, and localize() threw, so that fire's popup did not open.
+  const causeKey = cause && Object.hasOwn(CAUSE_KEYS, cause) ? CAUSE_KEYS[cause] : undefined;
   const mapped = props?.poly_PolygonDateTime;
   const updated = props?.attr_ModifiedOnDateTime_dt;
   const row = (labelKey: string, value: string): string =>
@@ -632,8 +651,8 @@ function buildPopupHtml(
     typeof updated === 'number' ? row('ui.wildfire.updated', agoText(updated, nowMs, lang)) : '',
   ].join('');
 
-  // inciwebSlug is one inciwebCandidates built with slugify, so only
-  // [a-z0-9-]; escaped anyway in case that ever changes.
+  // The escape is needed: inciwebCandidates slugifies the fire name but only
+  // lowercases the NIFC unit, which is feed data and can hold any character.
   const linkHtml = inciwebSlug
     ? `<div style="margin-top:4px"><a href="${escapeHtml(inciwebUrl(inciwebSlug))}" target="_blank" rel="noopener noreferrer">${escapeHtml(localize('ui.wildfire.more_info'))}</a></div>`
     : '';

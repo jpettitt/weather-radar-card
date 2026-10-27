@@ -136,6 +136,9 @@ export class NwsAlertsLayer {
   // become renderable once their affectedZones URLs are resolved into the
   // _zoneCache below.
   private _features: GeoJSON.Feature[] = [];
+  // The last alerts list before _filter, in paint order: alerts_radius_km
+  // depends on the map centre, so a moved map filters again from this.
+  private _fetched: GeoJSON.Feature[] = [];
   // Per-feature render decision keyed by feature.id (NWS-provided URL).
   // Compared on each _render() call; if unchanged, we skip the rebuild,
   // preserving any open popup. See "Lessons from the wildfire build" in the
@@ -161,6 +164,8 @@ export class NwsAlertsLayer {
   // their re-render result becomes a no-op (skipIfDecisionsUnchanged).
   // Used by resume() to decide whether to refetch immediately.
   private _pausedAt: number | null = null;
+  // When the armed fetch is due, kept across a pause; null while one runs.
+  private _dueAt: number | null = null;
   private _gen = 0;
   // Consecutive _fetch failures. Drives the retry backoff below; reset
   // to 0 on any successful fetch.
@@ -236,6 +241,7 @@ export class NwsAlertsLayer {
 
   clear(): void {
     this._gen++;   // invalidates any in-flight WFIGS / zone fetches
+    this._dueAt = null;
     this._abortCtrl?.abort();
     this._abortCtrl = null;
     this._zoneAbortCtrl?.abort();
@@ -246,6 +252,7 @@ export class NwsAlertsLayer {
     // wildfire layer may still be drawing through it (map-lifetime,
     // see shared-canvas-renderer.ts).
     this._features = [];
+    this._fetched = [];
     this._renderDecisions.clear();
     this._hidden.clear();
     this._zoneCache.clear();
@@ -284,26 +291,24 @@ export class NwsAlertsLayer {
     if (this._zoneRetryTimer) { clearTimeout(this._zoneRetryTimer); this._zoneRetryTimer = null; }
   }
 
-  // Resume after a pause. Alerts have a much shorter staleness threshold
-  // than wildfires (60 s vs 5 min) — a tornado warning issued while the
-  // user was away should appear quickly. If paused longer than the
-  // refresh interval, refetch immediately; otherwise just reschedule.
+  // Resume after a pause: fetch now if the next refresh came due while
+  // hidden, else wait only what is left of it. Starting the full interval
+  // again meant a card shown 50 s and hidden 50 s in turn never refreshed.
   resume(): void {
     if (this._pausedAt == null) return;
-    const pausedMs = Date.now() - this._pausedAt;
     this._pausedAt = null;
-    if (pausedMs >= DEFAULT_REFRESH_VISIBLE_MS) {
-      void this._fetch();
-    } else {
-      this._scheduleNext();
-    }
+    // null: a fetch is in flight, and its end arms the next one.
+    if (this._dueAt === null) return;
+    const left = this._dueAt - Date.now();
+    if (left <= 0) void this._fetch();
+    else this._timer = setTimeout(() => void this._fetch(), left);
   }
 
   // hass changes don't affect the polygon-vs-polygon decisions (no zoom-
   // dependent rendering for alerts). Re-render with the skip-if-unchanged
   // guard so a no-op tick is truly a no-op and any open popup stays open.
   // The radius_km filter does depend on map centre, but the centre changes
-  // via map move events, not hass — and map moves don't trigger this method.
+  // via map move events, not hass: _onViewChange filters again.
   updateHass(hass: HomeAssistant): void {
     this._hass = hass;
     if (this._features.length === 0 && !this._polygonLayer) return;
@@ -312,6 +317,7 @@ export class NwsAlertsLayer {
 
   private async _fetch(): Promise<void> {
     const myGen = ++this._gen;
+    this._dueAt = null;
     // Abort any previous alerts-list fetch and the in-flight zone fetches.
     // The new alerts list will trigger a fresh _resolveZones pass on the
     // affected-zones from the new payload; zones for alerts that dropped
@@ -364,7 +370,8 @@ export class NwsAlertsLayer {
     // on top of the visual stack. Sort once here, not per render —
     // the order is stable until the next _fetch().
     try {
-      this._features = this._filter(features).sort(paintOrderAscending);
+      this._fetched = features.slice().sort(paintOrderAscending);
+      this._features = this._filter(this._fetched);
     } catch (err) {
       // Keep the alerts on screen and the refresh chain alive, as _render
       // does for its own failures; nothing after the await catches for us.
@@ -470,13 +477,7 @@ export class NwsAlertsLayer {
   // could not judge for a zone alert without shapes, then redraw. Skip-if-
   // unchanged applies: only alerts whose zones arrived flip their decision.
   private _zonesSettled(): void {
-    if (this._getConfig().alerts_radius_km) {
-      try {
-        this._features = this._filter(this._features);
-      } catch (err) {
-        console.warn('NWS alerts: filter failed', err);
-      }
-    }
+    this._refilterForCentre();
     this._render({ skipIfDecisionsUnchanged: true });
     void this._drainWriteBack();
   }
@@ -972,7 +973,19 @@ export class NwsAlertsLayer {
     return simplified;
   }
 
+  // alerts_radius_km is measured from the map centre: filter the last list
+  // again, so a moved map shows the alerts near its new centre at once.
+  private _refilterForCentre(): void {
+    if (!this._getConfig().alerts_radius_km) return;
+    try {
+      this._features = this._filter(this._fetched);
+    } catch (err) {
+      console.warn('NWS alerts: filter failed', err);
+    }
+  }
+
   private _onViewChange = (): void => {
+    this._refilterForCentre();
     // With polygons still drawn, an empty list must render: an empty
     // refresh that landed during a gesture deferred their removal to here.
     if (this._features.length === 0 && !this._polygonLayer) return;
@@ -1037,26 +1050,28 @@ export class NwsAlertsLayer {
   // the delay ladder is driven by consecutive failures instead of the
   // normal refresh cadence.
   private _scheduleRetry(): void {
+    this._arm(this._retryDelayMs(this._failureCount));
+  }
+
+  // Arm the next fetch. While paused only its due time is kept: a fetch in
+  // flight when pause() ran ends here, and resume() arms what is left.
+  private _arm(ms: number): void {
+    this._dueAt = Date.now() + ms;
     if (this._pausedAt != null) return;
     if (this._timer) clearTimeout(this._timer);
-    this._timer = setTimeout(() => void this._fetch(), this._retryDelayMs(this._failureCount));
+    this._timer = setTimeout(() => void this._fetch(), ms);
   }
 
   private _scheduleNext(): void {
-    // Paused → don't re-arm. pause() only cancels the ARMED timer; a
-    // fetch that was already in flight when pause() ran (the 60 s
-    // alerts cadence makes that window frequent) completes and its
-    // tail calls _scheduleNext — without this guard that re-armed the
-    // chain and the layer kept polling api.weather.gov at full cadence
-    // for as long as the card stayed hidden. resume() decides between
-    // an immediate refetch and a reschedule, so dropping the re-arm
-    // here is safe.
-    if (this._pausedAt != null) return;
-    if (this._timer) clearTimeout(this._timer);
+    // Paused: _arm does not re-arm. pause() only cancels the ARMED timer; a
+    // fetch that was already in flight when pause() ran (the 60 s alerts
+    // cadence makes that window frequent) completes and its tail calls
+    // _scheduleNext. Re-arming there kept the layer polling api.weather.gov
+    // at full cadence for as long as the card stayed hidden.
     const cfg = this._getConfig();
     const intervalMs = refreshOverrideMs(cfg.alerts_refresh_seconds, 1000, MIN_REFRESH_MS)
       ?? (this._features.length > 0 ? DEFAULT_REFRESH_VISIBLE_MS : DEFAULT_REFRESH_EMPTY_MS);
-    this._timer = setTimeout(() => void this._fetch(), intervalMs);
+    this._arm(intervalMs);
   }
 }
 

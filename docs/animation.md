@@ -390,8 +390,9 @@ called:
 
 The wildfire and NWS-alerts overlay layers have their own
 `pause()` / `resume()` methods called from the same visibility hooks;
-they cancel their refresh timers and refetch on resume if paused
-longer than the visible-refresh interval.
+they cancel their refresh timers but keep when the next refresh is due.
+On resume they refetch at once if it came due while hidden, else wait
+only the time that is left.
 
 ---
 
