@@ -72,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wildfires: fire shapes stayed on the map after the wildfire toggle was turned off,** when an outline arrived while a fire popup was open. You could still tap them.
 - **Wind arrows and wildfires: a hidden card downloaded data when its map moved** to follow a tracked marker. It now waits until the card shows again.
 - **Wildfires: a fire popup did not open** when the feed gave a fire cause such as `constructor`.
+- **`viewer_layer_control` added in the editor's code view got no id.** The editor now adds `_layer_state_id` when you go back to the visual editor. A save from the code view still keeps no id: open the card in the editor again and save.
 
 ## [4.0.0-rc3] - 2026-10-23
 

@@ -85,3 +85,38 @@ describe('editor mints _layer_state_id', () => {
     expect(card._viewerState?.isActive ?? false).toBe(false);
   });
 });
+
+// In YAML mode HA keeps the editor off the page and still calls setConfig on
+// each edit, but drops the editor's config-changed (testbed, 2026-10-27).
+describe('viewer_layer_control added in the YAML editor', () => {
+  beforeEach(() => { window.history.replaceState({}, '', '/lovelace/weather'); _resetLiveCardsForTests(); });
+  afterEach(() => { document.body.innerHTML = ''; });
+
+  it('a later setConfig that turns it on mints an id', async () => {
+    const { ed, sent } = await openEditor({});
+    ed.setConfig({ type: 'custom:weather-radar-card', viewer_layer_control: true });
+    await tick();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]._layer_state_id.dash).toBe('/lovelace/weather');
+  });
+
+  it('an id minted off the page is sent again when the editor comes back', async () => {
+    const { ed, sent } = await openEditor({});
+    ed.remove();   // HA switches to YAML mode
+    ed.setConfig({ type: 'custom:weather-radar-card', viewer_layer_control: true });
+    await tick();
+    expect(sent).toHaveLength(1);   // HA drops this one
+    document.body.appendChild(ed);   // back to the visual editor
+    await tick();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]._layer_state_id).toEqual(sent[0]._layer_state_id);
+  });
+
+  it('one mint per change, not one per setConfig', async () => {
+    const { ed, sent } = await openEditor({});
+    ed.setConfig({ type: 'custom:weather-radar-card', viewer_layer_control: true });
+    ed.setConfig({ type: 'custom:weather-radar-card', viewer_layer_control: true });
+    await tick();
+    expect(sent).toHaveLength(1);
+  });
+});

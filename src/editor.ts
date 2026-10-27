@@ -139,23 +139,30 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     // in the editor UI.
     this._config = migrateConfig(config);
     this.loadCardHelpers();
-    // Once per editor: a card turned on before the editor minted ids, moved
-    // to another dashboard, or with its id deleted gets one now. HA marks
-    // the dialog changed, and Save writes the id to the YAML.
-    if (!this._layerStateIdChecked) {
-      this._layerStateIdChecked = true;
-      const withId = this._withLayerStateId(this._config);
-      if (withId !== this._config) {
-        queueMicrotask(() => {
-          if (!this._config || layerStateIdValid(this._config)) return;
-          this._config = this._withLayerStateId(this._config);
-          fireEvent(this, 'config-changed', { config: this._config });
-        });
-      }
+    // A card turned on before the editor minted ids, moved to another
+    // dashboard, or with its id deleted gets one now. HA marks the dialog
+    // changed, and Save writes the id to the YAML. On every setConfig, not
+    // once: in YAML mode HA keeps this editor off the page and still calls
+    // setConfig on each edit, so a pasted viewer_layer_control: true comes
+    // after the first check, and was saved without an id.
+    if (!this._layerStateIdPending && this._withLayerStateId(this._config) !== this._config) {
+      this._layerStateIdPending = true;
+      queueMicrotask(() => {
+        this._layerStateIdPending = false;
+        if (!this._config) return;
+        const withId = this._withLayerStateId(this._config);
+        if (withId === this._config) return;
+        this._config = withId;
+        // HA drops the event while this editor is off the page (YAML mode);
+        // connectedCallback sends the id again when it comes back.
+        this._layerStateIdUnsent = !this.isConnected;
+        fireEvent(this, 'config-changed', { config: this._config });
+      });
     }
   }
 
-  private _layerStateIdChecked = false;
+  private _layerStateIdPending = false;
+  private _layerStateIdUnsent = false;
 
   private _boundCenterUpdate = (e: Event): void => {
     const ev = e as CustomEvent;
@@ -171,6 +178,12 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
 
   connectedCallback(): void {
     super.connectedCallback();
+    if (this._layerStateIdUnsent) {
+      this._layerStateIdUnsent = false;
+      queueMicrotask(() => {
+        if (this._config && layerStateIdValid(this._config)) fireEvent(this, 'config-changed', { config: this._config });
+      });
+    }
     window.addEventListener('weather-radar-center-update', this._boundCenterUpdate);
     window.addEventListener(PRESET_MAP_EVENT, this._onMapPresetMove);
     // Tell every weather-radar-card on the dashboard that *some* editor is
