@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wind arrows and wildfires: a hidden card downloaded data when its map moved** to follow a tracked marker. It now waits until the card shows again.
 - **Wildfires: a fire popup did not open** when the feed gave a fire cause such as `constructor`.
 - **`viewer_layer_control` added in the editor's code view got no id.** The editor now adds `_layer_state_id` when you go back to the visual editor. A save from the code view still keeps no id: open the card in the editor again and save.
+- **Map tiles: each tile request sent the full dashboard address to the tile server,** with its path and query. Tile requests now send only the address of your Home Assistant. OSM needs that much: with no address it sends a "blocked" tile.
 
 ## [4.0.0-rc3] - 2026-10-23
 
