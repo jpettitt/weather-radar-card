@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0-rc4] - 2026-10-29
+
+> **Release candidate 4 of 4.0.** 4.0.0-rc3 with the fixes of a full code review before 4.0.0. 4.0 now needs Home Assistant 2025.3 or later. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-rc3.
+
 ### Changed
 
 - **Breaking: 4.0 needs Home Assistant 2025.3 or later.** `hacs.json` gave 2024.1 as the minimum. On older HA, use 3.x. From 3.6.3, the 3.x editor's text fields are empty before HA 2026.4, so set those options in YAML.
