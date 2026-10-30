@@ -271,7 +271,7 @@
       "smooth_overlap": "Überblendungsüberlappung",
       "smooth_overlap_helper": "Nur im Sanftmodus. 0 = sequentiell (kein Helligkeitsabfall, Bild gehalten). 1 = gleichzeitig (kurzer Helligkeitsabfall in der Mitte). Standard: 1",
       "playback_speed": "Wiedergabegeschwindigkeit",
-      "playback_speed_helper": "Multiplikator für die Frame-Verzögerung. Die Geschwindigkeitstaste in der Werkzeugleiste kann dies zur Laufzeit ändern; diese Wahl wird pro Browser gespeichert und überschreibt den Standardwert.",
+      "playback_speed_helper": "Multiplikator für die Frame-Verzögerung. Die Geschwindigkeitstaste in der Werkzeugleiste kann dies zur Laufzeit ändern; diese Wahl überschreibt den Standardwert bis zum Neuladen der Seite oder wird mit viewer_layer_control pro Benutzer gespeichert.",
       "playback_speed_quarter": "¼× (am langsamsten)",
       "playback_speed_half": "½× (langsamer)",
       "playback_speed_normal": "1× (normal)",

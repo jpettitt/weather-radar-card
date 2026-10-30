@@ -271,7 +271,7 @@
       "smooth_overlap": "Overgangsoverlapping",
       "smooth_overlap_helper": "Kun jevn modus. 0 = sekvensiell (ingen lysstyrkesvikt, bilde holdt). 1 = samtidig (kort svikt midt i overgangen). Standard: 1",
       "playback_speed": "Avspillingshastighet",
-      "playback_speed_helper": "Multiplikator for forsinkelsen mellom bilder. Hastighetsknappen i verktøylinjen kan også endre dette under kjøring; det valget huskes per nettleser og overstyrer denne standarden.",
+      "playback_speed_helper": "Multiplikator for forsinkelsen mellom bilder. Hastighetsknappen i verktøylinjen kan også endre dette under kjøring; det valget overstyrer denne standarden til siden lastes på nytt, eller lagres per bruker med viewer_layer_control.",
       "playback_speed_quarter": "¼× (tregest)",
       "playback_speed_half": "½× (tregere)",
       "playback_speed_normal": "1× (normal)",

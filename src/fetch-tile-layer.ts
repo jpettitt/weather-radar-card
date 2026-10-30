@@ -218,9 +218,13 @@ export function animateZoomSkippingStaleTiles(layer: FetchLayer, e: { center: L.
 // One network attempt, resolving to the raw tile bytes. Rejections carry
 // `status` for createFetchTile's retry branches.
 function fetchTileBlob(url: string, signal: AbortSignal): Promise<Blob> {
+  // HA serves its page with Referrer-Policy: no-referrer, and OSM answers a
+  // request with no Referer with a "blocked" tile (still 200 image/png).
+  // Send the origin only: 'no-referrer-when-downgrade' gave every tile host
+  // the full dashboard URL, path and query included.
   return fetch(url, {
     referrer: window.location.href,
-    referrerPolicy: 'no-referrer-when-downgrade',
+    referrerPolicy: 'strict-origin-when-cross-origin',
     signal,
   }).then((r) => {
     if (r.status === 404) { const e: any = new Error('404'); e.status = 404; throw e; }

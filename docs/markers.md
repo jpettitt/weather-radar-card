@@ -11,7 +11,7 @@ The `markers` option accepts a list. Each entry can have:
 | `icon_entity` | string        | Entity ID to read the photo from when `icon: entity_picture`. Defaults to `entity` if blank.                                                                                                                                                                                                     |
 | `color`       | string        | CSS colour for `mdi:*` and default icons (e.g. `#ff0000`, `red`). Ignored for `entity_picture`.                                                                                                                                                                                                  |
 | `track`       | string / bool | `'entity'` — pan the map to follow this marker; `true` — lowest-priority always-on fallback                                                                                                                                                                                                      |
-| `mobile_only` | boolean       | Only show this marker on mobile devices                                                                                                                                                                                                                                                          |
+| `mobile_only` | boolean       | Only show this marker on mobile devices. On other devices it is not tracked either                                                                                                                                                                                                               |
 
 ## Track resolution
 
@@ -21,7 +21,7 @@ When multiple markers have `track` set, the card picks one to centre the map on 
 2. **`track: entity` on any other entity** — viewer-independent tracking.
 3. **`track: true`** — lowest always-on fallback; overridden by any `track: entity` match.
 
-Multiple markers at the same priority level log a console warning and use the first one in the list.
+Multiple markers at the same priority level use the first one in the list, and log a console warning once per page load.
 
 The re-centre button switches between the tracked marker and the configured centre (*Default*), then any [view presets](configuration.md#view-presets). Tracking pauses while Default or a preset is showing, and resumes after `preset_timeout` idle minutes or a tap on the preset's name. *Add as preset* in the editor copies a marker into `presets`.
 
@@ -53,16 +53,16 @@ markers:
     track: entity
 ```
 
-Multiple markers — person takes priority over van for John, van tracks for everyone else:
+Multiple markers — person takes priority over van for John, van tracks for everyone else. For other viewers `person.john` has the same priority as the van, so the van must come first in the list:
 
 ```yaml
 markers:
-  - entity: person.john
-    icon: entity_picture
-    track: entity
-
   - entity: device_tracker.van
     icon: mdi:car
+    track: entity
+
+  - entity: person.john
+    icon: entity_picture
     track: entity
 
   - latitude: -33.86

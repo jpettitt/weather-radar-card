@@ -124,7 +124,7 @@ describe('findInciwebPage', () => {
         bindPopup: (fn: () => string) => { content = fn; },
         on: (_ev: string, fn: () => void) => { onOpen = fn; },
         isPopupOpen: () => isOpen,
-        getPopup: () => ({ update }),
+        getPopup: () => ({ update, options: {} }),
       }, props);
       return {
         content: () => content(),

@@ -13,8 +13,9 @@
 export const UNKNOWN_RUN_MIN_AGE_MS = 15 * 60_000;
 /** Margin past the card's history window before a stored tile expires. */
 export const PERSIST_EXPIRY_MARGIN_MS = 30 * 60_000;
-/** An IndexedDB read slower than this counts as a miss, so a stuck store
- *  (seen as hung opens on some WebKit builds) can't hold back the network. */
+/** An IndexedDB read slower than this counts as a miss and ends the store's
+ *  use for the session, so a stuck store (seen as hung opens on some WebKit
+ *  builds) can't hold back the network. */
 const LOOKUP_TIMEOUT_MS = 5_000;
 
 /**
@@ -239,6 +240,10 @@ class IdbTileStore implements TileStore {
 }
 
 let store: TileStore = new IdbTileStore();
+// Set by the first lookup timeout, as in guardedZoneKV: a store that hung
+// once (an open that never settles caches its pending promise) made every
+// later tile wait the full timeout, so it is skipped for the session.
+let storeGone = false;
 let lastPruneAt = 0;
 // `final`: the tile's content could no longer change when it was fetched.
 // A layer that persists must not be handed a non-final copy — e.g. a DWD
@@ -281,10 +286,15 @@ export function memoGet(url: string, requireFinal = false): Blob | null {
 
 /** IndexedDB lookup; concurrent callers for one URL share a single read. */
 export function persistedGet(url: string): Promise<Blob | null> {
+  if (storeGone) return Promise.resolve(null);
   const pending = lookups.get(url);
   if (pending) return pending;
   const p = new Promise<Blob | null>((resolve) => {
-    const timer = setTimeout(() => resolve(null), LOOKUP_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      if (!storeGone) console.warn('Weather Radar Card: tile store did not answer; using the network for this session');
+      storeGone = true;
+      resolve(null);
+    }, LOOKUP_TIMEOUT_MS);
     void store.get(url, Date.now())
       .catch(() => null)
       .then((blob) => {
@@ -304,7 +314,7 @@ export function storeTile(url: string, blob: Blob, policy: TileCachePolicy): voi
   const until = policy.persistUntil;
   memoSet(url, blob, until !== undefined);
   const now = Date.now();
-  if (until === undefined || until <= now) return;
+  if (until === undefined || until <= now || storeGone) return;
   void store.put(url, blob, until);
   if (now - lastPruneAt > PRUNE_INTERVAL_MS) {
     lastPruneAt = now;
@@ -377,6 +387,7 @@ export function sharedFetch(
 /** @internal — tests swap in an in-memory store and reset module state. */
 export function _setTileStoreForTests(s: TileStore): void {
   store = s;
+  storeGone = false;
 }
 
 /** @internal */
@@ -386,4 +397,5 @@ export function _resetTileCacheForTests(): void {
   inflight.clear();
   lastPruneAt = 0;
   store = new IdbTileStore();
+  storeGone = false;
 }

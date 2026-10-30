@@ -25,6 +25,7 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 
 ### Breaking changes
 
+- **Home Assistant 2025.3 or later.** 3.x needs 2024.1. On older Home Assistant, use 3.x. From 3.6.3, the 3.x editor's text fields are empty on HA before 2026.4, so set those options in YAML.
 - **Re-centre with a tracked marker.** The button now switches between the tracked marker and Default, the configured centre. Default holds, with tracking paused, until the next press or until `preset_timeout` idle minutes (default 5) return the map to the tracked marker. Set `preset_timeout: 0` to hold Default until the next press. Cards without a tracked marker re-centre as before.
 - **Manual installs need a second file.** `weather-radar-card-maplibre.js` must sit next to `weather-radar-card.js`. HACS installs it. See [Install](#install).
 
@@ -97,7 +98,7 @@ Download the files from the [latest release](https://github.com/jpettitt/weather
             └── skip-next.png
 ```
 
-Copy the `.js.gz` files too if you have them: HA serves the compressed copy when one sits next to the file. `weather-radar-card-maplibre.js` is only loaded for `map_style: MapTilesVector` and for Satellite labels; without it those show `MapTiles` and CARTO labels instead.
+Copy the `.js.gz` files too if you have them: HA serves the compressed copy when one sits next to the file, also when it is older than the `.js` file. When you upgrade, replace both `.gz` files or delete them. `weather-radar-card-maplibre.js` is only loaded for `map_style: MapTilesVector` and for Satellite labels; without it those show `MapTiles` and CARTO labels instead.
 
 > **Upgrading from v2?** Delete `leaflet.js`, `leaflet.css`, `leaflet.toolbar.min.js`, and `leaflet.toolbar.min.css` from `www/community/weather-radar-card/` — they are bundled into `weather-radar-card.js` in v3 and the old files are no longer used.
 
@@ -105,9 +106,11 @@ Then add the following to your Lovelace resources:
 
 ```yaml
 resources:
-  - url: /local/community/weather-radar-card/weather-radar-card.js
+  - url: /local/community/weather-radar-card/weather-radar-card.js?v=4.0.0
     type: module
 ```
+
+Browsers keep files from `/local` for up to 31 days. After each manual upgrade, change the `?v=` value in the resource URL (for example to the new version), or reload each browser and companion app with Ctrl+F5. HACS installs do this for you.
 
 ## Minimal config
 

@@ -126,22 +126,22 @@ _layer_state_id:                        # auto-managed; users don't edit
   nonce: 'a8f2c3'                       # short random ID
 ```
 
-**`viewer_layer_control` (admin):** boolean editor toggle. When OFF (default), the on-map layers button doesn't render and no identity is stored. When ON, the runtime panel is exposed AND the card auto-mints `_layer_state_id` on the next `setConfig` (which fires inside the editor where `config-changed` actually writes back to YAML — no in-memory-only failure mode).
+**`viewer_layer_control` (admin):** boolean editor toggle. When OFF (default), the on-map layers button doesn't render and no identity is stored. When ON, the runtime panel is exposed AND the **editor** mints `_layer_state_id`: when the switch is turned on, and when the editor opens a card that has the switch on but no id for the current dashboard. Only the editor can: HA listens for `config-changed` on the editor element alone, so an event from the card (on the dashboard or in the dialog's preview) is never saved. The first design had the card mint, and the id never reached the YAML (pre-4.0 review, 2026-10-26).
 
-**`_layer_state_id` (auto-managed):** the storage key. The card never asks the user to edit this. Includes:
+**`_layer_state_id` (auto-managed):** the storage key. The editor writes it; a YAML-mode dashboard needs one written by hand (`dash` = the view's URL path, `nonce` = any short unique string). Includes:
 
 - **`dash`** — `window.location.pathname` at mint time. Used as a copy-detection check (see below), not as part of the storage key itself.
 - **`nonce`** — short random string. THE storage key (`wrc-overlays:{nonce}`).
 
 ### Detection rules
 
-On every `setConfig`, evaluate the identity in three cases:
+On every `setConfig`, the card evaluates the identity (the editor applies the same test when it opens and mints where the card cannot):
 
 | Config state                                                                | Action                                                                                  |
 |-----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
 | `viewer_layer_control` off                                                  | No identity, no storage. Toggle state (if any) is per-page-load only.                   |
-| `viewer_layer_control` on, no `_layer_state_id`                             | Mint `{ dash: currentPath, nonce: randomUUID() }`, dispatch `config-changed`.           |
-| `viewer_layer_control` on, `_layer_state_id.dash` ≠ current path            | Card was copied or moved to a new dashboard. Re-mint, dispatch `config-changed`.        |
+| `viewer_layer_control` on, no `_layer_state_id`                             | Card: inactive. Editor: mints `{ dash: currentPath, nonce }` on open or on the switch.  |
+| `viewer_layer_control` on, `_layer_state_id.dash` ≠ current path            | Copied or moved to a new dashboard. Card: inactive. Editor: re-mints on open.           |
 | `viewer_layer_control` on, `_layer_state_id.dash` === current path          | Use `nonce` as storage key. No write-back.                                              |
 
 ### Live-collision detection (option 2)
@@ -151,20 +151,14 @@ The dash-mismatch check catches **cross-dashboard** copy-paste, but a copy-paste
 ```ts
 const existing = liveCardsByNonce.get(id.nonce);
 if (existing && existing !== this) {
-  // Two cards claiming the same nonce → we were copy-pasted (or a stale
-  // instance is hanging around). Mint a fresh nonce + dispatch
-  // config-changed so the YAML reflects the new identity.
-  const fresh = { dash: currentPath, nonce: randomUUID() };
-  this.dispatchEvent(new CustomEvent('config-changed', {
-    detail: { config: { ...config, _layer_state_id: fresh } },
-    bubbles: true, composed: true,
-  }));
+  // Two cards claiming the same nonce: a copy, or the edit dialog's
+  // preview of this card. Stay inactive; the original keeps its state.
   return;
 }
 liveCardsByNonce.set(id.nonce, this);
 ```
 
-`disconnectedCallback` removes the entry. ~10 lines, eliminates the within-dashboard collision case.
+`disconnectedCallback` removes the entry. The editor cannot tell a copy from the original while both are live (the preview always collides with the dashboard card), so a copy stays inactive until its `_layer_state_id` is deleted; the editor then mints a new one when it opens the copy.
 
 ### What this design buys
 
@@ -172,10 +166,10 @@ liveCardsByNonce.set(id.nonce, this);
 |-------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
 | Drag card to new section/pane in the same dashboard               | Path unchanged, nonce unchanged. **Identity preserved.** ✓                                                                               |
 | Edit a YAML field (any field other than `_layer_state_id` itself) | Path unchanged, nonce unchanged. **Identity preserved.** ✓                                                                               |
-| Copy card to a different dashboard                                | Path mismatch on the new card → re-mint. Independent state. ✓                                                                            |
-| Copy card next to itself on the same dashboard                    | Live-collision detected → re-mint on the second instance. ✓                                                                              |
-| Move card to a different dashboard (intent: "moved")              | Path mismatch → re-mint. **Overrides reset** — acceptable trade-off; recoverable by toggling the admin switch off + on.                  |
-| Dashboard rename (URL path changes)                               | All cards on the dashboard see path mismatch → all re-mint → all overrides reset. Rare; could mitigate later with a stable dashboard ID. |
+| Copy card to a different dashboard                                | Path mismatch → inactive until the editor opens it and re-mints. Independent state. ✓                                                     |
+| Copy card next to itself on the same dashboard                    | Live collision → the copy stays inactive until its `_layer_state_id` is deleted and the editor mints a new one.                          |
+| Move card to a different dashboard (intent: "moved")              | Path mismatch → inactive until the editor re-mints. **Overrides reset** — acceptable trade-off.                                          |
+| Dashboard rename (URL path changes)                               | Every card sees a path mismatch → inactive until each is opened in the editor → overrides reset. Rare.                                  |
 | Cold copy-paste (delete original, paste later)                    | No live collision possible; pasted card "inherits" the original's state. Semantically a "move". Not detected.                            |
 
 ### Sparse storage

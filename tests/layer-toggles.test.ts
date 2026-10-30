@@ -56,7 +56,7 @@ describe('OverlayVisibility', () => {
       window.history.replaceState({}, '', '/lovelace/0');
       callWS = vi.fn(async () => ({}));
       const config = cfg({ viewer_layer_control: true, _layer_state_id: { dash: '/lovelace/0', nonce: 'n1' } });
-      state = new ViewerState({ hass: { callWS } as unknown as HomeAssistant, getConfig: () => config, onIdentityMinted: vi.fn() });
+      state = new ViewerState({ hass: { callWS } as unknown as HomeAssistant, getConfig: () => config });
       state.ensureIdentity();
     });
 
@@ -90,7 +90,7 @@ describe('ViewerState.isHydrated', () => {
     window.history.replaceState({}, '', '/lovelace/0');
     const callWS = vi.fn(async () => { throw new Error('ws down'); });
     const config = cfg({ viewer_layer_control: true, _layer_state_id: { dash: '/lovelace/0', nonce: 'n2' } });
-    const state = new ViewerState({ hass: { callWS } as unknown as HomeAssistant, getConfig: () => config, onIdentityMinted: vi.fn() });
+    const state = new ViewerState({ hass: { callWS } as unknown as HomeAssistant, getConfig: () => config });
     state.ensureIdentity();
     expect(state.isHydrated).toBe(false);
     vi.spyOn(console, 'warn').mockImplementation(() => {});

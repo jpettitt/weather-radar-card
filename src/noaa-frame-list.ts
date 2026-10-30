@@ -16,6 +16,7 @@
 // dedup as the primary mechanism.
 
 import { gridPhase } from './stride-phase';
+import { LISTING_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 
 const OPENGEO = 'https://opengeo.ncep.noaa.gov/geoserver';
 
@@ -115,11 +116,13 @@ export function parseTimeDimension(xml: string): number[] {
 }
 
 /** Fetch + parse the current frame-time listing. Throws on HTTP/network
- * failure; resolves [] on a 200 with an unparseable body. */
+ * failure or timeout; resolves [] on a 200 with an unparseable body. */
 export async function fetchNoaaFrameTimes(signal?: AbortSignal, region = 'conus'): Promise<number[]> {
-  const res = await fetch(capsUrl(region), { signal });
-  if (!res.ok) throw new Error(`NOAA capabilities HTTP ${res.status}`);
-  return parseTimeDimension(await res.text());
+  return withTimeout(LISTING_TIMEOUT_MS, signal, async (sig) => {
+    const res = await fetch(capsUrl(region), { signal: sig });
+    if (!res.ok) throw new Error(`NOAA capabilities HTTP ${res.status}`);
+    return parseTimeDimension(await res.text());
+  });
 }
 
 /** How far a scan may be from a grid slot and still stand in for it. */

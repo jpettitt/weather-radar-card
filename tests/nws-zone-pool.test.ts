@@ -104,7 +104,7 @@ describe('zone pool', () => {
     const layer = makeLayer();
     // _features is severity-ascending: the last is the most severe.
     layer._features = [alert('minor', [ZONE('minor')]), alert('hidden', [ZONE('hidden')]), alert('severe', [ZONE('severe')])];
-    layer._renderDecisions.set('hidden', 'Wind Advisory|Moderate|zones:0/1|h');
+    layer._hidden.add('hidden');   // what a render leaves out of view (see nws-zone-queue-hidden.test.ts)
     layer._zonePool = 1;   // serialise so the order is observable
     void layer._resolveZones();
     await until(() => layer._zoneCache.size === 3 && batchDone(layer));

@@ -390,8 +390,9 @@ called:
 
 The wildfire and NWS-alerts overlay layers have their own
 `pause()` / `resume()` methods called from the same visibility hooks;
-they cancel their refresh timers and refetch on resume if paused
-longer than the visible-refresh interval.
+they cancel their refresh timers but keep when the next refresh is due.
+On resume they refetch at once if it came due while hidden, else wait
+only the time that is left.
 
 ---
 
@@ -421,10 +422,11 @@ of 7 s, the whole loop in 31 s instead of 26 s.
 
 As each frame settles (`layerSettled`):
 
-1. Its outer container starts at `opacity: 0`.
+1. Its outer container starts at `opacity: 0` and `visibility: hidden`.
 2. The very first frame to load — always "now", per the load order
-   above — is shown as a static preview (`opacity: _activeOpacity`)
-   while the rest load in the background.
+   above — is shown as a static preview (`opacity: 1`, visible; the
+   radar pane carries `radar_opacity`) while the rest load in the
+   background. With one frame this is the whole display.
 3. Loaded frames are inserted into `_loadedSlots` at their sorted
    position (`insertSorted`), not blindly prepended — arrival order is
    no longer strictly descending. Once two frames are loaded,
@@ -440,7 +442,18 @@ As each frame settles (`layerSettled`):
    (`_markRemainingFailed`) — "not yet attempted" is no longer a
    contiguous index range once loading walks outward from "now", so
    this walks the remaining load-order entries rather than counting
-   down from the failed index.
+   down from the failed index. The failed frame's layer is removed
+   (`_dropFailedLayer`): nothing retries it, and while attached it
+   fetches tiles on every pan.
+6. With `motion_compensation`, `_dedupFrames` then drops frames whose
+   snapshot has the same pixels as the frame before. If the loop does
+   not restart after it (paused, or one frame left), the frame it
+   remapped to is shown with a snap.
+
+A periodic refresh (`_shiftInFrame`) adds its new frame hidden too,
+while a loaded frame is left to show. If the dropped oldest frame was
+on screen, the next frame is shown at once, so the map does not go
+blank while the new tiles load. A new frame that fails is removed.
 
 ## Tile memory and zoom gestures on WebKit
 
@@ -507,7 +520,7 @@ time-range fields by `getEffectiveTimeRange()`
 ([src/source-caps.ts](../src/source-caps.ts)):
 
 ```ts
-frameCount = max(2, floor((past_minutes + forecast_minutes) / strideMin) + 1)
+frameCount = max(1, floor((past_minutes + forecast_minutes) / strideMin) + 1)
 ```
 
 `strideMin` defaults to the source's default frame interval (10 min for

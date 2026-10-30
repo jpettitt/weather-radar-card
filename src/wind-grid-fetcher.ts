@@ -22,6 +22,7 @@ import {
   getWindSourceCaps,
   bboxInUsCoverage,
 } from './wind-source-caps';
+import { WIND_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 
 // Re-exported for callers that don't need the full caps lookup. Equivalent to
 // `getWindSourceCaps('dwd_icon').coverageId`.
@@ -71,8 +72,8 @@ export interface FetchWindGridOptions {
   west: number;
   north: number;
   east: number;
-  /** Optional time anchor (ISO 8601). WindGridFetcher floors it to the
-   * source's slice step, and fills in "now" for DWD sources when omitted
+  /** Optional time anchor (ISO 8601). WindGridFetcher rounds it to the
+   * nearest slice step of the source, and fills in "now" for DWD sources when omitted
    * (see effectiveTimeIso). */
   timeIso?: string | null;
   /** Model run (ISO 8601) to read the slice from. fetchWindGrid sets it from
@@ -558,6 +559,17 @@ export function resolveSourceForBbox(opts: FetchWindGridOptions): WindSource {
  *
  * Resolves the source from the bbox so an NDFD config that fell back to
  * AICON outside the US is timed too. */
+/**
+ * The overlays' fixed anchor (dwd_time_override) as an hourly ISO time, or
+ * null for "now", which each fetch resolves at call time. NaN (an
+ * unparseable override) would throw in toISOString, so it means now too.
+ * effectiveTimeIso rounds again to the source's step.
+ */
+export function anchorTimeIso(timeMs: number | undefined): string | null {
+  if (timeMs == null || !Number.isFinite(timeMs)) return null;
+  return new Date(Math.round(timeMs / 3_600_000) * 3_600_000).toISOString().split('.')[0] + 'Z';
+}
+
 export function effectiveTimeIso(opts: FetchWindGridOptions, nowMs: number): string | null {
   const stepH = getWindSourceCaps(resolveSourceForBbox(opts)).timeStepHours;
   if (stepH === undefined) return opts.timeIso || null;
@@ -585,14 +597,14 @@ export function buildWindGridUrl(opts: FetchWindGridOptions, caps = getWindSourc
   // cell. Costs more on the wire (server downsamples via adaptive
   // scaling), but wrap-prone viewports are already at low zoom where
   // the user has a coarse grid anyway.
-  let west: number;
-  let east: number;
-  if (opts.west < -180 || opts.east > 180) {
+  // A view wholly in a wrapped world copy (after a drag across the
+  // antimeridian) is shifted by k x 360 first: same cells, no world fetch.
+  const k = Math.floor((opts.west + 180) / 360);
+  let west = opts.west - k * 360;
+  let east = opts.east - k * 360;
+  if (east > 180) {
     west = -180;
     east = 180;
-  } else {
-    west = opts.west;
-    east = opts.east;
   }
 
   const params = new URLSearchParams({
@@ -807,7 +819,14 @@ export class WindGridFetcher {
       if (entry.expiresAt <= now) this._cache.delete(k);
     }
 
-    const promise = this._fetchImpl(opts);
+    // A request that never answers stayed cached as the shared promise until
+    // its TTL, and the overlays awaiting it got no wind. The limit aborts the
+    // requests and rejects, which drops the entry so the next caller retries.
+    const base = opts.fetchImpl ?? fetch;
+    const promise = withTimeout(WIND_TIMEOUT_MS, null, (signal) => this._fetchImpl({
+      ...opts,
+      fetchImpl: ((input: RequestInfo | URL, init?: RequestInit) => base(input, { ...init, signal })) as typeof fetch,
+    }));
     // Set expiry now so concurrent calls during the in-flight window all
     // share. On rejection, drop the entry so the next caller retries.
     const entry: CacheEntry = { promise, expiresAt: now + this._ttlMs };

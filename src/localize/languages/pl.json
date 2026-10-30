@@ -271,7 +271,7 @@
       "smooth_overlap": "Nakładanie przenikania",
       "smooth_overlap_helper": "Tylko tryb płynny. 0 = sekwencyjnie (bez spadku jasności, klatka utrzymana). 1 = równocześnie (krótki spadek w połowie przejścia). Domyślnie: 1",
       "playback_speed": "Prędkość odtwarzania",
-      "playback_speed_helper": "Mnożnik opóźnienia między klatkami. Przycisk prędkości na pasku narzędzi może też zmienić to w trakcie działania; ten wybór jest zapamiętywany dla przeglądarki i nadpisuje to ustawienie domyślne.",
+      "playback_speed_helper": "Mnożnik opóźnienia między klatkami. Przycisk prędkości na pasku narzędzi może też zmienić to w trakcie działania; ten wybór nadpisuje to ustawienie domyślne do czasu przeładowania strony lub jest zapisywany dla każdego użytkownika z viewer_layer_control.",
       "playback_speed_quarter": "¼× (najwolniej)",
       "playback_speed_half": "½× (wolniej)",
       "playback_speed_normal": "1× (normalnie)",

@@ -73,10 +73,12 @@ export function resolveBasemapStyle(
   return mapStyle;
 }
 
+/** `instanceOrigin`: the HA instance (vector-basemap.ts instanceOrigin), for MapTiles' proxy. */
 export function getBasemapTiles(
   mapStyle: string,
   cartoApiKey?: string,
   customTileUrl?: string,
+  instanceOrigin = '',
 ): BasemapTiles {
   switch (mapStyle) {
     case 'custom': {
@@ -132,8 +134,9 @@ export function getBasemapTiles(
       // access token substituted into {token} (see map-tiles-token.ts).
       // Single host, no {s} subdomains. Caller falls this case back to
       // 'light' when the integration isn't loaded on the connected core.
+      // On the instance, not the page: on Cast the page is not served by it.
       return {
-        url: '/api/map_tiles/raster/{z}/{x}/{y}.png?token={token}',
+        url: `${instanceOrigin}/api/map_tiles/raster/{z}/{x}/{y}.png?token={token}`,
         subdomains: '',
         labelUrl: '',
         labelsBakedIn: true,

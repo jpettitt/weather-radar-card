@@ -437,10 +437,48 @@ export function idbZoneKV(): ZoneKV {
   };
 }
 
+// How long one store operation may take before the store is given up on.
+// Reads take milliseconds; this only catches one that never settles.
+export const KV_TIMEOUT_MS = 10_000;
+
+/**
+ * `inner` with a time limit on every operation. IndexedDB can stop
+ * answering without an error (an open blocked by another tab's older
+ * connection waits for it to close; Safari has stalled requests), and the
+ * alerts layer awaits each zone read, so one such read held its zone
+ * worker, and with it the batch, for the rest of the session. After the
+ * first timeout the store counts as gone: every operation then settles at
+ * once as a miss, and zones come from the network.
+ */
+export function guardedZoneKV(inner: ZoneKV, timeoutMs = KV_TIMEOUT_MS): ZoneKV {
+  let dead = false;
+  const guard = <T>(op: () => Promise<T>, miss: T): Promise<T> => {
+    if (dead) return Promise.resolve(miss);
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        dead = true;
+        console.warn('Weather Radar Card: zone store did not answer; using the network for this session');
+        resolve(miss);
+      }, timeoutMs);
+      op().then(
+        (v) => { clearTimeout(timer); resolve(v); },
+        (e) => { clearTimeout(timer); reject(e); },
+      );
+    });
+  };
+  return {
+    get: (key) => guard(() => inner.get(key), undefined),
+    set: (key, val) => guard(() => inner.set(key, val), undefined),
+    delete: (key) => guard(() => inner.delete(key), undefined),
+    deleteMany: (keys) => guard(() => inner.deleteMany(keys), undefined),
+    keysByAge: () => guard(() => inner.keysByAge(), []),
+  };
+}
+
 // Module-level default backend so the alerts layer can call the
 // orchestration without threading a backend through. Tests pass their own.
 let defaultKv: ZoneKV | null = null;
 export function defaultZoneKV(): ZoneKV {
-  if (!defaultKv) defaultKv = idbZoneKV();
+  if (!defaultKv) defaultKv = guardedZoneKV(idbZoneKV());
   return defaultKv;
 }

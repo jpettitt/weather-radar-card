@@ -271,7 +271,7 @@
       "smooth_overlap": "Overgangsoverlap",
       "smooth_overlap_helper": "Alleen vloeiende modus. 0 = opeenvolgend (geen helderheidsdaling, frame vastgehouden). 1 = gelijktijdig (korte daling halverwege overgang). Standaard: 1",
       "playback_speed": "Afspeelsnelheid",
-      "playback_speed_helper": "Vermenigvuldiger voor de vertraging tussen frames. De snelheidsknop in de werkbalk kan dit ook tijdens gebruik wijzigen; die keuze wordt per browser onthouden en overschrijft deze standaard.",
+      "playback_speed_helper": "Vermenigvuldiger voor de vertraging tussen frames. De snelheidsknop in de werkbalk kan dit ook tijdens gebruik wijzigen; die keuze overschrijft deze standaard tot de pagina opnieuw wordt geladen, of wordt per gebruiker opgeslagen met viewer_layer_control.",
       "playback_speed_quarter": "¼× (langzaamst)",
       "playback_speed_half": "½× (langzamer)",
       "playback_speed_normal": "1× (normaal)",

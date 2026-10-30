@@ -22,6 +22,7 @@ import {
   vectorStyleName,
   themeModeName,
 } from '../src/basemap-styles';
+import { instanceOrigin } from '../src/vector-basemap';
 
 describe('getBasemapTiles', () => {
   it('CARTO styles omit ?key= entirely when no API key is set (today\'s default)', () => {
@@ -98,6 +99,16 @@ describe('getBasemapTiles', () => {
     expect(t.labelUrl).toBe('');
     expect(t.labelsBakedIn).toBe(true);
     expect(t.url).not.toContain('key=');
+  });
+
+  it('maptiles: on Cast the tiles come from the HA instance, not the page', () => {
+    const castHass: any = { auth: { data: { hassUrl: 'http://ha.local:8123/' } } };
+    for (const style of ['maptiles', 'maptiles-dark', 'maptiles-vector', 'maptiles-vector-dark']) {
+      const { url } = getBasemapTiles(style, undefined, undefined, instanceOrigin(castHass));
+      const tile = L.Util.template(url, { z: 7, x: 20, y: 45, token: 'tok' });
+      expect(new URL(tile, 'https://cast.home-assistant.io/receiver.html').href)
+        .toBe('http://ha.local:8123/api/map_tiles/raster/7/20/45.png?token=tok');
+    }
   });
 });
 

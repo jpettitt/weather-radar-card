@@ -28,6 +28,8 @@ function idle(): Promise<void> {
 }
 import { escapeHtml, truncate } from './string-utils';
 import { mapsEqual } from './map-utils';
+import { refreshOverrideMs } from './refresh-override';
+import { DATA_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 
 const decisionsEqual = mapsEqual<string, string>;
 
@@ -41,6 +43,8 @@ const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual';
 
 const DEFAULT_REFRESH_VISIBLE_MS = 60 * 1000;
 const DEFAULT_REFRESH_EMPTY_MS = 5 * 60 * 1000;
+// Floor for alerts_refresh_seconds (see refresh-override.ts).
+const MIN_REFRESH_MS = 30 * 1000;
 
 // Zone shapes go through a pool, ZONE_POOL_SIZE at a time, in-view alerts
 // first. NWS's limiter is a burst limiter per address: unpublished, and it
@@ -132,6 +136,9 @@ export class NwsAlertsLayer {
   // become renderable once their affectedZones URLs are resolved into the
   // _zoneCache below.
   private _features: GeoJSON.Feature[] = [];
+  // The last alerts list before _filter, in paint order: alerts_radius_km
+  // depends on the map centre, so a moved map filters again from this.
+  private _fetched: GeoJSON.Feature[] = [];
   // Per-feature render decision keyed by feature.id (NWS-provided URL).
   // Compared on each _render() call; if unchanged, we skip the rebuild,
   // preserving any open popup. See "Lessons from the wildfire build" in the
@@ -139,6 +146,11 @@ export class NwsAlertsLayer {
   // For zone-resolved alerts the decision string includes the count of
   // zones currently loaded, so a fresh zone arrival re-renders just enough.
   private _renderDecisions: Map<string, string> = new Map();
+  // Keys of the alerts the last render left out of view, for _zoneQueue.
+  // Kept apart from the decision string: reading it from the string's
+  // tail broke when `|z<lod>` was appended, and every alert counted as
+  // in view.
+  private _hidden = new Set<string>();
   // Zone-shape cache. Persists across refresh cycles for the lifetime of
   // the layer instance — zones change rarely (monthly at most), so a single
   // fetch per zone per session covers the typical user.
@@ -152,6 +164,8 @@ export class NwsAlertsLayer {
   // their re-render result becomes a no-op (skipIfDecisionsUnchanged).
   // Used by resume() to decide whether to refetch immediately.
   private _pausedAt: number | null = null;
+  // When the armed fetch is due, kept across a pause; null while one runs.
+  private _dueAt: number | null = null;
   private _gen = 0;
   // Consecutive _fetch failures. Drives the retry backoff below; reset
   // to 0 on any successful fetch.
@@ -227,6 +241,7 @@ export class NwsAlertsLayer {
 
   clear(): void {
     this._gen++;   // invalidates any in-flight WFIGS / zone fetches
+    this._dueAt = null;
     this._abortCtrl?.abort();
     this._abortCtrl = null;
     this._zoneAbortCtrl?.abort();
@@ -237,7 +252,9 @@ export class NwsAlertsLayer {
     // wildfire layer may still be drawing through it (map-lifetime,
     // see shared-canvas-renderer.ts).
     this._features = [];
+    this._fetched = [];
     this._renderDecisions.clear();
+    this._hidden.clear();
     this._zoneCache.clear();
     this._zoneFetches.clear();
     this._zoneBounds.clear();
@@ -274,34 +291,33 @@ export class NwsAlertsLayer {
     if (this._zoneRetryTimer) { clearTimeout(this._zoneRetryTimer); this._zoneRetryTimer = null; }
   }
 
-  // Resume after a pause. Alerts have a much shorter staleness threshold
-  // than wildfires (60 s vs 5 min) — a tornado warning issued while the
-  // user was away should appear quickly. If paused longer than the
-  // refresh interval, refetch immediately; otherwise just reschedule.
+  // Resume after a pause: fetch now if the next refresh came due while
+  // hidden, else wait only what is left of it. Starting the full interval
+  // again meant a card shown 50 s and hidden 50 s in turn never refreshed.
   resume(): void {
     if (this._pausedAt == null) return;
-    const pausedMs = Date.now() - this._pausedAt;
     this._pausedAt = null;
-    if (pausedMs >= DEFAULT_REFRESH_VISIBLE_MS) {
-      void this._fetch();
-    } else {
-      this._scheduleNext();
-    }
+    // null: a fetch is in flight, and its end arms the next one.
+    if (this._dueAt === null) return;
+    const left = this._dueAt - Date.now();
+    if (left <= 0) void this._fetch();
+    else this._timer = setTimeout(() => void this._fetch(), left);
   }
 
   // hass changes don't affect the polygon-vs-polygon decisions (no zoom-
   // dependent rendering for alerts). Re-render with the skip-if-unchanged
   // guard so a no-op tick is truly a no-op and any open popup stays open.
   // The radius_km filter does depend on map centre, but the centre changes
-  // via map move events, not hass — and map moves don't trigger this method.
+  // via map move events, not hass: _onViewChange filters again.
   updateHass(hass: HomeAssistant): void {
     this._hass = hass;
-    if (this._features.length === 0) return;
+    if (this._features.length === 0 && !this._polygonLayer) return;
     this._render({ skipIfDecisionsUnchanged: true });
   }
 
   private async _fetch(): Promise<void> {
     const myGen = ++this._gen;
+    this._dueAt = null;
     // Abort any previous alerts-list fetch and the in-flight zone fetches.
     // The new alerts list will trigger a fresh _resolveZones pass on the
     // affected-zones from the new payload; zones for alerts that dropped
@@ -312,12 +328,13 @@ export class NwsAlertsLayer {
     this._abortCtrl = ctrl;
     let features: GeoJSON.Feature[] = [];
     try {
-      const res = await fetch(NWS_ALERTS_URL, {
-        headers: { Accept: 'application/geo+json' },
-        signal: ctrl.signal,
+      // A time limit rejects with TimeoutError, not AbortError, so a list
+      // request that never answers takes the failure path and its backoff.
+      const data = await withTimeout(DATA_TIMEOUT_MS, ctrl.signal, async (signal) => {
+        const res = await fetch(NWS_ALERTS_URL, { headers: { Accept: 'application/geo+json' }, signal });
+        if (!res.ok) throw new Error(`NWS fetch ${res.status}`);
+        return await res.json() as GeoJSON.FeatureCollection;
       });
-      if (!res.ok) throw new Error(`NWS fetch ${res.status}`);
-      const data = await res.json() as GeoJSON.FeatureCollection;
       features = data?.features ?? [];
     } catch (err) {
       // Deliberate cancellation (teardown / superseded). Drop silently;
@@ -337,6 +354,9 @@ export class NwsAlertsLayer {
       this._failureCount++;
       this._setStatus({ kind: 'fetch', failures: this._failureCount });
       this._scheduleRetry();
+      // The zone batch was aborted above, before the list was known; the
+      // alerts kept on screen still need their shapes.
+      void this._resolveZones();
       return;
     }
     if (myGen !== this._gen) return;   // stale
@@ -350,7 +370,8 @@ export class NwsAlertsLayer {
     // on top of the visual stack. Sort once here, not per render —
     // the order is stable until the next _fetch().
     try {
-      this._features = this._filter(features).sort(paintOrderAscending);
+      this._fetched = features.slice().sort(paintOrderAscending);
+      this._features = this._filter(this._fetched);
     } catch (err) {
       // Keep the alerts on screen and the refresh chain alive, as _render
       // does for its own failures; nothing after the await catches for us.
@@ -378,7 +399,15 @@ export class NwsAlertsLayer {
     if (Date.now() < this._zoneBackoffUntil) { this._armZoneRetry(); return; }
     const myGen = this._gen;
     const queue = this._zoneQueue();
-    if (queue.length === 0) return;
+    if (queue.length === 0) {
+      // Nothing is missing any more, so drop a "zones did not load" status
+      // whose alerts left the list. A re-planned batch also ends here: draw
+      // the shapes it read from disk after the refresh's own render, and
+      // write back the older records among them.
+      if (this._lastStatusKey.startsWith('zones')) this._setStatus(null);
+      this._zonesSettled();
+      return;
+    }
 
     // Shared controller for this batch — a fresh _fetch() that
     // supersedes the current alerts list aborts the entire in-flight
@@ -441,9 +470,14 @@ export class NwsAlertsLayer {
       this._setStatus(null);
     }
 
-    // Skip-if-unchanged still applies — only the features whose zones
-    // actually arrived will see their decision strings flip, so this is
-    // a no-op for any feature whose render state is stable.
+    this._zonesSettled();
+  }
+
+  // After zone shapes arrived: re-apply alerts_radius_km, which _filter
+  // could not judge for a zone alert without shapes, then redraw. Skip-if-
+  // unchanged applies: only alerts whose zones arrived flip their decision.
+  private _zonesSettled(): void {
+    this._refilterForCentre();
     this._render({ skipIfDecisionsUnchanged: true });
     void this._drainWriteBack();
   }
@@ -497,7 +531,7 @@ export class NwsAlertsLayer {
       const f = this._features[i];
       if (f.geometry) continue;   // has its own geometry; no zones needed
       if (this._overAt(f) <= now) continue;
-      const hidden = this._renderDecisions.get(featureKey(f))?.endsWith('|h') === true;
+      const hidden = this._hidden.has(featureKey(f));
       for (const url of (f.properties as AlertProps | null)?.affectedZones ?? []) {
         if (seen.has(url) || this._zoneCache.has(url) || this._zoneFetches.has(url)) continue;
         seen.add(url);
@@ -539,12 +573,12 @@ export class NwsAlertsLayer {
         return;
       }
       const myGen = this._gen;
-      const res = await fetch(url, {
-        headers: { Accept: 'application/geo+json' },
-        signal,
+      // A zone that never answers held its worker, and the batch, forever.
+      const data = await withTimeout(DATA_TIMEOUT_MS, signal, async (sig) => {
+        const res = await fetch(url, { headers: { Accept: 'application/geo+json' }, signal: sig });
+        if (!res.ok) throw new Error(`zone fetch ${res.status}`);
+        return res.json();
       });
-      if (!res.ok) throw new Error(`zone fetch ${res.status}`);
-      const data = await res.json();
       if (myGen !== this._gen) return;
       const geom = normalizeZoneGeometry(data?.geometry);
       if (geom) {
@@ -615,8 +649,8 @@ export class NwsAlertsLayer {
 
       // Radius from map centre. For zone-only alerts whose zones haven't
       // resolved yet we can't compute a centroid — keep the alert in the
-      // filter set; it'll be re-evaluated on the next render once any zone
-      // resolves. Letting it through is safer than dropping it (a far-away
+      // filter set; it is re-evaluated when its zones arrive
+      // (_zonesSettled). Letting it through is safer than dropping it (a far-away
       // alert just won't find geometry in the cache and rendered as null).
       if (radiusKm && centre) {
         const geom = f.geometry ?? this._geometryFromZones(props?.affectedZones ?? []);
@@ -713,6 +747,7 @@ export class NwsAlertsLayer {
     const lod = Math.round(zoom);
     const tol = simplifyToleranceForZoom(zoom);
     const newDecisions = new Map<string, string>();
+    const hidden = new Set<string>();
     // Visible alerts to build, by index in _features (paint order): inline
     // polygons one by one, zone alerts grouped by event (see below).
     const inline: number[] = [];
@@ -752,7 +787,7 @@ export class NwsAlertsLayer {
       const pending = this._times(f).inForce > now ? '|p' : '';
       newDecisions.set(key, `${props?.event ?? ''}|${props?.severity ?? ''}|${geomTag}|${visible ? 'v' : 'h'}|z${lod}${pending}`);
 
-      if (!visible) continue;
+      if (!visible) { hidden.add(key); continue; }
       if (geom) inline.push(fi);
       else if (zonesLoaded > 0) {
         const event = props?.event ?? '';
@@ -766,6 +801,7 @@ export class NwsAlertsLayer {
       return;
     }
     this._renderDecisions = newDecisions;
+    this._hidden = hidden;
 
     // Features carry the original alert's id and properties so the popup
     // and style pick up its metadata; `alerts` is what the popup lists.
@@ -866,16 +902,26 @@ export class NwsAlertsLayer {
         // autoPan defaults to true — when an off-edge popup opens, Leaflet
         // pans the map so it's fully visible inside the card. autoPanPadding
         // adds a small inset so the popup never butts right against the card
-        // edge (looks awkward). maxHeight caps the popup at 90% of the map
+        // edge (looks awkward). maxHeight caps the popup at 80% of the map
         // height so a long alert description never spills outside the card;
         // Leaflet adds an internal scrollbar past the cap.
-        layer.bindPopup(
-          buildGroupPopupHtml(alertsOf.get(feature) ?? [feature.properties as AlertProps | null], this._hass?.locale),
-          { autoPan: true, autoPanPadding: [12, 12], maxHeight: this._popupMaxHeight() },
-        );
+        const alerts = alertsOf.get(feature) ?? [feature.properties as AlertProps | null];
+        // Built when opened: building every popup made up ~73% of a
+        // 450-alert rebuild. Leaflet calls this before it lays the popup
+        // out, so the cap also follows the map's size at that moment.
+        layer.bindPopup(() => {
+          const popup = layer.getPopup();
+          if (popup) popup.options.maxHeight = this._popupMaxHeight();
+          return buildGroupPopupHtml(alerts, this._hass?.locale);
+        }, { autoPan: true, autoPanPadding: [12, 12] });
       },
     } as L.GeoJSONOptions);
     this._polygonLayer.addTo(this._map);
+    // Under the fire perimeters on the shared canvas, whichever layer
+    // rebuilt last, so a fire inside an alert zone stays tappable. In
+    // reverse, so the alerts keep their severity order.
+    const paths = this._polygonLayer.getLayers() as L.Path[];
+    for (let i = paths.length - 1; i >= 0; i--) paths[i].bringToBack();
     this._polygonLayer.on('popupclose', this._onPopupClose);
   }
 
@@ -927,8 +973,22 @@ export class NwsAlertsLayer {
     return simplified;
   }
 
+  // alerts_radius_km is measured from the map centre: filter the last list
+  // again, so a moved map shows the alerts near its new centre at once.
+  private _refilterForCentre(): void {
+    if (!this._getConfig().alerts_radius_km) return;
+    try {
+      this._features = this._filter(this._fetched);
+    } catch (err) {
+      console.warn('NWS alerts: filter failed', err);
+    }
+  }
+
   private _onViewChange = (): void => {
-    if (this._features.length === 0) return;
+    this._refilterForCentre();
+    // With polygons still drawn, an empty list must render: an empty
+    // refresh that landed during a gesture deferred their removal to here.
+    if (this._features.length === 0 && !this._polygonLayer) return;
     this._render({ skipIfDecisionsUnchanged: true });   // waits for an open popup (see _render)
   };
 
@@ -990,28 +1050,28 @@ export class NwsAlertsLayer {
   // the delay ladder is driven by consecutive failures instead of the
   // normal refresh cadence.
   private _scheduleRetry(): void {
+    this._arm(this._retryDelayMs(this._failureCount));
+  }
+
+  // Arm the next fetch. While paused only its due time is kept: a fetch in
+  // flight when pause() ran ends here, and resume() arms what is left.
+  private _arm(ms: number): void {
+    this._dueAt = Date.now() + ms;
     if (this._pausedAt != null) return;
     if (this._timer) clearTimeout(this._timer);
-    this._timer = setTimeout(() => void this._fetch(), this._retryDelayMs(this._failureCount));
+    this._timer = setTimeout(() => void this._fetch(), ms);
   }
 
   private _scheduleNext(): void {
-    // Paused → don't re-arm. pause() only cancels the ARMED timer; a
-    // fetch that was already in flight when pause() ran (the 60 s
-    // alerts cadence makes that window frequent) completes and its
-    // tail calls _scheduleNext — without this guard that re-armed the
-    // chain and the layer kept polling api.weather.gov at full cadence
-    // for as long as the card stayed hidden. resume() decides between
-    // an immediate refetch and a reschedule, so dropping the re-arm
-    // here is safe.
-    if (this._pausedAt != null) return;
-    if (this._timer) clearTimeout(this._timer);
+    // Paused: _arm does not re-arm. pause() only cancels the ARMED timer; a
+    // fetch that was already in flight when pause() ran (the 60 s alerts
+    // cadence makes that window frequent) completes and its tail calls
+    // _scheduleNext. Re-arming there kept the layer polling api.weather.gov
+    // at full cadence for as long as the card stayed hidden.
     const cfg = this._getConfig();
-    const overrideSec = cfg.alerts_refresh_seconds;
-    const intervalMs = overrideSec
-      ? overrideSec * 1000
-      : (this._features.length > 0 ? DEFAULT_REFRESH_VISIBLE_MS : DEFAULT_REFRESH_EMPTY_MS);
-    this._timer = setTimeout(() => void this._fetch(), intervalMs);
+    const intervalMs = refreshOverrideMs(cfg.alerts_refresh_seconds, 1000, MIN_REFRESH_MS)
+      ?? (this._features.length > 0 ? DEFAULT_REFRESH_VISIBLE_MS : DEFAULT_REFRESH_EMPTY_MS);
+    this._arm(intervalMs);
   }
 }
 
@@ -1030,6 +1090,18 @@ function alertOverAt(props: AlertProps | null): number {
     if (ms < t) t = ms;
   }
   return t;
+}
+
+// The `expires` or `ends` text alertOverAt picked, for the popup: it
+// showed `expires` while the map dropped the alert at an earlier `ends`.
+function alertOverText(props: AlertProps | null): string | undefined {
+  let best: string | undefined;
+  let t = Infinity;
+  for (const s of [props?.expires, props?.ends]) {
+    const ms = s ? Date.parse(s) : NaN;
+    if (ms < t) { t = ms; best = s; }
+  }
+  return best ?? props?.expires ?? props?.ends;
 }
 
 // When an alert is in force: the later of its message's `effective` time
@@ -1123,7 +1195,7 @@ function alertPopupParts(props: AlertProps | null, locale: FrontendLocaleData | 
   const certainty = props?.certainty ?? '—';
   const urgency = props?.urgency ?? '—';
   const effective = formatDateTime(props?.effective, locale);
-  const expires = formatDateTime(props?.expires ?? props?.ends, locale);
+  const expires = formatDateTime(alertOverText(props), locale);
   const headline = props?.headline ?? '';
   // NWS descriptions are free-text bodies of the alert (winds, hail size,
   // location, recommended actions). They preserve their own line breaks —

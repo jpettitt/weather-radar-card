@@ -148,20 +148,28 @@ export class ViewPresets {
 
   constructor(private readonly _host: PresetHost) {}
 
+  /** The stop holding the map, or null at rest. */
+  get held(): 'default' | number | null {
+    return this._held;
+  }
+
   /** True while a stop other than rest holds the map; tracking must not pan it. */
   get isHolding(): boolean {
     return this._held !== null;
   }
 
+  // While the editor has a preset open, re-centre and the chip return to
+  // it: a pan elsewhere would write nothing, so the rotation is no use there.
   recenter(): void {
+    if (this._editing !== null) { this._go(this._editing); return; }
     const current = this._currentKey();
     const view = this._view(current);
     this._go(nextStop(this._stops(), current, !view || this._isAt(view)));
   }
 
-  /** Back to rest: the live tracked marker, else Default. */
+  /** Back to rest: the live tracked marker, else Default; the preset open in the editor while one is. */
   clear(): void {
-    this._go(this._stops()[0]);
+    this._go(this._editing ?? this._stops()[0]);
   }
 
   /** The user touched the map: restart the idle countdown. */
@@ -208,6 +216,7 @@ export class ViewPresets {
   /** The stop the next press goes to, for the button's tooltip. */
   nextLabel(): string {
     const stops = this._stops();
+    if (this._editing !== null) return this._label(this._editing);
     if (stops.length === 1) return localize('ui.recenter');
     const current = this._currentKey();
     const view = this._view(current);

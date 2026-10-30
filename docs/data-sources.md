@@ -40,13 +40,13 @@ US only: the continental US, Alaska, Hawaii, Puerto Rico and the Caribbean, and 
 
 Since 3.7, NOAA serves from NCEP's opengeo GeoServer (the radar.weather.gov backend). Each tile draws all five regional mosaics (`conus_bref_qcd`, `alaska_bref_qcd`, `hawaii_bref_qcd`, `carib_bref_qcd`, `guam_bref_qcd`) in one request; the server matches each mosaic to its own nearest scan. If opengeo stops serving one of them, it fails the whole request, so the card leaves that mosaic out for the rest of the page load. Frame times come from the `GetCapabilities` listing of the region the map is centred on, so the card requests exact scan times: every frame in the loop is a distinct scan, and the **Frame interval** dropdown (2 / 5 / 10 min) controls loop density. At 2 minutes the newest frame is ~2 minutes behind real time. At 5 or 10 the frames stay on the grid the loop started on, so the newest can be up to one interval older; cards with the same source and interval share that grid, and a reload within half the loop's window keeps it. RainViewer loops with a `frame_stride_minutes` above 10 work the same way. The colour bar matches the modern radar.weather.gov reflectivity ramp.
 
-If the frame listing is unavailable, the card falls back to the legacy `mapservices.weather.noaa.gov` eventdriven server for that cycle (10-minute computed grid behind its ~15-minute availability lag — correct but stale) and retries the listing on the next refresh. Once the listing is back, it rebuilds the loop at the configured stride.
+If the frame listing is unavailable (an error, or no answer within 10 s), the card falls back to the legacy `mapservices.weather.noaa.gov` eventdriven server for that cycle (10-minute computed grid behind its ~15-minute availability lag — correct but stale) and retries the listing on the next refresh. Once the listing is back, it rebuilds the loop at the configured stride.
 
 ## Wind overlay
 
 The optional wind overlay (`dwd_wind` / `dwd_wind_flow`) pulls from a SECOND DWD endpoint — the WCS coverage `dwd__Icon_reg025_fd_sl_UV10M` (10 m wind from DWD's global ICON forecast model at 0.25°, a new run every 6 hours). It is **independent of `data_source`** — the same wind layer stacks usefully on RainViewer / NOAA / DWD radars alike, since ICON's coverage is global.
 
-For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time bucket as the radar playback frame. Other sources always show live wind.
+The wind always shows the model time step closest to now, also when the radar shows forecast frames. For DWD radar, `dwd_time_override` moves "now" for the wind too.
 
 See [Hazard & Layer Overlays — Wind](overlays.md#wind) for the user-facing knobs and [Wind feature design](wind-feature-design.md) for the bulk-fetch architecture and zoom-aware rendering.
 

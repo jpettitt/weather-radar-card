@@ -30,6 +30,15 @@ export class PopupPanRestore<Center> {
     }
   }
 
+  /**
+   * Call when the view moves for a reason other than a popup's autoPan (a
+   * preset, a tracked marker, a drag): that move owns the view, so closing
+   * the popup must not undo it.
+   */
+  cancel(): void {
+    this.savedCenter = null;
+  }
+
   /** Call when a popup closes. Returns a token to pass to onCloseSettled after a deferred tick. */
   onClose(): number {
     return ++this.token;

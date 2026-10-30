@@ -1,6 +1,7 @@
 import { HomeAssistant } from 'custom-card-helpers';
-import { Marker, WeatherRadarCardConfig } from './types';
+import { CoordinateConfig, Marker, WeatherRadarCardConfig } from './types';
 import { getSourceCaps } from './source-caps';
+import { isMobileDevice } from './coordinate-utils';
 
 /**
  * Convert legacy time-related fields to the source-agnostic
@@ -57,6 +58,14 @@ export function frameCountIsOverridden(config: WeatherRadarCardConfig): boolean 
     && (config.past_minutes !== undefined || config.frame_stride_minutes !== undefined);
 }
 
+// A legacy coordinate as a number or an entity id. The entity-object form
+// ({ entity, latitude_attribute }) worked before markers[] and migrated to
+// a marker with no position. A marker reads the entity's latitude and
+// longitude attributes, so custom attribute names are not kept.
+function legacyCoordinate(c: CoordinateConfig | undefined): number | string | undefined {
+  return typeof c === 'object' && c !== null && 'entity' in c ? c.entity : c;
+}
+
 export function migrateConfig(config: WeatherRadarCardConfig): WeatherRadarCardConfig {
   config = migrateTimeRange(config);
 
@@ -72,8 +81,8 @@ export function migrateConfig(config: WeatherRadarCardConfig): WeatherRadarCardC
   }
 
   const markers: Marker[] = [];
-  const latCfg = config.marker_latitude;
-  const lonCfg = config.marker_longitude;
+  const latCfg = legacyCoordinate(config.marker_latitude);
+  const lonCfg = legacyCoordinate(config.marker_longitude);
   const m: Marker = {};
 
   if (latCfg === undefined && lonCfg === undefined) {
@@ -90,8 +99,8 @@ export function migrateConfig(config: WeatherRadarCardConfig): WeatherRadarCardC
   if (config.marker_icon_entity) m.icon_entity = config.marker_icon_entity;
   markers.push(m);
 
-  const mLat = config.mobile_marker_latitude;
-  const mLon = config.mobile_marker_longitude;
+  const mLat = legacyCoordinate(config.mobile_marker_latitude);
+  const mLon = legacyCoordinate(config.mobile_marker_longitude);
   if ((mLat !== undefined || mLon !== undefined) && (mLat !== latCfg || mLon !== lonCfg)) {
     const mm: Marker = { mobile_only: true };
     if (typeof mLat === 'string' && mLat === mLon) {
@@ -148,6 +157,22 @@ export function resolveMarkerPosition(
   };
 }
 
+// resolveTracking runs on every hass update, several a second: report each
+// tie once per page load, not on every update.
+const reportedTies = new Set<string>();
+const markerLabel = (m: Marker): string => m.entity ?? `${m.latitude},${m.longitude}`;
+function warnTieOnce(winner: Marker, other: Marker): void {
+  const key = `${markerLabel(winner)} | ${markerLabel(other)}`;
+  if (reportedTies.has(key)) return;
+  reportedTies.add(key);
+  console.warn(`Weather Radar Card: multiple markers at the same track priority (${key}) — using first`);
+}
+
+/** @internal */
+export function _resetTieWarningsForTests(): void {
+  reportedTies.clear();
+}
+
 export function resolveTracking(
   markers: Marker[],
   hass: HomeAssistant | undefined,
@@ -162,6 +187,8 @@ export function resolveTracking(
     const m = markers[i];
     // Stryker disable next-line ConditionalExpression: an untracked marker gets p === 0 and is skipped by the guard below
     if (!m.track) continue;
+    // A marker this device doesn't draw must not steer its map.
+    if (m.mobile_only && !isMobileDevice()) continue;
 
     let p = 0;
     if (m.track === 'entity' && m.entity) {
@@ -180,7 +207,7 @@ export function resolveTracking(
       winnerIdx = i;
       winnerPriority = p;
     } else if (p === winnerPriority) {
-      console.warn('Weather Radar Card: multiple markers at the same track priority — using first');
+      warnTieOnce(markers[winnerIdx], m);
     }
   }
 

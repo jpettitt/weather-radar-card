@@ -70,6 +70,11 @@ export function instanceOrigin(hass: HomeAssistant | undefined): string {
   return String(url).replace(/\/+$/, '');
 }
 
+/** A file the card ships (dist/), on the HA instance: a page-relative path breaks on Cast. */
+export function cardAssetUrl(hass: HomeAssistant | undefined, file: string): string {
+  return `${instanceOrigin(hass)}/local/community/weather-radar-card/${file}`;
+}
+
 /**
  * MapLibre fetches from a worker, which can't resolve relative URLs, so
  * every URL is made absolute against the instance; map_tiles proxy URLs get

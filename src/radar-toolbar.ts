@@ -18,6 +18,8 @@ export interface RadarToolbarOptions {
   onPlay?: () => void;
   onSkipBack?: () => void;
   onSkipNext?: () => void;
+  /** URL of a toolbar icon file; default page-relative under ICON_BASE. */
+  assetUrl?: (file: string) => string;
   /** Initial playing state. When false the toolbar starts with a play
    *  icon instead of a pause icon. Default true (playing). */
   initialPlaying?: boolean;
@@ -49,6 +51,10 @@ export class RadarToolbar extends L.Control {
   private _playing = true;
   private _speed = 1;
 
+  private _asset(file: string): string {
+    return this._opts.assetUrl ? this._opts.assetUrl(file) : `${ICON_BASE}${file}`;
+  }
+
   constructor(opts: RadarToolbarOptions) {
     super({ position: 'bottomright' });
     this._opts = opts;
@@ -60,16 +66,16 @@ export class RadarToolbar extends L.Control {
     L.DomEvent.disableClickPropagation(bar);
 
     if (this._opts.showPlayback) {
-      this._addBtn(bar, `${ICON_BASE}skip-back.png`, 'Previous frame', () => this._opts.onSkipBack?.());
+      this._addBtn(bar, this._asset('skip-back.png'), 'Previous frame', () => this._opts.onSkipBack?.());
 
-      const playImg = this._addBtn(bar, `${ICON_BASE}${this._playing ? 'pause' : 'play'}.png`, 'Play / Pause', () => {
+      const playImg = this._addBtn(bar, this._asset(this._playing ? 'pause.png' : 'play.png'), 'Play / Pause', () => {
         this._playing = !this._playing;
-        playImg.src = `${ICON_BASE}${this._playing ? 'pause' : 'play'}.png`;
+        playImg.src = this._asset(this._playing ? 'pause.png' : 'play.png');
         this._opts.onPlay?.();
       });
       this._playBtn = playImg;
 
-      this._addBtn(bar, `${ICON_BASE}skip-next.png`, 'Next frame', () => this._opts.onSkipNext?.());
+      this._addBtn(bar, this._asset('skip-next.png'), 'Next frame', () => this._opts.onSkipNext?.());
 
       // Speed button cycles through SPEED_STEPS. Snap the initial value to
       // the nearest preset so a stored override from an older SPEED_STEPS
@@ -85,7 +91,7 @@ export class RadarToolbar extends L.Control {
     // Last, so the button and the stop label beside it sit in the map's
     // bottom-right corner, where they cover the least of the map.
     if (this._opts.showRecenter) {
-      const img = this._addBtn(bar, `${ICON_BASE}recenter.png`, localize('ui.recenter'), () => this._opts.onRecenter?.());
+      const img = this._addBtn(bar, this._asset('recenter.png'), localize('ui.recenter'), () => this._opts.onRecenter?.());
       this._recenterBtn = img.parentElement as HTMLAnchorElement;
       // The title becomes the next stop's name; keep the button's name.
       this._recenterBtn.setAttribute('aria-label', localize('ui.recenter'));
@@ -171,7 +177,7 @@ export class RadarToolbar extends L.Control {
   setPlaying(playing: boolean): void {
     this._playing = playing;
     if (this._playBtn) {
-      this._playBtn.src = `${ICON_BASE}${playing ? 'pause' : 'play'}.png`;
+      this._playBtn.src = this._asset(playing ? 'pause.png' : 'play.png');
     }
   }
 

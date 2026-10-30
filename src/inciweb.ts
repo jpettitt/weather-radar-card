@@ -4,6 +4,7 @@
 // incidents: on 2026-10-08 it linked 10 of the 30 largest fires, and checking
 // pages directly found 22.
 import { slugify } from './string-utils';
+import { DATA_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 
 const PAGE_URL = 'https://inciweb.wildfire.gov/incident-information/';
 
@@ -64,9 +65,14 @@ export function inciwebUrl(slug: string): string {
   return PAGE_URL + slug;
 }
 
+// A page that never answered kept the fire's lookup pending, and it is
+// cached for the page load, so the link never came. A timeout rejects, and
+// a lookup with a failed check is not remembered.
 async function isIncidentPage(slug: string): Promise<boolean> {
-  const res = await fetch(PAGE_URL + slug);
-  return res.ok && (await res.text()).includes('Date of Origin');
+  return withTimeout(DATA_TIMEOUT_MS, null, async (signal) => {
+    const res = await fetch(PAGE_URL + slug, { signal });
+    return res.ok && (await res.text()).includes('Date of Origin');
+  });
 }
 
 /** @internal */
