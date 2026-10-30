@@ -11,6 +11,7 @@ vi.mock('leaflet', () => {
 
 import { createFetchTile, type TileWithAbort } from '../src/fetch-tile-layer';
 import { RateLimiter } from '../src/rate-limiter';
+import { TILE_TIMEOUT_MS } from '../src/fetch-timeout';
 import { TileStore, _resetTileCacheForTests, _setTileStoreForTests } from '../src/tile-cache';
 
 // createFetchTile with tileCache set (#279): the DWD coverage mask and the
@@ -258,5 +259,29 @@ describe('createFetchTile with tileCache', () => {
     expect(done).not.toHaveBeenCalled();
     expect(layer._tilePending).toBe(0);
     expect(layer._tileFailed).toBe(0);
+  });
+
+  it('a shared download that hangs times out once for every tile that joined it', async () => {
+    vi.useFakeTimers();
+    try {
+      const frame = makeLayer({ tileCache: {}, maxRetries: 2 });
+      const mask = makeLayer({ tileCache: {}, maxRetries: 2 });
+      const a = addTile(frame);
+      const b = addTile(mask);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchCalls.length).toBe(1);
+      await vi.advanceTimersByTimeAsync(TILE_TIMEOUT_MS + 10);
+      expect(fetchCalls[0].signal!.aborted).toBe(true);
+      // Both retry; the first retry starts a new download and the second joins it.
+      expect(fetchCalls.length).toBe(2);
+      fetchCalls[1].resolve(new Blob(['png']));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(a.done).toHaveBeenCalledTimes(1);
+      expect(b.done).toHaveBeenCalledTimes(1);
+      expect(frame._tileLoaded + mask._tileLoaded).toBe(2);
+      expect(frame._tileFailed + mask._tileFailed).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

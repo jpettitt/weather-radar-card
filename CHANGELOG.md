@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tiles: a request that did not answer delayed the radar loop.** When a tile's connection hung, the tile waited until the browser stopped it (75 seconds in Chrome on macOS). While it waited, its frame used one of the 3 places for frames that load at the same time, so the frames after it waited too. On RainViewer, the card then read the error as a rate limit and tried again up to 10 times. Each tile request now stops after 30 seconds and tries again. After 3 attempts the tile stays empty and the other frames load. With a slow connection (Chrome's *Slow 3G*) the slowest tile took 18 seconds, so the limit does not stop slow tiles that load.
+
 ## [4.0.0-rc4] - 2026-10-29
 
 > **Release candidate 4 of 4.0.** 4.0.0-rc3 with the fixes of a full code review before 4.0.0. 4.0 now needs Home Assistant 2025.3 or later. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-rc3.
