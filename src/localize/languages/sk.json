@@ -122,7 +122,7 @@
       "style_grey_dark": "Esri tmavosivá",
       "style_custom": "Vlastná URL dlaždíc",
       "style_maptiles": "Home Assistant",
-      "style_maptiles_vector": "Home Assistant — vektorová (experimentálne)",
+      "style_maptiles_vector": "Home Assistant — vektorová",
       "needs_map_tiles": "vyžaduje Home Assistant 2026.10",
       "style_desc_auto": "Vyberie mapu za vás podľa kľúča CARTO, jazyka a verzie Home Assistant a riadi sa motívom mapy.",
       "style_desc_maptiles": "OpenStreetMap cez váš Home Assistant: popisy v miestnom jazyku, bez kľúča. Motív Automaticky ju nechá svetlú; Tmavý ju zobrazí invertovanú.",

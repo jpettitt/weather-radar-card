@@ -1,6 +1,6 @@
 # Upgrading to 4.0
 
-4.0 is a release candidate. This page lists what changes when you move from 3.13 to 4.0, how to try it, and how to go back. 3.13.0 is the current stable release and stays supported with bug fixes while 4.0 is in development.
+This page lists what changes when you move from 3.13 to 4.0, how to update, and how to go back.
 
 ## What changes
 
@@ -10,7 +10,7 @@
 
 ### A second file
 
-4.0 ships two files: `weather-radar-card.js` and `weather-radar-card-maplibre.js`. The second file holds the vector map renderer. The card loads it only when a card uses `map_style: MapTilesVector` or `Satellite`. HACS installs both files. A manual install must copy both into `www/community/weather-radar-card/`, next to each other. See [Install](../README-4.0.md#install).
+4.0 ships two files: `weather-radar-card.js` and `weather-radar-card-maplibre.js`. The second file holds the vector map renderer. The card loads it only when a card uses `map_style: MapTilesVector` or `Satellite`. HACS installs both files. A manual install must copy both into `www/community/weather-radar-card/`, next to each other. See [Install](../README.md#install).
 
 Without the second file, `MapTilesVector` shows `MapTiles` and `Satellite` shows CARTO labels with a key, as 3.13 did.
 
@@ -31,11 +31,10 @@ The vector map, the classic style, `theme_mode`, `extra_labels` on the vector ma
 - In a sections view, a card that you did not resize fills its cell. 4.0 ignores `height` and `square_map` there, unless the card has `grid_options.rows: auto`.
 - Fire outlines always show above alert areas.
 
-## How to try 4.0
+## How to update
 
-1. In HACS, open the card and turn on **Show beta versions**.
-2. Select the 4.0 pre-release and install it.
-3. Reload the browser with Ctrl+F5 (Cmd+Shift+R on a Mac) so the new files load.
+1. In HACS, open the card and install the update to 4.0.
+2. Reload the browser with Ctrl+F5 (Cmd+Shift+R on a Mac) so the new files load.
 
 The card's sign-on line in the browser console shows the version that runs.
 

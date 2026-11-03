@@ -122,7 +122,7 @@
       "style_grey_dark": "Esri ciemnoszara",
       "style_custom": "Własny adres URL kafelków",
       "style_maptiles": "Home Assistant",
-      "style_maptiles_vector": "Home Assistant — wektorowa (eksperymentalna)",
+      "style_maptiles_vector": "Home Assistant — wektorowa",
       "needs_map_tiles": "wymaga Home Assistant 2026.10",
       "style_desc_auto": "Wybiera mapę za Ciebie na podstawie klucza CARTO, języka i wersji Home Assistant i podąża za motywem mapy.",
       "style_desc_maptiles": "OpenStreetMap przez Twój Home Assistant: etykiety w lokalnym języku, bez klucza. Motyw Automatyczny zostawia ją jasną; Ciemny pokazuje ją odwróconą.",

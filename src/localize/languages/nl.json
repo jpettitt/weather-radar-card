@@ -122,7 +122,7 @@
       "style_grey_dark": "Esri donkergrijs",
       "style_custom": "Eigen tile-URL",
       "style_maptiles": "Home Assistant",
-      "style_maptiles_vector": "Home Assistant — vector (experimenteel)",
+      "style_maptiles_vector": "Home Assistant — vector",
       "needs_map_tiles": "vereist Home Assistant 2026.10",
       "style_desc_auto": "Kiest een kaart voor je op basis van je CARTO-sleutel, taal en Home Assistant-versie, en volgt het kaartthema.",
       "style_desc_maptiles": "OpenStreetMap via je Home Assistant: labels in de lokale taal, geen sleutel. Kaartthema Automatisch houdt hem licht; Donker toont hem geïnverteerd.",

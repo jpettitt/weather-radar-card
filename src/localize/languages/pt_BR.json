@@ -122,7 +122,7 @@
       "style_grey_dark": "Esri Cinza escuro",
       "style_custom": "URL de blocos personalizada",
       "style_maptiles": "Home Assistant",
-      "style_maptiles_vector": "Home Assistant — vetorial (experimental)",
+      "style_maptiles_vector": "Home Assistant — vetorial",
       "needs_map_tiles": "requer Home Assistant 2026.10",
       "style_desc_auto": "Escolhe um mapa para você, conforme sua chave CARTO, seu idioma e sua versão do Home Assistant, e segue o tema do mapa.",
       "style_desc_maptiles": "OpenStreetMap pelo seu Home Assistant: rótulos no idioma local, sem chave. O tema Automático o mantém claro; Escuro o mostra invertido.",

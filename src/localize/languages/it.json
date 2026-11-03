@@ -122,7 +122,7 @@
       "style_grey_dark": "Esri Grigio scuro",
       "style_custom": "URL tile personalizzato",
       "style_maptiles": "Home Assistant",
-      "style_maptiles_vector": "Home Assistant — vettoriale (sperimentale)",
+      "style_maptiles_vector": "Home Assistant — vettoriale",
       "needs_map_tiles": "richiede Home Assistant 2026.10",
       "style_desc_auto": "Sceglie una mappa per te, in base a chiave CARTO, lingua e versione di Home Assistant, e segue il tema della mappa.",
       "style_desc_maptiles": "OpenStreetMap tramite il tuo Home Assistant: etichette nella lingua locale, nessuna chiave. Il tema Automatico la lascia chiara; Scuro la mostra invertita.",

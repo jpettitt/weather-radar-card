@@ -122,7 +122,7 @@
       "style_grey_dark": "Esri Gris foncé",
       "style_custom": "URL de tuiles personnalisée",
       "style_maptiles": "Home Assistant",
-      "style_maptiles_vector": "Home Assistant — vectorielle (expérimental)",
+      "style_maptiles_vector": "Home Assistant — vectorielle",
       "needs_map_tiles": "nécessite Home Assistant 2026.10",
       "style_desc_auto": "Choisit une carte pour vous, selon votre clé CARTO, votre langue et votre version de Home Assistant, et suit le thème de la carte.",
       "style_desc_maptiles": "OpenStreetMap via votre Home Assistant : libellés dans la langue locale, sans clé. Le thème Automatique la garde claire ; Sombre l'affiche inversée.",

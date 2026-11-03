@@ -125,7 +125,7 @@
       "style_grey_dark": "Esri Grey Dark",
       "style_custom": "Custom tile URL",
       "style_maptiles": "Home Assistant",
-      "style_maptiles_vector": "Home Assistant — vector (experimental)",
+      "style_maptiles_vector": "Home Assistant — vector",
       "needs_map_tiles": "needs Home Assistant 2026.10",
       "style_desc_auto": "Picks a map for you, from your CARTO key, language and Home Assistant version, and follows the map theme.",
       "style_desc_maptiles": "OpenStreetMap through your Home Assistant: local-language labels, no key. Map theme Auto keeps it light; Dark shows it inverted.",

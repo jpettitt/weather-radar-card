@@ -122,7 +122,7 @@
       "style_grey_dark": "Esri mørkegrå",
       "style_custom": "Egen flis-URL",
       "style_maptiles": "Home Assistant",
-      "style_maptiles_vector": "Home Assistant — vektor (eksperimentell)",
+      "style_maptiles_vector": "Home Assistant — vektor",
       "needs_map_tiles": "krever Home Assistant 2026.10",
       "style_desc_auto": "Velger et kart for deg ut fra CARTO-nøkkel, språk og Home Assistant-versjon, og følger karttemaet.",
       "style_desc_maptiles": "OpenStreetMap via din Home Assistant: etiketter på lokalt språk, ingen nøkkel. Karttema Automatisk holder det lyst; Mørkt viser det invertert.",

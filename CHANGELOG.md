@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-11-03
+
+> **4.0 release.** 4.0.0-rc4 with the fix below. 4.0 adds Home Assistant's vector map under the radar (`map_style: MapTilesVector`), `vector_style`, `theme_mode`, Satellite labels above the radar, view presets and layer toggles. It needs Home Assistant 2025.3 or later. The sections from 4.0.0-alpha1 to 4.0.0-rc4 below list all changes from 3.13.0. [Upgrading to 4.0](docs/upgrading-to-4.0.md) lists the breaking changes.
+
+### Changed
+
+- **`MapTilesVector` is no longer experimental.** The editor label and the docs no longer say "experimental".
+
 ### Fixed
 
 - **Tiles: a request that did not answer delayed the radar loop.** When a tile's connection hung, the tile waited until the browser stopped it (75 seconds in Chrome on macOS). While it waited, its frame used one of the 3 places for frames that load at the same time, so the frames after it waited too. On RainViewer, the card then read the error as a rate limit and tried again up to 10 times. Each tile request now stops after 30 seconds and tries again. After 3 attempts the tile stays empty and the other frames load. With a slow connection (Chrome's *Slow 3G*) the slowest tile took 18 seconds, so the limit does not stop slow tiles that load.

@@ -5,7 +5,7 @@ import { startMapTilesToken } from './map-tiles-token';
 import { vectorStyleName } from './basemap-styles';
 import { Z_PLACE_LABELS } from './const';
 
-// map_style: MapTilesVector (experimental, opt-in): HA 2026.10's vector map,
+// map_style: MapTilesVector (opt-in): HA 2026.10's vector map,
 // drawn in one of HA's styles from OSM Shortbread tiles that core's
 // map_tiles integration proxies, as a MapLibre layer under the radar — the
 // way HA's Leaflet maps do it (frontend src/common/map/base-layer.ts).
