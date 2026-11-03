@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-this-alias */
 import * as L from 'leaflet';
+import { ListingTimeoutError, TILE_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 import { RateLimiter } from './rate-limiter';
 import {
   TileCachePolicy, hasInflight, isFinalRequest, memoGet, persistedGet, sharedFetch, storeTile,
@@ -171,14 +172,60 @@ export interface TileWithAbort extends HTMLImageElement {
   __wrcRetry?: ReturnType<typeof setTimeout> | null;
   /** Set once Leaflet has unloaded the tile: no later attempt may start. */
   __wrcCancelled?: boolean;
+  /** Starts a tile created while its layer held fetches (releaseLayerTiles). */
+  __wrcDeferred?: (() => void) | null;
+}
+
+type FetchLayer = FetchTileLayer | FetchWmsTileLayer;
+
+// A held layer still gets its tiles from Leaflet, so the grid, pruning and
+// cancellation stay Leaflet's; only the request waits. The player holds the
+// frames outside its fetch window after a view change, so a 13-frame loop
+// doesn't request every frame at once (FRAME_FETCH_WINDOW in radar-player).
+export function holdLayerTiles(layer: FetchLayer): void {
+  layer._holdTiles = true;
+}
+
+export function releaseLayerTiles(layer: FetchLayer): void {
+  layer._holdTiles = false;
+  const deferred = layer._deferredTiles;
+  if (!deferred?.size) return;
+  const tiles = [...deferred];
+  deferred.clear();
+  for (const tile of tiles) {
+    const run = tile.__wrcDeferred;
+    tile.__wrcDeferred = null;
+    run?.();
+  }
+}
+
+// Leaflet 1.9.4 fires 'zoomanim' before Map._move records the new zoom. For
+// a jump of more than one level GridLayer._animateZoom → _setView → _update
+// then reads the stale zoom, trips its `> 1` guard and calls
+// _setView(newCenter, OLD zoom): a full tile set at the old zoom around the
+// new centre, discarded 250 ms later when the real 'zoom' event runs
+// _setView again. Measured 2026-10-14: a preset jump from zoom 9 to 5 cost
+// 52 wasted RainViewer requests, all counted against the budget. The
+// transform is all the animation needs; the 'zoom' event creates the tiles.
+export function animateZoomSkippingStaleTiles(layer: FetchLayer, e: { center: L.LatLng; zoom: number }): void {
+  const map = (layer as any)._map as L.Map | undefined;
+  if (map && Math.abs(e.zoom - map.getZoom()) > 1) {
+    (layer as any)._setZoomTransforms(e.center, e.zoom);
+    return;
+  }
+  (L.GridLayer.prototype as any)._animateZoom.call(layer, e);
 }
 
 // One network attempt, resolving to the raw tile bytes. Rejections carry
 // `status` for createFetchTile's retry branches.
 function fetchTileBlob(url: string, signal: AbortSignal): Promise<Blob> {
+  // HA serves its page with Referrer-Policy: no-referrer, and OSM answers a
+  // request with no Referer with a "blocked" tile (still 200 image/png).
+  // Send the origin only: 'no-referrer-when-downgrade' gave every tile host
+  // the full dashboard URL, path and query included.
   return fetch(url, {
     referrer: window.location.href,
-    referrerPolicy: 'no-referrer-when-downgrade',
+    referrerPolicy: 'strict-origin-when-cross-origin',
     signal,
   }).then((r) => {
     if (r.status === 404) { const e: any = new Error('404'); e.status = 404; throw e; }
@@ -242,6 +289,10 @@ export function createFetchTile(
   const shareKeyFor = (final: boolean): string => (final ? url : `${url}#provisional`);
   let attempt = 0;
   let rateLimited = 0;
+  // Chrome keeps a hung connect across our aborts and fails it later (75 s
+  // on macOS, measured 2026-10-29) with a statusless error: the same dead
+  // connection, not a rate limit.
+  let timedOut = false;
 
   layer._tilePending++;
 
@@ -312,12 +363,16 @@ export function createFetchTile(
     const ctrl = new AbortController();
     tile.__wrcAbort = ctrl;
 
+    // The limit is on the download, so a shared download times out once for
+    // every tile that joined it.
+    const download = (signal: AbortSignal): Promise<Blob> =>
+      withTimeout(TILE_TIMEOUT_MS, signal, (s) => fetchTileBlob(url, s));
     const raw = cache
-      ? sharedFetch(shareKeyFor(final), ctrl.signal, (signal) => fetchTileBlob(url, signal).then((b) => {
+      ? sharedFetch(shareKeyFor(final), ctrl.signal, (signal) => download(signal).then((b) => {
         storeTile(url, b, final ? cache : {});
         return b;
       }))
-      : fetchTileBlob(url, ctrl.signal);
+      : download(ctrl.signal);
 
     raw
       .then((b) => deliver(b, true))
@@ -331,15 +386,17 @@ export function createFetchTile(
           tile.__wrcAbort = null;
           return;
         }
+        if (err instanceof ListingTimeoutError) timedOut = true;
         if (err.missingLayer !== undefined) {
           opts.onLayerNotDefined?.(err.missingLayer);
           fail();
         } else if (err.status === 404) {
           fail();
-        } else if (err.status === 429 || (limiter && !err.status)) {
+        } else if (err.status === 429 || (limiter && !err.status && !timedOut)) {
           // 429 with CORS headers sets err.status; without CORS headers the browser
           // blocks the response entirely, leaving err.status undefined. If we have a
           // rate limiter on this source, treat any statusless error as rate-limited.
+          // A timeout is not a rate limit: it takes the attempt-capped retry below.
           on429?.();
           if (++rateLimited < maxRateLimitRetries) {
             schedule(limiter ? Math.max(limiter.msUntilSlot(), 1000) : 5000);
@@ -395,7 +452,14 @@ export function createFetchTile(
     });
   };
 
-  start();
+  if (layer._holdTiles) {
+    // Counted in _tilePending already: the spinner and the progress bar
+    // show the frame as loading until the player releases it.
+    tile.__wrcDeferred = start;
+    (layer._deferredTiles ??= new Set()).add(tile);
+  } else {
+    start();
+  }
   return tile;
 }
 
@@ -412,6 +476,12 @@ function cancelTile(layer: FetchTileLayer | FetchWmsTileLayer, tile: TileWithAbo
   tile.__wrcCancelled = true;
   tile.__wrcAbort?.abort();
   tile.__wrcAbort = null;
+  if (tile.__wrcDeferred) {
+    // Never started: nothing to abort, but it was counted as pending.
+    tile.__wrcDeferred = null;
+    layer._deferredTiles?.delete(tile);
+    layer._tilePending--;
+  }
   if (tile.__wrcRetry) {
     clearTimeout(tile.__wrcRetry);
     tile.__wrcRetry = null;
@@ -420,7 +490,32 @@ function cancelTile(layer: FetchTileLayer | FetchWmsTileLayer, tile: TileWithAbo
   }
 }
 
+// Leaflet positions each tile with translate3d, which makes every tile its
+// own compositing layer. On WebKit each such layer gets a device-resolution
+// backing store: 11.8 MB per 512 px radar tile at 3x (Safari Web Inspector,
+// Layers panel, 2026-10-16), 730 MB for a 13-frame loop, and iOS killed
+// the page at its 2 GB limit on a pinch. A tile never moves inside its
+// level container (Leaflet moves and scales the container), so plain
+// left/top positioning loses nothing, and the tiles paint into the
+// container's one buffer, sized by the viewport rather than the tile
+// count. It is what Leaflet itself does without 3D transforms
+// (DomUtil.setPosition). Applied on tileloadstart, which Leaflet fires
+// right after it positions and appends the tile.
+export function flattenTile(tile: HTMLElement & { _leaflet_pos?: { x: number; y: number } }): void {
+  const p = tile._leaflet_pos;
+  if (!p) return;
+  tile.style.transform = '';
+  (tile.style as unknown as { webkitTransform: string }).webkitTransform = '';
+  tile.style.left = `${p.x}px`;
+  tile.style.top = `${p.y}px`;
+}
+
+export function wireFlatTiles(layer: L.GridLayer): void {
+  layer.on('tileloadstart', (e: L.TileEvent) => flattenTile(e.tile));
+}
+
 export function wireAbortLifecycle(layer: FetchTileLayer | FetchWmsTileLayer): void {
+  wireFlatTiles(layer);
   layer.on('tileunload', (e: L.TileEvent) => {
     cancelTile(layer, e.tile as TileWithAbort);
   });
@@ -432,7 +527,7 @@ export function wireAbortLifecycle(layer: FetchTileLayer | FetchWmsTileLayer): v
     if (!tiles) return;
     for (const key in tiles) {
       const tile = tiles[key]?.el as TileWithAbort | undefined;
-      if (tile && (tile.__wrcAbort || tile.__wrcRetry)) cancelTile(layer, tile);
+      if (tile && (tile.__wrcAbort || tile.__wrcRetry || tile.__wrcDeferred)) cancelTile(layer, tile);
     }
   });
 }
@@ -465,6 +560,8 @@ export class FetchTileLayer extends L.TileLayer {
   _tilePending = 0;
   _tileFailed = 0;
   _tileLoaded = 0;
+  _holdTiles = false;
+  _deferredTiles?: Set<TileWithAbort>;
 
   initialize(url: string, options: FetchTileOptions): void {
     this._tilePending = 0;
@@ -476,6 +573,15 @@ export class FetchTileLayer extends L.TileLayer {
 
   createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
     return createFetchTile.call(this, coords as Coords, done);
+  }
+
+  /** New tiles wait instead of fetching, until releaseTiles. */
+  holdTiles(): void { holdLayerTiles(this); }
+
+  releaseTiles(): void { releaseLayerTiles(this); }
+
+  _animateZoom(e: { center: L.LatLng; zoom: number }): void {
+    animateZoomSkippingStaleTiles(this, e);
   }
 
   _updateOpacity(): void {
@@ -491,6 +597,8 @@ export class FetchWmsTileLayer extends L.TileLayer.WMS {
   _tilePending = 0;
   _tileFailed = 0;
   _tileLoaded = 0;
+  _holdTiles = false;
+  _deferredTiles?: Set<TileWithAbort>;
 
   initialize(url: string, options: L.WMSOptions & FetchTileOptions): void {
     this._tilePending = 0;
@@ -512,6 +620,14 @@ export class FetchWmsTileLayer extends L.TileLayer.WMS {
 
   createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
     return createFetchTile.call(this as any, coords as Coords, done);
+  }
+
+  holdTiles(): void { holdLayerTiles(this); }
+
+  releaseTiles(): void { releaseLayerTiles(this); }
+
+  _animateZoom(e: { center: L.LatLng; zoom: number }): void {
+    animateZoomSkippingStaleTiles(this, e);
   }
 
   _updateOpacity(): void {

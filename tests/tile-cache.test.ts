@@ -213,6 +213,23 @@ describe('persistedGet', () => {
     await vi.advanceTimersByTimeAsync(200);
     expect(result).toBeNull();
   });
+
+  it('after a read that never answered, skips the store for the session: no lookup delay, no writes', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    store.get = () => new Promise<Blob | null>(() => { /* e.g. an IndexedDB open that never settles */ });
+    void persistedGet('u1');
+    await vi.advanceTimersByTimeAsync(5_100);
+    let result: Blob | null | undefined;
+    void persistedGet('u2').then((b) => { result = b; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(result).toBeNull();
+    storeTile('u2', new Blob(['x'], { type: 'image/png' }), { persistUntil: Date.now() + MIN });
+    expect(store.puts).toEqual([]);
+    expect(memoGet('u2')).not.toBeNull();   // the in-memory copy still serves
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
 });
 
 describe('sharedFetch', () => {

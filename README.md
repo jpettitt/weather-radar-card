@@ -7,9 +7,11 @@ A Home Assistant rain radar card using tiled radar imagery from RainViewer, NOAA
 [![License][license-shield]](LICENSE)
 ![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)
 
+> **4.0 is the current release.** It adds Home Assistant's vector map under the radar, view presets and layer toggles. It needs Home Assistant 2025.3 or later. [Upgrading to 4.0](https://github.com/jpettitt/weather-radar-card/blob/main/docs/upgrading-to-4.0.md) lists what changes and how to go back to 3.13.0.
+
 ## Description
 
-This card displays animated weather radar loops within Home Assistant. It supports multiple radar data sources and map styles, and can be zoomed and panned seamlessly. Markers, hazard overlays (US wildfires + NWS watches & warnings), real-time lightning, a forecast nowcast (DWD), opt-in [motion-compensated playback](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#motion-compensation) (rain drifts between frames instead of teleporting), adjustable playback speed with optional per-user persistence, full sections-grid resize support, and 11 languages.
+This card displays animated weather radar loops within Home Assistant. It supports multiple radar data sources and map styles, including Home Assistant's own vector map with place names drawn above the radar, and can be zoomed and panned seamlessly. Markers, view presets, hazard overlays (US wildfires + NWS watches & warnings) with per-user layer toggles, real-time lightning, a forecast nowcast (DWD), opt-in [motion-compensated playback](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#motion-compensation) (rain drifts between frames instead of teleporting), adjustable playback speed with optional per-user persistence, full sections-grid resize support, and 11 languages.
 
 ![Weather Radar card](weather-radar-card.gif)
 
@@ -19,48 +21,46 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 
 [![Watch the demo on YouTube](https://img.youtube.com/vi/xfbZRElOi0o/maxresdefault.jpg)](https://youtu.be/xfbZRElOi0o)
 
-## 4.0 preview
+## What's new in 4.0
 
-The next major version is a release candidate on the [`4.0` branch](https://github.com/jpettitt/weather-radar-card/blob/4.0/README-4.0.md). It adds Home Assistant's vector map under the radar, with place names drawn above the rain, view presets, and per-user layer toggles. It also needs a second file next to the card, which HACS installs. To try it, turn on **Show beta versions** for this card in HACS. [Upgrading to 4.0](https://github.com/jpettitt/weather-radar-card/blob/4.0/docs/upgrading-to-4.0.md) lists what changes. Bug fixes continue on 3.13.
+### Breaking changes
 
-## What's new in 3.13 (current stable)
+- **Home Assistant 2025.3 or later.** 3.x needs 2024.1. On older Home Assistant, use 3.x. From 3.6.3, the 3.x editor's text fields are empty on HA before 2026.4, so set those options in YAML.
+- **Re-centre with a tracked marker.** The button now switches between the tracked marker and Default, the configured centre. Default holds, with tracking paused, until the next press or until `preset_timeout` idle minutes (default 5) return the map to the tracked marker. Set `preset_timeout: 0` to hold Default until the next press. Cards without a tracked marker re-centre as before.
+- **Manual installs need a second file.** `weather-radar-card-maplibre.js` must sit next to `weather-radar-card.js`. HACS installs it. See [Install](#install).
 
-DWD wind shows the model step nearest to now, cached forecast tiles outlast a long refresh interval, zooming out stops multiplying tile requests, and thirteen fixes from a whole-project review.
+### Features
 
-- **Wind shows the model step nearest to now** — AICON, the default outside the US, could show a slice almost 3 hours old; the overlays now pick the nearest step and refresh every half hour. ([3.13.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.13.0-beta1))
-- **Cached forecast tiles outlast a long refresh interval** — the reuse window follows `forecast_refresh_minutes` instead of a fixed 30 minutes, so a dashboard switch no longer discards tiles the card was just showing. Suggested by [@m42cel](https://github.com/m42cel). ([3.13.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.13.0-beta1))
-- **Zooming out no longer multiplies tile requests** — tiles follow the map's zoom instead of staying pinned to the highest level visited. ([3.13.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.13.0-beta1))
-- **Thirteen fixes from a whole-project review** — loops that froze after a tab switch, blank cards that never retried, tile retries outliving their tile, alert popups closing on every refresh, and more. ([3.13.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.13.0-beta1))
+- **[`map_style: MapTilesVector`](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#map-style)** — Home Assistant 2026.10's vector map under the radar. Place names are drawn above the radar and above every overlay, so they stay readable through rain. Sharp at every zoom, light or dark with HA's theme. Without WebGL2, or in `low_power_mode`, the card shows `MapTiles` instead.
+- **`vector_style`** — one of the six styles of HA's map cards, or `classic`: the colours of the classic OpenStreetMap map, with a dark version tuned by hand.
+- **`theme_mode: auto | light | dark`** — forces the light or dark version of `MapTilesVector`, `Auto` and `MapTiles`.
+- **Satellite labels above the radar** — on HA 2026.10+, `Satellite` draws place and street names from HA's map tiles above the radar. No CARTO key is needed for them.
+- **`extra_labels` on the vector map and Satellite** — each label kind appears a zoom level earlier, smaller and packed tighter.
+- **[View presets](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#view-presets)** — `presets` turns the re-centre button into a rotation: the tracked marker, Default, then each saved view, a fixed spot or an entity the map follows, each with its own zoom. The map returns on its own after `preset_timeout` idle minutes. The editor's *Presets* page edits them on the preview map.
+- **[Layer toggles](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#turning-overlays-on-and-off)** — `show_layer_toggles` adds buttons in the map's top-right corner that hide or show NWS alerts, wind, wildfires and lightning. A hidden overlay stops fetching. With `viewer_layer_control`, each user's choices are saved.
+- **Editor** — the Display toggles are in four groups, the map settings show only the fields the chosen style uses, and the preview card has the size it has on the dashboard.
+- **Dark tile maps are greyer** — the inverted map keeps less of its colour, so forests and roads no longer compete with the radar.
 
-## What's new in 3.12
-
-US wind now shows the current hour in the right place, NOAA radar reaches Alaska, Hawaii, Puerto Rico and Guam, and radar loops reload from the browser, forecast included.
-
-- **⚠️ Without a CARTO key, `map_style: Auto` now uses Home Assistant's map tiles** — CARTO serves blank tiles without a key. Add a free `carto_api_key` to keep CARTO's look. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2))
-- **Radar loops reload from the browser, forecast included** — the tile cache now keeps DWD's forecast frames too, so a reload plays the stored loop and fetches only the newest frames. Every frame also says how old or how far ahead it is. ([3.12.0-beta1](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta1))
-- **NOAA radar in Alaska, Hawaii, Puerto Rico and Guam**, and steady 5- and 10-minute NOAA loops. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2))
-- **US wind fixed** — it showed the forecast for about 15 hours ahead, a little too far north, and about 1.9× too strong. ([3.12.0-beta2](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta2), [3.12.0](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0))
-- **Wildfire popups** with location, personnel and cause, InciWeb links for many more fires, and a much lighter data feed. ([3.12.0-beta3](https://github.com/jpettitt/weather-radar-card/releases/tag/v3.12.0-beta3))
-
-For the full release history see [CHANGELOG](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md).
+See [Examples](https://github.com/jpettitt/weather-radar-card/blob/main/docs/examples.md#40-vector-map-in-the-classic-style-with-labels-above-the-radar) for ready-made 4.0 configurations. For the 3.x history see the [CHANGELOG](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md).
 
 ## Roadmap
 
-Active threads, no specific version commitment — with 3.13 shipped, these target a later release. See [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md) for the full backlog with status per item.
+Active threads, no specific version commitment. See [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md) for the full backlog with status per item.
 
-- **Real-time per-user layer visibility control panel** — UI for toggling individual overlays in real time. Persistence framework already shipped (3.6.5); first consumer shipped (playback speed in 3.7.0-alpha1); the on-map panel itself is the remaining piece. Full design in [docs/layer-control-design.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/layer-control-design.md).
 - **Additional wind sources** — Open-Meteo for global coverage, ICON pressure levels for upper-air wind, regional finer-than-ICON-D2 sources (AROME, MEPS, HRRR). Tiers and trade-offs documented in [docs/todo.md](https://github.com/jpettitt/weather-radar-card/blob/main/docs/todo.md).
 
 ## Documentation
 
 | Topic | What's there |
 | --- | --- |
-| [Configuration](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md) | Full options table, Map Style choices, Animation knobs, low power mode, Double-tap action, sections-grid behaviour |
+| [Upgrading to 4.0](https://github.com/jpettitt/weather-radar-card/blob/main/docs/upgrading-to-4.0.md) | What changes from 3.13, how to try 4.0, how to go back |
+| [Configuration](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md) | Full options table, Map Style choices (vector map included), Animation knobs, low power mode, View presets, Double-tap action, sections-grid behaviour |
 | [Data Sources](https://github.com/jpettitt/weather-radar-card/blob/main/docs/data-sources.md) | RainViewer / NOAA / DWD specifics, per-source caps, tile caching, NOAA & DWD notes, DWD forecast leading-edge note |
-| [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md) | US wildfire perimeters, NWS watches & warnings, lightning (Blitzortung), and global wind — usage, knobs, **safety disclaimers** |
+| [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md) | Layer toggles, US wildfire perimeters, NWS watches & warnings, lightning (Blitzortung), and global wind — usage, knobs, **safety disclaimers** |
 | [Markers](https://github.com/jpettitt/weather-radar-card/blob/main/docs/markers.md) | The `markers[]` schema, track-resolution rules, default home marker, migration from the legacy single-marker fields |
-| [Examples](https://github.com/jpettitt/weather-radar-card/blob/main/docs/examples.md) | Sample YAMLs for common setups (basic, dense DWD loop, NOAA, OSM, mobile-only, person tracking, hazard overlays) |
+| [Examples](https://github.com/jpettitt/weather-radar-card/blob/main/docs/examples.md) | Sample YAMLs for common setups, and the 4.0 features: vector map, satellite labels, presets, layer toggles |
 | [Animation architecture](https://github.com/jpettitt/weather-radar-card/blob/main/docs/animation.md) | Internal: layer z-stack, two-slot crossfade, opacity ownership, dynamic tile size, pause behaviour, invariants |
+| [Layer control design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/layer-control-design.md) | Internal: the per-user layer toggles and the viewer-state framework behind them |
 | [Wildfire feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/wildfire-feature-design.md) | Internal: NIFC WFIGS feed, render decisions, InciWeb gating, refresh cadence |
 | [NWS alerts feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/nws-alerts-feature-design.md) | Internal: api.weather.gov polling, zone resolution + caching, severity sort, popup chrome |
 | [Wind feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/wind-feature-design.md) | Internal: bulk WCS fetch + adaptive scaling, coalescing cache, zoom-aware streamlines, layering |
@@ -72,7 +72,7 @@ Active threads, no specific version commitment — with 3.13 shipped, these targ
 
 ### HACS
 
-The card is part of the default HACS store. To install the latest stable, search for "Weather Radar Card" in HACS → Frontend → Explore & Add Repositories. Toggle **Show beta versions** in HACS to opt into prereleases.
+The card is part of the default HACS store. To install the latest stable, search for "Weather Radar Card" in HACS → Frontend → Explore & Add Repositories. HACS installs both files.
 
 ### Manual
 
@@ -84,6 +84,7 @@ Download the files from the [latest release](https://github.com/jpettitt/weather
     └── community
         └── weather-radar-card
             └── weather-radar-card.js
+            └── weather-radar-card-maplibre.js
             └── home-circle-dark.svg
             └── home-circle-light.svg
             └── pause.png
@@ -97,15 +98,19 @@ Download the files from the [latest release](https://github.com/jpettitt/weather
             └── skip-next.png
 ```
 
+Copy the `.js.gz` files too if you have them: HA serves the compressed copy when one sits next to the file, also when it is older than the `.js` file. When you upgrade, replace both `.gz` files or delete them. `weather-radar-card-maplibre.js` is only loaded for `map_style: MapTilesVector` and for Satellite labels; without it those show `MapTiles` and CARTO labels instead.
+
 > **Upgrading from v2?** Delete `leaflet.js`, `leaflet.css`, `leaflet.toolbar.min.js`, and `leaflet.toolbar.min.css` from `www/community/weather-radar-card/` — they are bundled into `weather-radar-card.js` in v3 and the old files are no longer used.
 
 Then add the following to your Lovelace resources:
 
 ```yaml
 resources:
-  - url: /local/community/weather-radar-card/weather-radar-card.js
+  - url: /local/community/weather-radar-card/weather-radar-card.js?v=4.0.0
     type: module
 ```
+
+Browsers keep files from `/local` for up to 31 days. After each manual upgrade, change the `?v=` value in the resource URL (for example to the new version), or reload each browser and companion app with Ctrl+F5. HACS installs do this for you.
 
 ## Minimal config
 

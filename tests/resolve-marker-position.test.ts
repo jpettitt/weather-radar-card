@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveMarkerPosition } from '../src/marker-utils';
+import { resolveMarkerPosition, entityPosition, movedBeyondJitter } from '../src/marker-utils';
 import { mockHass, entityState } from './helpers/mock-hass';
 
 describe('resolveMarkerPosition', () => {
@@ -76,5 +76,38 @@ describe('resolveMarkerPosition', () => {
     const hass = mockHass({ states: { 'person.john': entityState(-35.0, 149.0) } });
     expect(resolveMarkerPosition({ entity: 'person.john', latitude: -99, longitude: -99 }, hass, 0, 0))
       .toEqual({ lat: -35.0, lon: 149.0 });
+  });
+});
+
+describe('entityPosition', () => {
+  it("reads the entity's latitude and longitude, numeric strings included", () => {
+    const hass = mockHass({ states: { 'person.me': entityState('37.5', -122) } });
+    expect(entityPosition(hass, 'person.me')).toEqual({ lat: 37.5, lon: -122 });
+  });
+
+  it('is null for a missing entity or one without both coordinates', () => {
+    const hass = mockHass({ states: { 'person.half': entityState(37.5, 'unknown') } });
+    expect(entityPosition(hass, 'person.gone')).toBeNull();
+    expect(entityPosition(hass, 'person.half')).toBeNull();
+    expect(entityPosition(undefined, 'person.me')).toBeNull();
+  });
+});
+
+describe('movedBeyondJitter', () => {
+  const at = { lat: 37.5, lon: -122 };
+
+  it('ignores moves up to 0.0001° on each axis', () => {
+    expect(movedBeyondJitter(at, { lat: 37.50009, lon: -122.00009 })).toBe(false);
+    expect(movedBeyondJitter(at, at)).toBe(false);
+    // Exactly 0.0001° (representable from 0) is still jitter.
+    expect(movedBeyondJitter({ lat: 0, lon: 0 }, { lat: 0.0001, lon: 0 })).toBe(false);
+    expect(movedBeyondJitter({ lat: 0, lon: 0 }, { lat: 0, lon: 0.0001 })).toBe(false);
+  });
+
+  it('counts a larger move on either axis, in either direction', () => {
+    expect(movedBeyondJitter(at, { lat: 37.5002, lon: -122 })).toBe(true);
+    expect(movedBeyondJitter(at, { lat: 37.4998, lon: -122 })).toBe(true);
+    expect(movedBeyondJitter(at, { lat: 37.5, lon: -121.9998 })).toBe(true);
+    expect(movedBeyondJitter(at, { lat: 37.5, lon: -122.0002 })).toBe(true);
   });
 });

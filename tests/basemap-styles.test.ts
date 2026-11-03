@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as L from 'leaflet';
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 import {
   basemapCredits,
   cartoKeyMissing,
@@ -11,7 +13,16 @@ import {
   isInvertedBasemap,
   resolveBasemapStyle,
   unknownTilePlaceholders,
+  showsCartoKeyField,
+  effectiveBasemapStyle,
+  themeModeApplies,
+  MAP_STYLE_CHOICES,
+  VECTOR_STYLES,
+  vectorLabelsAbove,
+  vectorStyleName,
+  themeModeName,
 } from '../src/basemap-styles';
+import { instanceOrigin } from '../src/vector-basemap';
 
 describe('getBasemapTiles', () => {
   it('CARTO styles omit ?key= entirely when no API key is set (today\'s default)', () => {
@@ -88,6 +99,16 @@ describe('getBasemapTiles', () => {
     expect(t.labelUrl).toBe('');
     expect(t.labelsBakedIn).toBe(true);
     expect(t.url).not.toContain('key=');
+  });
+
+  it('maptiles: on Cast the tiles come from the HA instance, not the page', () => {
+    const castHass: any = { auth: { data: { hassUrl: 'http://ha.local:8123/' } } };
+    for (const style of ['maptiles', 'maptiles-dark', 'maptiles-vector', 'maptiles-vector-dark']) {
+      const { url } = getBasemapTiles(style, undefined, undefined, instanceOrigin(castHass));
+      const tile = L.Util.template(url, { z: 7, x: 20, y: 45, token: 'tok' });
+      expect(new URL(tile, 'https://cast.home-assistant.io/receiver.html').href)
+        .toBe('http://ha.local:8123/api/map_tiles/raster/7/20/45.png?token=tok');
+    }
   });
 });
 
@@ -267,6 +288,105 @@ describe('resolveAutoBasemap', () => {
   });
 });
 
+describe('effectiveBasemapStyle and theme_mode', () => {
+  const style = (cfg: Parameters<typeof effectiveBasemapStyle>[0], haDark: boolean, mapTilesLoaded = true): string =>
+    effectiveBasemapStyle(cfg, { haDark, english: true, mapTilesLoaded });
+
+  it('auto (or unset, or unknown) follows HA for the vector map and Auto, as before', () => {
+    for (const theme_mode of [undefined, 'auto', 'Auto', 'sepia']) {
+      const cfg = theme_mode ? { theme_mode } : {};
+      expect(style({ ...cfg, map_style: 'MapTilesVector' }, true)).toBe('maptiles-vector-dark');
+      expect(style({ ...cfg, map_style: 'MapTilesVector' }, false)).toBe('maptiles-vector');
+      expect(style(cfg, true)).toBe('maptiles-dark');
+      expect(style({ ...cfg, carto_api_key: 'k' }, true)).toBe('dark');
+    }
+  });
+
+  it('auto keeps MapTiles light in dark mode, as before', () => {
+    expect(style({ map_style: 'MapTiles' }, true)).toBe('maptiles');
+    expect(style({ map_style: 'MapTiles', theme_mode: 'auto' }, true)).toBe('maptiles');
+  });
+
+  it('light forces the light version in HA dark mode', () => {
+    expect(style({ map_style: 'MapTilesVector', theme_mode: 'light' }, true)).toBe('maptiles-vector');
+    expect(style({ theme_mode: 'light' }, true)).toBe('maptiles');
+    expect(style({ theme_mode: 'light', carto_api_key: 'k' }, true)).toBe('light');
+    expect(style({ theme_mode: 'light' }, true, false)).toBe('grey');
+    expect(style({ map_style: 'MapTiles', theme_mode: 'light' }, true)).toBe('maptiles');
+  });
+
+  it('dark forces the dark version in HA light mode, inverting MapTiles', () => {
+    expect(style({ map_style: 'MapTilesVector', theme_mode: 'Dark' }, false)).toBe('maptiles-vector-dark');
+    expect(style({ theme_mode: 'dark' }, false)).toBe('maptiles-dark');
+    expect(style({ theme_mode: 'dark', carto_api_key: 'k' }, false)).toBe('dark');
+    expect(style({ theme_mode: 'dark' }, false, false)).toBe('greydark');
+    expect(style({ map_style: 'MapTiles', theme_mode: 'dark' }, false)).toBe('maptiles-dark');
+    // Without map_tiles, MapTiles falls back to OSM whatever the theme.
+    expect(style({ map_style: 'MapTiles', theme_mode: 'dark' }, false, false)).toBe('osm');
+  });
+
+  it("doesn't change styles with only one version", () => {
+    for (const map_style of ['Light', 'Voyager', 'Dark', 'OSM', 'Grey', 'GreyDark', 'Satellite']) {
+      expect(style({ map_style, theme_mode: 'dark' }, false)).toBe(map_style.toLowerCase());
+      expect(style({ map_style, theme_mode: 'light' }, true)).toBe(map_style.toLowerCase());
+    }
+    expect(style({ map_style: 'Custom', custom_tile_url: 'https://t.example/{z}/{x}/{y}.png', theme_mode: 'dark' }, false)).toBe('custom');
+  });
+
+  it('shows the CARTO key field for a style it doesn\'t know, which draws CARTO Light', () => {
+    expect(showsCartoKeyField('Voyger')).toBe(true);
+    expect(showsCartoKeyField('OSM')).toBe(false);
+  });
+
+  it('is offered in the editor only for those styles', () => {
+    for (const s of [undefined, 'Auto', 'MapTiles', 'MapTilesVector']) expect(themeModeApplies(s)).toBe(true);
+    for (const s of ['Light', 'Voyager', 'Dark', 'OSM', 'Grey', 'GreyDark', 'Satellite', 'Custom']) expect(themeModeApplies(s)).toBe(false);
+  });
+});
+
+describe('config values YAML can give the wrong type', () => {
+  // Each of these threw a TypeError while the map was being built.
+  it('reads vector_labels: false as below, and anything but below as above', () => {
+    expect(vectorLabelsAbove(false)).toBe(false);
+    expect(vectorLabelsAbove('Below')).toBe(false);
+    expect(vectorLabelsAbove(true)).toBe(true);
+    expect(vectorLabelsAbove(undefined)).toBe(true);
+    expect(vectorLabelsAbove('above')).toBe(true);
+  });
+
+  it('treats a boolean or number style or theme as unset', () => {
+    expect(vectorStyleName(false)).toBe('default');
+    expect(themeModeName(true)).toBe('auto');
+    expect(themeModeName(' DARK ')).toBe('dark');
+    expect(effectiveBasemapStyle({ map_style: true, theme_mode: 1 }, { haDark: true, english: true, mapTilesLoaded: true })).toBe('maptiles-dark');
+    expect(themeModeApplies(true)).toBe(true);
+    expect(showsCartoKeyField(true)).toBe(true);
+  });
+});
+
+describe("the editor's map style list", () => {
+  it("offers every style, Auto first, then HA's own maps", () => {
+    expect(MAP_STYLE_CHOICES.map((c) => c.value)).toEqual([
+      'Auto', 'MapTiles', 'MapTilesVector', 'OSM', 'Satellite', 'Light', 'Voyager', 'Dark', 'Grey', 'GreyDark', 'Custom',
+    ]);
+  });
+
+  it('has every label and description it shows in every language', () => {
+    const dir = join(process.cwd(), 'src/localize/languages');
+    const keys = [
+      ...MAP_STYLE_CHOICES.flatMap((c) => [c.label, c.desc].filter((k): k is string => !!k)),
+      ...VECTOR_STYLES.map((v) => `vector_style_${v}`),
+      ...['auto', 'light', 'dark'].map((m) => `theme_mode_${m}`),
+      'vector_style', 'vector_labels_above', 'theme_mode', 'needs_map_tiles', 'key_required',
+    ];
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+      const map = JSON.parse(readFileSync(join(dir, file), 'utf8')).editor.map;
+      const missing = keys.filter((k) => typeof map[k] !== 'string' || !map[k].trim());
+      expect({ file, missing }).toEqual({ file, missing: [] });
+    }
+  });
+});
+
 describe('maptiles-dark (Auto in dark mode)', () => {
   it('draws MapTiles through the invert filter with the dark palette', () => {
     expect(getBasemapTiles('maptiles-dark').url).toBe(getBasemapTiles('maptiles').url);
@@ -287,5 +407,26 @@ describe('cartoKeyMissing', () => {
   it("leaves Satellite's CARTO labels off without a key", () => {
     expect(getBasemapTiles('satellite').labelUrl).toBe('');
     expect(getBasemapTiles('satellite', 'k').labelUrl).toContain('voyager_only_labels');
+  });
+});
+
+// Editor rules: the CARTO key field only where a key does something, and
+// extra_labels greyed out where it has no effect.
+describe('editor rules for map styles', () => {
+  it('shows the CARTO key field for the styles a key changes', () => {
+    for (const style of ['Auto', undefined, 'Light', 'Voyager', 'Dark', 'Satellite']) {
+      expect(showsCartoKeyField(style, '')).toBe(true);
+    }
+  });
+
+  it('hides an empty CARTO key field where no CARTO tiles are used', () => {
+    for (const style of ['OSM', 'Grey', 'GreyDark', 'Custom', 'MapTiles', 'MapTilesVector']) {
+      expect(showsCartoKeyField(style, '')).toBe(false);
+      expect(showsCartoKeyField(style, '   ')).toBe(false);
+    }
+  });
+
+  it('keeps showing a CARTO key that is set, so it can be cleared', () => {
+    expect(showsCartoKeyField('MapTilesVector', 'abc123')).toBe(true);
   });
 });

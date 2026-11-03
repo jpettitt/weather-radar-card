@@ -59,7 +59,7 @@ describe('createMarkerIconForMarker', () => {
     });
     const result = createMarkerIconForMarker({ icon: 'entity_picture', entity: 'person.john' }, hass, 'light') as any;
     expect(result._type).toBe('icon');
-    expect(result.iconUrl).toBe('/api/image/john.jpg');
+    expect(result.iconUrl).toBe(`${location.origin}/api/image/john.jpg`);
     expect(result.className).toBe('marker-entity-picture');
   });
 
@@ -74,7 +74,7 @@ describe('createMarkerIconForMarker', () => {
       { icon: 'entity_picture', entity: 'person.other', icon_entity: 'person.john' },
       hass, 'light',
     ) as any;
-    expect(result.iconUrl).toBe('/api/image/john.jpg');
+    expect(result.iconUrl).toBe(`${location.origin}/api/image/john.jpg`);
   });
 
   it('falls back to default when entity has no entity_picture attribute', () => {
@@ -156,7 +156,7 @@ describe('createMarkerIconForMarker', () => {
       hass, 'light',
     ) as any;
     // entity_picture returns an L.Icon with the picture URL, not a coloured SVG
-    expect(result.iconUrl).toBe('/api/image/john.jpg');
+    expect(result.iconUrl).toBe(`${location.origin}/api/image/john.jpg`);
   });
 
   // ── XSS: color / icon are user config (e.g. pasted from an untrusted
@@ -190,6 +190,24 @@ describe('createMarkerIconForMarker', () => {
     it('a well-behaved hex color still renders normally (no over-escaping)', () => {
       const result = createMarkerIconForMarker({ icon: 'mdi:home', color: '#ff0000' }, mockHass(), 'light') as any;
       expect(result.html).toContain('color: #ff0000');
+    });
+  });
+
+  describe('on Cast, where the page is not served by the HA instance', () => {
+    const castHass = (states = {}): any => ({ ...mockHass({ states }), auth: { data: { hassUrl: 'http://ha.local:8123' } } });
+
+    it('loads the default icon and a relative entity picture from the instance', () => {
+      expect((createMarkerIconForMarker({}, castHass(), 'light') as any).iconUrl)
+        .toBe('http://ha.local:8123/local/community/weather-radar-card/home-circle-dark.svg');
+      const hass = castHass({ 'person.john': { state: 'home', attributes: { entity_picture: '/api/image/serve/abc/512x512' } } });
+      expect((createMarkerIconForMarker({ icon: 'entity_picture', entity: 'person.john' }, hass, 'light') as any).iconUrl)
+        .toBe('http://ha.local:8123/api/image/serve/abc/512x512');
+    });
+
+    it('keeps an absolute entity picture as it is', () => {
+      const hass = castHass({ 'person.john': { state: 'home', attributes: { entity_picture: 'https://example.com/john.png' } } });
+      expect((createMarkerIconForMarker({ icon: 'entity_picture', entity: 'person.john' }, hass, 'light') as any).iconUrl)
+        .toBe('https://example.com/john.png');
     });
   });
 });

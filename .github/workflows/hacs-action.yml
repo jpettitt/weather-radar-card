@@ -14,7 +14,7 @@ on:
 # neither a committed dist/weather-radar-card.js (we stopped tracking that
 # in PR #165) nor any GitHub releases. The check fails on every fork PR
 # while the contributor's actual code is fine. Code-side validation is
-# covered by build.yml (lint + test + build matrix on Node 20 + 22) which
+# covered by build.yml (lint + test + build matrix on Node 22 + 24) which
 # does run on PRs. HACS-spec compliance is caught here on push-to-main
 # and the daily cron.
 
@@ -33,7 +33,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
 
       - name: Install dependencies

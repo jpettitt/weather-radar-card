@@ -122,14 +122,9 @@ The streamline overlay's per-particle interpolation uses `sampleWindGridBilinear
 
 ## Refresh cadence
 
-ICON publishes new model runs every **6 hours** at 00, 06, 12, 18 UTC (the coverage's listed runs, checked 2026-10-08), typically becoming available at the WCS endpoint within 30–60 minutes of model start. Our "current" time anchor is hour-bucketed (`Math.trunc(timeMs / 3 600 000)`), so the *requested* TIME parameter only changes once per hour.
+ICON publishes new model runs every **6 hours** at 00, 06, 12, 18 UTC (the coverage's listed runs, checked 2026-10-08); AICON every 3 hours. The requested TIME is the step nearest to now (`effectiveTimeIso`: ICON hourly, AICON 3-hourly), and both overlays self-schedule a refresh at **HH:00:30 and HH:30:30**, where that step changes.
 
-Both overlays self-schedule a refresh at **HH:00:30** of each clock hour — the moment when:
-
-- the hour bucket changes (so we ask for a new TIME), AND
-- DWD has had a chance to publish a fresher run for that hour (the 30-second offset).
-
-Polling more often than once per hour returns identical data; less often risks lag at the bucket rollover. Top-of-hour catches both signals at the moment they happen.
+Each DWD request also names the model run (`subset=REFERENCE_TIME(...)`, from the coverage's DescribeCoverage, re-read every 15 minutes): the newest run that holds the step. ICON's runs hold their start hour, AICON's begin 3 hours later (`runFirstStepHours`). Without a run, GeoServer answers from the **oldest** run it keeps, not the default its DescribeCoverage declares: live 2026-10-23, the 03Z wind came from the run of 21 Oct 12Z, a 39-hour forecast. DWD's WMS takes `DIM_REFERENCE_TIME` for the radar's runs; its WCS ignores that parameter. A new run is listed before all of its steps can be read (ICON's 00Z run, 2026-10-23: +0 and +3 h at once, +6 and +9 h six minutes later), and a run that can't answer gets an `ExceptionReport`, so `fetchWindGrid` retries once from the run before it.
 
 ---
 
@@ -199,7 +194,7 @@ The streak canvas lives in Leaflet's existing `overlayPane` (z-index 400). This 
 1. **Stacking under markers and popups.** `markerPane` (600) renders ABOVE overlayPane, so wildfire/NWS/marker icons and their popups paint on top of the streaks. Earlier revisions put the canvas at `map.getContainer()` (outside `mapPane` entirely) and ended up painting OVER everything regardless of its own z-index — the canvas was a sibling of `mapPane`, not a descendant, so its z-index lived in a different stacking context.
 2. **Drag tracking via inherited transform.** `mapPane` gets a `transform: translate3d(dx, dy, 0)` during pan; every child pane (including overlayPane) inherits that transform automatically. The canvas drifts smoothly with the cursor instead of staying frozen until moveend.
 
-Zoom is still handled with explicit `opacity: 0` on `zoomstart` and a clean rebuild on `zoomend` — the SCALE component of mapPane's zoom-animation transform would otherwise visibly stretch the canvas content.
+Zoom is still handled with explicit `opacity: 0` on `zoomstart` and a clean rebuild on the `moveend` that Leaflet fires right after `zoomend` (`zoomend` only clears the opacity) — the SCALE component of mapPane's zoom-animation transform would otherwise visibly stretch the canvas content.
 
 ---
 
@@ -233,7 +228,7 @@ Known issues from 3.6.0-beta2 we intend to address before stable:
 
 Resolved in beta3:
 
-- ~~**Wind streaks render above markers and popups.**~~ The streak canvas now lives in a dedicated Leaflet pane (`wrcWindFlow`, z-index 250 — between tilePane @ 200 and overlayPane @ 400). Streaks sit directly on top of the radar/basemap and below everything else (wildfire perimeters, NWS polygons, marker shadows, markers, popups). Two earlier in-pane attempts produced a half-viewport offset bug; the diagnosis (verified by attaching to a live Chrome via the DevTools Protocol and inspecting `mapPane`'s actual CSS transform) was that Leaflet sets `mapPane` to `translate3d(W/2, H/2, 0)` so that the layer-point coordinate system anchors at the map centre. A canvas at `left: 0; top: 0` inside any pane therefore renders shifted by `+W/2, +H/2` — the bottom-right-quadrant symptom. The fix matches what `L.Canvas` does for shape rendering: `L.DomUtil.setPosition(canvas, this._map.containerPointToLayerPoint([0, 0]))` (≈ `(-W/2, -H/2)`) cancels that offset so the canvas's `(0, 0)` lands at viewport `(0, 0)`. The position is re-set on every `_restart` (which already runs on moveend / zoomend / refresh). Side benefit: the manual `_onMove` transform mirror is no longer needed — the pane inherits `mapPane`'s drag transform automatically.
+- ~~**Wind streaks render above markers and popups.**~~ The streak canvas now lives in a dedicated Leaflet pane (`wrcWindFlow`, z-index 250 — between tilePane @ 200 and overlayPane @ 400). Streaks sit directly on top of the radar/basemap and below everything else (wildfire perimeters, NWS polygons, marker shadows, markers, popups). Two earlier in-pane attempts produced a half-viewport offset bug; the diagnosis (verified by attaching to a live Chrome via the DevTools Protocol and inspecting `mapPane`'s actual CSS transform) was that Leaflet sets `mapPane` to `translate3d(W/2, H/2, 0)` so that the layer-point coordinate system anchors at the map centre. A canvas at `left: 0; top: 0` inside any pane therefore renders shifted by `+W/2, +H/2` — the bottom-right-quadrant symptom. The fix matches what `L.Canvas` does for shape rendering: `L.DomUtil.setPosition(canvas, this._map.containerPointToLayerPoint([0, 0]))` (≈ `(-W/2, -H/2)`) cancels that offset so the canvas's `(0, 0)` lands at viewport `(0, 0)`. The position is re-set on every `_restart` (which already runs on moveend / resize / refresh). Side benefit: the manual `_onMove` transform mirror is no longer needed — the pane inherits `mapPane`'s drag transform automatically.
 - ~~**No dateline wrap on the wind layer.**~~ Pacific-centred low-zoom views used to leave the wrapped strip on one side of the antimeridian without wind data because `fetchWindGrid` clamped lon to `[-180, 180]`. Now the fetcher detects when the requested bbox extends past ±180° and expands to the full world (one ~2 MB request, bounded by adaptive scaling); the samplers wrap the queried lon so coords like `-200` correctly resolve to the cell at lon `160`. Considered a smarter "split into two requests + stitch" approach but rejected: small user fraction (Pacific maps at low zoom) didn't justify the cache-key complexity and synchronisation cost.
 
 Roadmap items in [todo.md](todo.md):

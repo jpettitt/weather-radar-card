@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { resolveTracking } from '../src/marker-utils';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { resolveTracking, _resetTieWarningsForTests } from '../src/marker-utils';
 import { mockHass, entityState } from './helpers/mock-hass';
 import { Marker } from '../src/types';
 
@@ -7,6 +7,8 @@ const FB_LAT = -33.86;
 const FB_LON = 151.21;
 
 describe('resolveTracking', () => {
+  beforeEach(() => _resetTieWarningsForTests());
+
   it('returns null when no markers have track set', () => {
     expect(resolveTracking([{ latitude: -34, longitude: 151 }], mockHass(), FB_LAT, FB_LON)).toBeNull();
   });
@@ -242,5 +244,44 @@ describe('resolveTracking — partial hass and priority edges', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(resolveTracking([{ track: 'entity' }], mockHass(), FB_LAT, FB_LON)).toBeNull();
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveTracking tie warning', () => {
+  beforeEach(() => _resetTieWarningsForTests());
+  afterEach(() => vi.restoreAllMocks());
+
+  // The card resolves tracking on every hass update, several a second.
+  it('warns once per tie, not on every evaluation', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const hass = mockHass({ states: { 'device_tracker.a': entityState(1, 2), 'device_tracker.b': entityState(3, 4) } });
+    const markers: Marker[] = [{ entity: 'device_tracker.a', track: 'entity' }, { entity: 'device_tracker.b', track: 'entity' }];
+    for (let i = 0; i < 5; i++) expect(resolveTracking(markers, hass, FB_LAT, FB_LON)?.markerIndex).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('device_tracker.a | device_tracker.b');
+  });
+
+  it('a different tie is reported too', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const hass = mockHass({ states: { 'device_tracker.a': entityState(1, 2), 'device_tracker.b': entityState(3, 4), 'device_tracker.c': entityState(5, 6) } });
+    resolveTracking([{ entity: 'device_tracker.a', track: 'entity' }, { entity: 'device_tracker.b', track: 'entity' }], hass, FB_LAT, FB_LON);
+    resolveTracking([{ entity: 'device_tracker.c', track: 'entity' }, { entity: 'device_tracker.b', track: 'entity' }], hass, FB_LAT, FB_LON);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  // docs/markers.md: "person takes priority over van for John, van tracks for everyone else".
+  it('the docs example: John follows his person, every other viewer the van', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const markers: Marker[] = [
+      { entity: 'device_tracker.van', icon: 'mdi:car', track: 'entity' },
+      { entity: 'person.john', icon: 'entity_picture', track: 'entity' },
+      { latitude: -33.86, longitude: 151.21, icon: 'mdi:home' },
+    ];
+    const states = {
+      'person.john': entityState(-33.0, 151.0, { user_id: 'john-id' }),
+      'device_tracker.van': entityState(-35.0, 149.0),
+    };
+    expect(resolveTracking(markers, mockHass({ userId: 'john-id', states }), FB_LAT, FB_LON)?.markerIndex).toBe(1);
+    expect(resolveTracking(markers, mockHass({ userId: 'jane-id', states }), FB_LAT, FB_LON)?.markerIndex).toBe(0);
   });
 });

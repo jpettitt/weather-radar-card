@@ -46,7 +46,7 @@ Each fire is rendered one of two ways depending on how big its bounding box is o
 | ≥ 20×20 px | Polygon outline + fill |
 | < 20×20 px | Fire icon (`mdi:fire`) at polygon centroid |
 
-Re-evaluated on `zoomend`. The "icon vs polygon" decision is per-fire, so a single map can show some fires as icons and others as polygons.
+Re-evaluated once the map is still (`onMapQuiet`, 1 s after a pan or zoom ends). The "icon vs polygon" decision is per-fire, so a single map can show some fires as icons and others as polygons.
 
 ### Icon sizing by acreage
 
@@ -148,8 +148,8 @@ export class WildfireLayer {
 
   constructor(map: L.Map, getConfig: () => WeatherRadarCardConfig, hass?: HomeAssistant);
 
-  start(): void          // initial fetch + schedule refresh + bind zoomend
-  clear(): void          // cancel timer, remove layers, unbind zoomend
+  start(): void          // initial fetch + schedule refresh + onMapQuiet
+  clear(): void          // cancel timer, remove layers, dispose onMapQuiet
   updateHass(hass: HomeAssistant): void  // for radius-from-HA-center filtering
 
   private async _fetch(): Promise<void>

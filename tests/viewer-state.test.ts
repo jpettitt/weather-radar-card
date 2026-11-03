@@ -1,7 +1,8 @@
-// Tests for the ViewerState framework — identity minting, dashboard-path
-// re-mint, within-dashboard copy-paste collision detection, WS storage
-// round-trip, debounced writes, sparse storage via delete, reset,
-// subscribe/unsubscribe, and graceful degradation on WS failure.
+// Tests for the ViewerState framework — identity validation (the editor
+// mints, the card only validates), dashboard-path binding, within-dashboard
+// copy-paste collision, WS storage round-trip, debounced writes, sparse
+// storage via delete, reset, subscribe/unsubscribe, and graceful
+// degradation on WS failure.
 //
 // HA's hass.callWS is fully mocked — these tests don't need a real HA
 // connection. happy-dom provides window.location.pathname.
@@ -11,6 +12,8 @@ import {
   ViewerState,
   _resetLiveCardsForTests,
   _liveCardsForTests,
+  layerStateIdValid,
+  newLayerStateId,
   type LayerStateId,
   type ViewerStateChange,
 } from '../src/viewer-state';
@@ -24,7 +27,6 @@ interface MockSetup {
   callWS: ReturnType<typeof vi.fn>;
   config: WeatherRadarCardConfig;
   setConfig: (next: Partial<WeatherRadarCardConfig>) => void;
-  onIdentityMinted: ReturnType<typeof vi.fn>;
   state: ViewerState;
 }
 
@@ -37,14 +39,9 @@ function makeState(initial: Partial<WeatherRadarCardConfig> = {}): MockSetup {
     ...initial,
   } as WeatherRadarCardConfig;
 
-  const onIdentityMinted = vi.fn((id: LayerStateId) => {
-    config = { ...config, _layer_state_id: id };
-  });
-
   const state = new ViewerState({
     hass,
     getConfig: () => config,
-    onIdentityMinted,
   });
 
   return {
@@ -52,7 +49,6 @@ function makeState(initial: Partial<WeatherRadarCardConfig> = {}): MockSetup {
     callWS,
     config,
     setConfig: (next) => { config = { ...config, ...next }; },
-    onIdentityMinted,
     state,
   };
 }
@@ -67,55 +63,36 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// ── Identity minting ─────────────────────────────────────────────────────
+// ── Identity ─────────────────────────────────────────────────────────────
 
-describe('ViewerState — identity minting', () => {
-  it('does not mint when viewer_layer_control is off', () => {
-    const m = makeState();
+describe('ViewerState — identity', () => {
+  it('stays inactive when viewer_layer_control is off', () => {
+    const m = makeState({ _layer_state_id: { dash: '/lovelace/0', nonce: 'abc1234' } });
     m.state.ensureIdentity();
-    expect(m.onIdentityMinted).not.toHaveBeenCalled();
     expect(m.state.isActive).toBe(false);
   });
 
-  it('mints when viewer_layer_control is on and no id present', () => {
+  // The card cannot persist an id (HA saves config-changed only from the
+  // editor element), so it never mints; it waits for the editor's id.
+  it('stays inactive with no id, and activates once the editor writes one', () => {
     const m = makeState({ viewer_layer_control: true });
     m.state.ensureIdentity();
-    expect(m.onIdentityMinted).toHaveBeenCalledOnce();
-    const minted = m.onIdentityMinted.mock.calls[0][0] as LayerStateId;
-    expect(minted.dash).toBe('/lovelace/0');
-    expect(minted.nonce).toMatch(/^[a-z0-9]{1,9}$/);
-  });
-
-  it('does not yet activate after the mint callback — waits for setConfig round-trip', () => {
-    const m = makeState({ viewer_layer_control: true });
-    m.state.ensureIdentity();
-    // After mint but before card re-calls ensureIdentity with the new id,
-    // we should still be inactive (strict consistency with persisted state).
     expect(m.state.isActive).toBe(false);
-  });
-
-  it('activates on second ensureIdentity after onIdentityMinted updates the config', () => {
-    const m = makeState({ viewer_layer_control: true });
-    m.state.ensureIdentity();
-    const minted = m.onIdentityMinted.mock.calls[0][0] as LayerStateId;
-    // Card writes back the new id (the mock callback already did this); a
-    // subsequent setConfig fires another ensureIdentity.
-    m.setConfig({ _layer_state_id: minted });
+    expect(_liveCardsForTests().size).toBe(0);
+    const id = newLayerStateId();
+    m.setConfig({ _layer_state_id: id });
     m.state.ensureIdentity();
     expect(m.state.isActive).toBe(true);
-    expect(m.state.storageKey).toBe(`weather-radar-card.viewer-state.${minted.nonce}`);
+    expect(m.state.storageKey).toBe(`weather-radar-card.viewer-state.${id.nonce}`);
   });
 
-  it('re-mints when dashboard path mismatches the stored dash', () => {
+  it('stays inactive when the stored dash is another dashboard', () => {
     const m = makeState({
       viewer_layer_control: true,
       _layer_state_id: { dash: '/old-dashboard/0', nonce: 'abc1234' },
     });
     m.state.ensureIdentity();
-    expect(m.onIdentityMinted).toHaveBeenCalledOnce();
-    const remint = m.onIdentityMinted.mock.calls[0][0] as LayerStateId;
-    expect(remint.dash).toBe('/lovelace/0');
-    expect(remint.nonce).not.toBe('abc1234');
+    expect(m.state.isActive).toBe(false);
   });
 
   it('keeps identity stable across repeated ensureIdentity calls when dash matches', () => {
@@ -126,8 +103,8 @@ describe('ViewerState — identity minting', () => {
     m.state.ensureIdentity();
     m.state.ensureIdentity();
     m.state.ensureIdentity();
-    expect(m.onIdentityMinted).not.toHaveBeenCalled();
     expect(m.state.isActive).toBe(true);
+    expect([..._liveCardsForTests().keys()]).toEqual(['abc1234']);
   });
 
   it('deactivates when viewer_layer_control flips to off', () => {
@@ -143,29 +120,16 @@ describe('ViewerState — identity minting', () => {
     expect(_liveCardsForTests().size).toBe(0);
   });
 
-  it('re-mints when the stored nonce is not a string', () => {
+  it('stays inactive when the stored nonce is not a string', () => {
     const m = makeState({
       viewer_layer_control: true,
       _layer_state_id: { dash: '/lovelace/0', nonce: 12345 as unknown as string },
     });
     m.state.ensureIdentity();
-    expect(m.onIdentityMinted).toHaveBeenCalledOnce();
     expect(m.state.isActive).toBe(false);
   });
 
-  it('mints with an empty dash when there is no window (SSR / non-browser host)', () => {
-    vi.stubGlobal('window', undefined);
-    try {
-      const m = makeState({ viewer_layer_control: true });
-      m.state.ensureIdentity();
-      expect(m.onIdentityMinted).toHaveBeenCalledOnce();
-      expect((m.onIdentityMinted.mock.calls[0][0] as LayerStateId).dash).toBe('');
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('a dashboard-path change under a live card re-mints and deactivates it', () => {
+  it('a dashboard-path change under a live card deactivates it and releases its nonce', () => {
     const m = makeState({
       viewer_layer_control: true,
       _layer_state_id: { dash: '/lovelace/0', nonce: 'moved01' },
@@ -176,9 +140,6 @@ describe('ViewerState — identity minting', () => {
     window.history.replaceState({}, '', '/other-dashboard/1');
     m.state.ensureIdentity();
 
-    expect(m.onIdentityMinted).toHaveBeenCalledOnce();
-    // Stays inactive until the new id round-trips through config; the old
-    // nonce must not stay claimed in the meantime.
     expect(m.state.isActive).toBe(false);
     expect(_liveCardsForTests().size).toBe(0);
   });
@@ -193,15 +154,41 @@ describe('ViewerState — identity minting', () => {
     m.state.ensureIdentity();
 
     expect(m.state.storageKey).toBe('weather-radar-card.viewer-state.swap002');
-    // A leaked 'swap001' would make any later card reusing it re-mint forever.
     expect([..._liveCardsForTests().keys()]).toEqual(['swap002']);
+  });
+});
+
+describe('identity helpers', () => {
+  it('newLayerStateId binds to the current dashboard path with a short nonce', () => {
+    const id = newLayerStateId();
+    expect(id.dash).toBe('/lovelace/0');
+    expect(id.nonce).toMatch(/^[a-z0-9]{1,9}$/);
+    expect(newLayerStateId().nonce).not.toBe(id.nonce);
+  });
+
+  it('newLayerStateId uses an empty dash without a window', () => {
+    vi.stubGlobal('window', undefined);
+    try {
+      expect(newLayerStateId().dash).toBe('');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('layerStateIdValid needs a string nonce and the current dash', () => {
+    const cfg = (id: unknown): WeatherRadarCardConfig => ({ type: 'x', _layer_state_id: id } as WeatherRadarCardConfig);
+    expect(layerStateIdValid(cfg({ dash: '/lovelace/0', nonce: 'a1' }))).toBe(true);
+    expect(layerStateIdValid(cfg({ dash: '/other/0', nonce: 'a1' }))).toBe(false);
+    expect(layerStateIdValid(cfg({ dash: '/lovelace/0', nonce: 7 }))).toBe(false);
+    expect(layerStateIdValid(cfg(undefined))).toBe(false);
+    expect(layerStateIdValid(undefined)).toBe(false);
   });
 });
 
 // ── Within-dashboard collision detection ─────────────────────────────────
 
 describe('ViewerState — copy-paste collision', () => {
-  it('two cards with the same nonce on the same dashboard cause the second to re-mint', () => {
+  it('a second card with the same nonce on the same dashboard stays inactive', () => {
     const id: LayerStateId = { dash: '/lovelace/0', nonce: 'duplic1' };
 
     const first = makeState({ viewer_layer_control: true, _layer_state_id: id });
@@ -211,9 +198,8 @@ describe('ViewerState — copy-paste collision', () => {
     const second = makeState({ viewer_layer_control: true, _layer_state_id: id });
     second.state.ensureIdentity();
 
-    // First card retains its identity; second re-mints.
-    expect(first.onIdentityMinted).not.toHaveBeenCalled();
-    expect(second.onIdentityMinted).toHaveBeenCalledOnce();
+    expect(second.state.isActive).toBe(false);
+    expect(first.state.isActive).toBe(true);
     expect(_liveCardsForTests().size).toBe(1);
     expect(_liveCardsForTests().get('duplic1')).toBe(first.state);
   });
@@ -228,7 +214,6 @@ describe('ViewerState — copy-paste collision', () => {
 
     const second = makeState({ viewer_layer_control: true, _layer_state_id: id });
     second.state.ensureIdentity();
-    expect(second.onIdentityMinted).not.toHaveBeenCalled();
     expect(second.state.isActive).toBe(true);
   });
 

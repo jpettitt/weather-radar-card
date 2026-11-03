@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import * as L from 'leaflet';
+import { localize } from './localize/localize';
 
 const ICON_BASE = '/local/community/weather-radar-card/';
 
@@ -17,6 +18,8 @@ export interface RadarToolbarOptions {
   onPlay?: () => void;
   onSkipBack?: () => void;
   onSkipNext?: () => void;
+  /** URL of a toolbar icon file; default page-relative under ICON_BASE. */
+  assetUrl?: (file: string) => string;
   /** Initial playing state. When false the toolbar starts with a play
    *  icon instead of a pause icon. Default true (playing). */
   initialPlaying?: boolean;
@@ -25,19 +28,32 @@ export interface RadarToolbarOptions {
   initialSpeed?: number;
   /** Notified when the user clicks the speed button to cycle to the next preset. */
   onSpeedChange?: (multiplier: number) => void;
+  /** Tap on a view preset's chip beside the re-centre button. */
+  onClearStop?: () => void;
 }
+
+/** How long Default or the tracked marker's name shows beside the re-centre button. */
+export const STOP_LABEL_MS = 5000;
 
 /**
  * Simple Leaflet control that replaces Leaflet.Toolbar2 for v3.
- * Renders recenter, play/pause, skip-back, skip-next buttons as a standard
- * Leaflet bar control positioned at bottom-right.
+ * Renders skip-back, play/pause, skip-next, speed and re-centre buttons as a
+ * standard Leaflet bar control positioned at bottom-right.
  */
 export class RadarToolbar extends L.Control {
   private _opts: RadarToolbarOptions;
   private _playBtn: HTMLImageElement | null = null;
   private _speedBtn: HTMLAnchorElement | null = null;
+  private _recenterBtn: HTMLAnchorElement | null = null;
+  private _stopLabel: HTMLButtonElement | null = null;
+  private _stopLabelTimer: ReturnType<typeof setTimeout> | null = null;
+  private _stopSticky = false;
   private _playing = true;
   private _speed = 1;
+
+  private _asset(file: string): string {
+    return this._opts.assetUrl ? this._opts.assetUrl(file) : `${ICON_BASE}${file}`;
+  }
 
   constructor(opts: RadarToolbarOptions) {
     super({ position: 'bottomright' });
@@ -49,21 +65,17 @@ export class RadarToolbar extends L.Control {
     const bar = L.DomUtil.create('div', 'radar-toolbar leaflet-bar');
     L.DomEvent.disableClickPropagation(bar);
 
-    if (this._opts.showRecenter) {
-      this._addBtn(bar, `${ICON_BASE}recenter.png`, 'Re-centre', () => this._opts.onRecenter?.());
-    }
-
     if (this._opts.showPlayback) {
-      this._addBtn(bar, `${ICON_BASE}skip-back.png`, 'Previous frame', () => this._opts.onSkipBack?.());
+      this._addBtn(bar, this._asset('skip-back.png'), 'Previous frame', () => this._opts.onSkipBack?.());
 
-      const playImg = this._addBtn(bar, `${ICON_BASE}${this._playing ? 'pause' : 'play'}.png`, 'Play / Pause', () => {
+      const playImg = this._addBtn(bar, this._asset(this._playing ? 'pause.png' : 'play.png'), 'Play / Pause', () => {
         this._playing = !this._playing;
-        playImg.src = `${ICON_BASE}${this._playing ? 'pause' : 'play'}.png`;
+        playImg.src = this._asset(this._playing ? 'pause.png' : 'play.png');
         this._opts.onPlay?.();
       });
       this._playBtn = playImg;
 
-      this._addBtn(bar, `${ICON_BASE}skip-next.png`, 'Next frame', () => this._opts.onSkipNext?.());
+      this._addBtn(bar, this._asset('skip-next.png'), 'Next frame', () => this._opts.onSkipNext?.());
 
       // Speed button cycles through SPEED_STEPS. Snap the initial value to
       // the nearest preset so a stored override from an older SPEED_STEPS
@@ -76,7 +88,64 @@ export class RadarToolbar extends L.Control {
       this._speedBtn = this._addSpeedBtn(bar);
     }
 
+    // Last, so the button and the stop label beside it sit in the map's
+    // bottom-right corner, where they cover the least of the map.
+    if (this._opts.showRecenter) {
+      const img = this._addBtn(bar, this._asset('recenter.png'), localize('ui.recenter'), () => this._opts.onRecenter?.());
+      this._recenterBtn = img.parentElement as HTMLAnchorElement;
+      // The title becomes the next stop's name; keep the button's name.
+      this._recenterBtn.setAttribute('aria-label', localize('ui.recenter'));
+      this._addStopLabel(bar);
+    }
+
     return bar;
+  }
+
+  /** The re-centre button's tooltip: where the next press goes. */
+  setRecenterTitle(title: string): void {
+    if (this._recenterBtn) this._recenterBtn.title = title;
+  }
+
+  /**
+   * Show the stop the rotation moved to beside the re-centre button. A
+   * sticky label (a preset) stays as a chip that clears the preset when
+   * tapped; any other label shows for STOP_LABEL_MS. null hides it.
+   */
+  showStopLabel(text: string | null, sticky: boolean): void {
+    const chip = this._stopLabel;
+    if (!chip) return;
+    if (this._stopLabelTimer) clearTimeout(this._stopLabelTimer);
+    this._stopLabelTimer = null;
+    this._stopSticky = text !== null && sticky;
+    chip.hidden = text === null;
+    if (text === null) return;
+    (chip.firstChild as HTMLElement).textContent = text;
+    chip.classList.toggle('sticky', sticky);
+    chip.tabIndex = sticky ? 0 : -1;
+    chip.title = sticky ? localize('ui.preset_clear') : '';
+    chip.setAttribute('aria-label', sticky ? `${localize('ui.preset_clear')}: ${text}` : text);
+    if (!sticky) {
+      this._stopLabelTimer = setTimeout(() => {
+        this._stopLabelTimer = null;
+        chip.hidden = true;
+      }, STOP_LABEL_MS);
+    }
+  }
+
+  private _addStopLabel(bar: HTMLElement): void {
+    const chip = L.DomUtil.create('button', 'radar-stop-label', bar) as HTMLButtonElement;
+    chip.type = 'button';
+    chip.hidden = true;
+    chip.setAttribute('aria-live', 'polite');
+    L.DomUtil.create('span', 'radar-stop-name', chip);
+    const x = L.DomUtil.create('span', 'radar-stop-clear', chip);
+    x.textContent = '×';
+    x.setAttribute('aria-hidden', 'true');
+    L.DomEvent.on(chip, 'click', (e) => {
+      L.DomEvent.preventDefault(e);
+      if (this._stopSticky) this._opts.onClearStop?.();
+    });
+    this._stopLabel = chip;
   }
 
   /** Current speed multiplier; persisted by the card. */
@@ -108,7 +177,7 @@ export class RadarToolbar extends L.Control {
   setPlaying(playing: boolean): void {
     this._playing = playing;
     if (this._playBtn) {
-      this._playBtn.src = `${ICON_BASE}${playing ? 'pause' : 'play'}.png`;
+      this._playBtn.src = this._asset(playing ? 'pause.png' : 'play.png');
     }
   }
 

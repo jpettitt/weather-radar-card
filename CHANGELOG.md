@@ -7,6 +7,174 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-11-03
+
+> **4.0 release.** 4.0.0-rc4 with the fix below. 4.0 adds Home Assistant's vector map under the radar (`map_style: MapTilesVector`), `vector_style`, `theme_mode`, Satellite labels above the radar, view presets and layer toggles. It needs Home Assistant 2025.3 or later. The sections from 4.0.0-alpha1 to 4.0.0-rc4 below list all changes from 3.13.0. [Upgrading to 4.0](docs/upgrading-to-4.0.md) lists the breaking changes.
+
+### Changed
+
+- **`MapTilesVector` is no longer experimental.** The editor label and the docs no longer say "experimental".
+
+### Fixed
+
+- **Tiles: a request that did not answer delayed the radar loop.** When a tile's connection hung, the tile waited until the browser stopped it (75 seconds in Chrome on macOS). While it waited, its frame used one of the 3 places for frames that load at the same time, so the frames after it waited too. On RainViewer, the card then read the error as a rate limit and tried again up to 10 times. Each tile request now stops after 30 seconds and tries again. After 3 attempts the tile stays empty and the other frames load. With a slow connection (Chrome's *Slow 3G*) the slowest tile took 18 seconds, so the limit does not stop slow tiles that load.
+
+## [4.0.0-rc4] - 2026-10-29
+
+> **Release candidate 4 of 4.0.** 4.0.0-rc3 with the fixes of a full code review before 4.0.0. 4.0 now needs Home Assistant 2025.3 or later. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-rc3.
+
+### Changed
+
+- **Breaking: 4.0 needs Home Assistant 2025.3 or later.** `hacs.json` gave 2024.1 as the minimum. On older HA, use 3.x. From 3.6.3, the 3.x editor's text fields are empty before HA 2026.4, so set those options in YAML.
+
+### Fixed
+
+- **The editor's text fields were empty on Home Assistant before 2026.4.** They used HA's `ha-input`, which HA added in 2026.4. On older HA the editor now uses `ha-textfield`, as before 3.6.3.
+- **A bad refresh override polled without a stop.** A negative or very small `alerts_refresh_seconds` or `wildfire_refresh_minutes` sent requests one after the other: with -60, about 1000 requests each second to api.weather.gov. A value that is not a positive number now keeps the adaptive interval. The minimum is 30 seconds for alerts and 1 minute for wildfires.
+- **NWS alerts: shapes of alerts in view did not load first.** Since 4.0.0-alpha3 the card counted every alert as in view, so zone shapes loaded in order of severity only.
+- **NWS alerts: old alerts stayed on the map.** When the last alert left the list during a pan or zoom, its outline stayed until the next refresh on a still map, up to 5 minutes later.
+- **NWS alerts: zone shapes stopped after a failed refresh.** A failed alerts request also stopped the shapes that were loading, and alerts on the map stayed without shapes until a refresh was successful.
+- **NWS alerts: the "zone shapes did not load" message stayed.** The message now goes away when the alerts with the missing shapes leave the list.
+- **NWS alerts: shapes from the browser store did not show.** When a refresh came while shapes loaded, shapes read from the store after that refresh were not drawn until the next refresh, and older stored shapes were not rewritten.
+- **NWS alerts: `alerts_radius_km` did not apply to zone alerts.** An alert that has only zones was drawn far outside the radius when its shapes arrived. Its distance is now checked when its shapes arrive.
+- **NWS alerts: the popup showed the wrong expiry time.** When the hazard's end time is earlier than the message's expiry time, the map removes the alert at the end time, but the popup showed the expiry time. The popup now shows the time when the alert leaves the map.
+- **NWS alerts: a browser store that did not answer stopped all zone shapes.** If the browser store does not answer in 10 seconds, the card now gets shapes from the network for the rest of the session.
+- **Wildfires: fire icon colours were not escaped.** `wildfire_color` and `wildfire_contained_color` went into the icon HTML as written. They are now escaped, as marker colours are since 3.7.3.
+- **Wildfires: a failed refresh closed an open fire popup.** The card redrew all fires after a failed request, also when nothing changed.
+- **Wildfires: `wildfire_radius_km` did not follow the map centre.** The fires shown changed only at the next refresh, up to 30 minutes later, when a tracked marker moved the map. The radius is now applied again on each Home Assistant update, as the design document tells.
+- **Wildfires: small fires redrew at zoom 11 and closer.** A fire too small to show as an outline was redrawn each time the map stopped moving.
+- **Wildfires: outlines were downloaded on each refresh** when the feed had a fire without a shape.
+- **Markers: latitude or longitude 0 was replaced on mobile.** A configured `0` (the equator or the Greenwich meridian) counted as not set, so the card used the user's device tracker for that axis.
+- **Markers: the tracking tie warning repeated on each update.** The card now logs it once for each tie.
+- **Markers: legacy entity-object positions were lost.** A `marker_latitude` or `mobile_marker_latitude` given as `{ entity: ... }` became a marker with no position. It now becomes a marker for that entity. Custom attribute names are not kept.
+- **Docs: the two-tracker example in markers.md did not work as told.** For viewers other than John, `person.john` has the same priority as the van, so the first marker wins. The example now lists the van first.
+- **Radar: no radar with one frame.** With `past_minutes: 0`, the map showed no radar until a pan. The first frame now also shows while the other frames load.
+- **Radar: the loop dropped to one frame in widespread rain** with `motion_compensation`. Frames whose view was full of rain counted as copies of each other.
+- **Radar: a paused card went blank** when `motion_compensation` removed a duplicate frame that was on screen.
+- **Radar: a new frame showed under the stopped loop while it loaded,** and a new frame that did not load stayed on the map until it left the loop.
+- **Radar: a frame that did not load downloaded tiles on each pan and zoom.** It is now removed.
+- **Radar: RainViewer with `past_minutes: 120` and `frame_stride_minutes` above 10 rebuilt the full loop** at each new RainViewer frame.
+- **Radar: a frame list that did not answer stopped the radar updates.** The card now stops waiting for a NOAA or RainViewer list after 10 seconds and tries again; NOAA uses its fallback times.
+- **Overlays: a request that did not answer stopped an overlay.** Alerts and wildfires stopped their refreshes, zone shapes stopped loading, a fire's InciWeb link never came, and wind stopped for every view that asked for the same area. The card now stops waiting after 30 seconds (60 seconds for wind) and tries again.
+- **Radar: when the browser's tile store did not answer, each tile waited 5 seconds.** The card now stops using the store for the session.
+- **Radar: the play button showed the wrong icon** after a double-tap with `double_tap_action: toggle_play`.
+- **Motion compensation: a strict CSP that stopped the worker after it started stopped motion compensation and the radar refresh** with no message. Both now continue without the worker.
+- **Motion compensation measured frames at the wrong position** when their tiles loaded during playback, and could use the wrong frame pair after the card removed or added a frame.
+- **Tracking: a tap that did not move the map stopped tracking.** After a toolbar button, or any tap on a static map, the map did not follow a tracked marker or preset until the next pan.
+- **Tracking: a `mobile_only` marker moved the map on a desktop.**
+- **Markers: range rings stayed where the first marker was when the map opened.**
+- **Map: closing a hazard popup undid a preset change, a tracker move or a drag** that happened while the popup was open.
+- **Map: an OS change between light and dark rebuilt the map too often.** It now rebuilds only when the basemap changes.
+- **Map: a card hidden by visibility conditions built its map while hidden,** and a card that got Home Assistant's data after it was added opened at 0,0 without its viewer settings.
+- **Map: a card scrolled off the screen started again** when you went back to its browser tab, and overlays that started while the card was hidden did not pause.
+- **Sections view: a card that you did not resize did not fit its cell.** In a sections view with a fixed row count (the default), the card now ignores `height` and `square_map`, and the editor disables them. With `grid_options.rows: auto` they still apply.
+- **Cast: the MapTiles basemap, marker icons, entity pictures, the toolbar and the colour bar did not load.** They now load from Home Assistant, not from the Cast page.
+- **Editor: typing "-" in a number or coordinate field saved NaN,** and the field showed "NaN". Fields now keep the minus sign and the decimal point while you type: before, "-0.1" was saved as 0.1. Clearing a field whose value is 0 now removes the setting.
+- **Editor: "Use entity picture" could not be turned off** for a person that has a photo.
+- **`viewer_layer_control` never turned on.** The card made the storage id (`_layer_state_id`) itself, but Home Assistant saves an edit only from the card editor, so the id was never saved and toggles and speed were not kept. The editor now adds the id when you turn the setting on, and when you open a card that has the setting on but no id for its dashboard. Cards that had the setting on in a beta get their id when you next open them in the editor and save. A copy of a card on the same dashboard keeps no settings until you delete `_layer_state_id` from the copy's YAML.
+- **Editor preview: a pan after re-centre wrote the position of another stop into the open preset.** While a preset is open, re-centre and a tap on the preset name now go back to that preset.
+- **Editor preview: with two radar cards in a stack, a pan of one card was written into the other card's editor.** When the edit dialog shows more than one radar card, a pan no longer changes the editor's position fields.
+- **Motion compensation: a wrong motion estimate could throw a frame across the map.** The card now ignores a motion estimate as large as the view it was measured on.
+- **Lightning: on an iPad Pro panel view the strikes could fail to draw, and on phones the strike layer used much memory.** On touch screens the strike layer now extends a quarter view past the edges instead of half, and it draws at most at 2x. After a long pan, new strikes show 1 second after the map stops, as radar tiles do on mobile.
+- **Alerts and wildfires: the layer drawn last was on top.** Fire outlines now always show above alert areas, so you can tap a fire inside an alert area.
+- **Alerts: a zoom or refresh with many alerts was slow.** The card now makes the text of an alert popup only when you open it. Alert and wildfire popups also fit the map size at the time you open them.
+- **Wind: with DWD radar and `forecast_minutes`, the wind showed the time at the end of the forecast, fixed at the time the map opened.** The wind now always shows the model time step closest to now, also when the radar shows forecast frames.
+- **Wind streamlines: a slow or failed request for an earlier map view replaced the wind of the current view,** and the animation started when the card was hidden while it loaded.
+- **Wind: a map moved across the date line got wind data for the full world.**
+- **Lightning: after a jump to a far place at the same zoom, the strikes of the old place showed for 1 second.** In a storm the card also did more work than necessary on each update, and a card out of view animated new strikes.
+- **Map: a card built in a background tab did not pause.** Alerts, wildfires and the radar loop ran until you showed the tab and left it again. This also occurred when a hidden card rebuilt its map.
+- **NWS alerts: `alerts_radius_km` used the map centre of the last refresh.** After the map moved, alerts near the new centre stayed hidden for up to 5 minutes. They now show when the map stops.
+- **Alerts and wildfires: after a pause, the refresh interval started again from zero.** Alerts on a card that was shown for 50 seconds and hidden for 50 seconds in turn did not refresh. Wildfires refreshed at once after 5 minutes hidden, also with a longer `wildfire_refresh_minutes`. After a pause the card now waits only for the time that is left.
+- **Wind streamlines: a failed refresh removed the streamlines** until the next pan or refresh, up to 30 minutes later. The card now keeps the last wind data, as the wind arrows do.
+- **Wildfires: fire shapes stayed on the map after the wildfire toggle was turned off,** when an outline arrived while a fire popup was open. You could still tap them.
+- **Wind arrows and wildfires: a hidden card downloaded data when its map moved** to follow a tracked marker. It now waits until the card shows again.
+- **Wildfires: a fire popup did not open** when the feed gave a fire cause such as `constructor`.
+- **Editor: the playback speed help said that the toolbar choice is kept for each browser.** The choice is kept until the page reloads, or for each user with `viewer_layer_control`.
+- **`viewer_layer_control` added in the editor's code view got no id.** The editor now adds `_layer_state_id` when you go back to the visual editor. A save from the code view still keeps no id: open the card in the editor again and save.
+- **Map tiles: each tile request sent the full dashboard address to the tile server,** with its path and query. Tile requests now send only the address of your Home Assistant. OSM needs that much: with no address it sends a "blocked" tile.
+
+## [4.0.0-rc3] - 2026-10-23
+
+> **Release candidate 3 of 4.0.** 4.0.0-rc2 with a fix for DWD wind. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-rc2.
+
+### Fixed
+
+- **DWD wind showed an old forecast.** When a request gives only a time, DWD's server uses the oldest model run that it keeps, not the newest. On 23 October, the wind for 03:00 UTC came from the run of 21 October 12:00 UTC. This forecast was 39 hours old, and ICON and AICON did not agree as well as their newest runs do. In western Canada, the two models pointed more than 45° apart at 12% of points, and at 4% with the newest runs. The card now reads DWD's list of runs (each 15 minutes) and asks for the newest run that has the time shown. DWD can list a new run some minutes before all of its times are ready; if the run cannot give the time yet, the card uses the run before it. This also applies where `wind_source: ndfd_wind` uses AICON outside the NWS area.
+- **Short streamlines outside the NWS area.** With `wind_source: ndfd_wind`, the card cut the trails to one third for the fine NWS grid also where it shows AICON. The trails now have the AICON length there.
+
+## [4.0.0-rc2] - 2026-10-21
+
+> **Release candidate 2 of 4.0.** 4.0.0-rc1 with one new option, smooth DWD radar edges. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-rc1.
+
+### Added
+
+- **Smooth DWD radar edges.** With `dwd_interpolation: bilinear` (editor: **Smooth Radar Edges**, shown for DWD), DWD's server smooths its 1 km grid before it applies its colour scale. When you zoom in, rain areas have smooth edges instead of squares, in DWD's own colours. Small areas of heavy rain look smaller. The option is off by default, and the default request does not change. Suggested by [@sushi137](https://github.com/sushi137). ([#326](https://github.com/jpettitt/weather-radar-card/issues/326))
+
+## [4.0.0-rc1] - 2026-10-19
+
+> **Release candidate of 4.0.** The same code as 4.0.0-alpha4. If testing finds no blocking problem, this code becomes 4.0.0. 3.13.0 is the current stable release and is included.
+
+## [4.0.0-alpha4] - 2026-10-17
+
+> **Alpha pre-release of 4.0.** Fixes for the NWS alerts layer and the wind streamlines, on 4.0.0-alpha3. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-alpha3.
+
+### Fixed
+
+- **Alert outlines at low zooms kept detail they could not show.** When simplifying a zone outline would leave fewer than four points, the card kept the whole outline instead. So mid-sized zones kept every point at coarse zooms, and zoom 3 drew more points than zoom 4. Such an outline now keeps four points. Outlines are also drawn with one pixel of detail at the current zoom instead of half a pixel. With every alert category on, the points drawn at zoom 5 went from 31,571 to 14,741, and from 183,247 to 87,510 at zoom 8.
+- **Expired alerts stayed on the map.** NWS keeps an alert in its active list until the hazard's end time, also after the alert message itself has expired. On 17 October, 108 of 492 active alerts were past their expiry time, one of them by five days, and 92 of those were fully replaced by a newer alert of the same event. The card now hides an alert once its expiry time or its end time has passed, also between two refreshes.
+- **Overlapping alerts of the same event hid each other.** Where two or more alerts of one event cover a zone, for example Small Craft Advisories from successive issues, the card drew the zone once for each alert, so the fill got darker, and a tap opened only the alert on top. On each zone, an alert is now replaced by a later-issued alert of the same event once that alert is in force. A later alert that is not in force yet is shown with the current one until it starts. The zone is drawn once, and its popup lists the alerts that remain, most severe first.
+- **An alert popup closed by itself about a second after it opened.** When a tall popup moved the map to fit, the next Home Assistant state update redrew the alerts layer and removed the popup with it. The layer now waits until the popup is closed before it redraws, for every kind of update.
+- **Zone shapes cached by older versions were cut down again on every load.** Versions before this one stored zone outlines at full precision, or with the four-point fault above. The card now writes such an entry back once, a few at a time when the browser is idle and the map is still, and keeps the entry's original age.
+- **Wind streamlines made the page stall every ten seconds.** Each animation frame converted every particle's position with Leaflet's point and coordinate objects and took a fresh wind sample for it: about 300,000 short-lived objects a second, and a full garbage collection every ten seconds that took half a second on an iPhone while the alerts layer's data was live. The conversion and the sample now reuse the same objects.
+
+## [4.0.0-alpha3] - 2026-10-17
+
+> **Alpha pre-release of 4.0.** Fixes for the hazard overlays and for Safari on an iPhone, on 4.0.0-alpha2. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-alpha2.
+
+### Fixed
+
+- **Mobile browser crash on a preset switch with NWS alerts on.** With every alert category on, the alerts layer held 3 million polygon vertices, mostly marine advisories, and re-projected all of them on each zoom: a 150 to 200 MB memory spike per switch. Zone outlines are now simplified to about 220 m before they are cached (six times fewer vertices, invisible below zoom 11), drawn at half a pixel of detail for the current zoom (about ten times fewer again at zoom 3), and only the alerts that touch the view are built as map polygons. A view change while an alert popup is open waits for the popup to close.
+- **Alert fetch failures are no longer silent.** When the NWS alerts list or some zone shapes fail to load, a banner says so while the card retries. Before, the only sign was a console message and a retry backoff of up to 30 minutes.
+- **iPhone Safari ran out of memory with the radar loop.** Leaflet blends every map tile with a mode meant for a Chromium seam bug, and on WebKit that gives each tile its own device-resolution buffer: about 12 MB per radar tile on a 3x phone, 730 MB for a 13-frame loop, so iOS ended the page at its 2 GB limit on a pinch. On Safari the card now lets WebKit draw tiles straight from the decoded image.
+- **Fast pinch zoom on a phone.** During a pinch, Leaflet created tiles for every zoom level the gesture crossed, for all radar frames at once: up to 560 tile images in 85 map layers until the gesture ended. The radar frames now keep scaling their current tiles during a zoom and load the new zoom once it settles, as Leaflet does for its own layers on mobile. The canvas that draws NWS alerts and wildfire perimeters, the pane that holds fire icons and wind barbs, and the lightning canvas leave the page while the map zooms and come back once the map has been still for a second; the hazard overlays rebuild on that same quiet moment instead of on Leaflet's move-end, and the alerts layer does nothing at all while the map moves: no redraw on a state update or a refresh, and no zone shape is fetched or decoded until the map is still. Leaflet scaled the canvas with a CSS transform on every touch move and animated every icon on the snap-back, which crashed Safari on an iPhone whenever one of those overlays was on.
+- **Alerts on some NWS zones never got a shape.** NWS publishes some zones (Michigan's, for example) as a GeometryCollection, which the card skipped and requested again every minute. They are drawn now.
+- **NWS alerts never loaded after a blocked zone burst.** On a cold cache with every category on, the card requested 2,100 zone shapes at once, NWS blocked the address, and every 60 s refresh re-sent the same burst. Zone shapes are now fetched 24 at a time, alerts in view first, and the next request does not wait for the shape to be written to the browser's cache. After a block the card waits 5 s, doubling to 5 min, and resumes at half speed until shapes arrive again.
+
+## [4.0.0-alpha2] - 2026-10-15
+
+> **Alpha pre-release of 4.0.** Fixes for preset switching on 4.0.0-alpha1. 3.13.0 is the current stable release and is included. The entries below are what changed since 4.0.0-alpha1.
+
+### Fixed
+
+- **Blank frames after a preset switch.** After a view change the card requested tiles for every frame at once. Some quick switches used up RainViewer's request budget, and the tiles of the last preset waited up to a minute while the progress bar showed them as loaded. Now at most three frames fetch at a time, in playback order from the shown frame, and the next frame starts when one completes. The progress bar shows a frame as loading while its tiles are outstanding.
+- **Half the tile requests of a zoom-out wasted.** A jump of two or more zoom levels (a preset, re-centre after a zoom-in) first requested a full set of tiles at the old zoom around the new centre, then discarded them 250 ms later. A Leaflet 1.9.4 quirk; the card now skips those tiles.
+
+## [4.0.0-alpha1] - 2026-10-13
+
+> **Alpha pre-release of 4.0.** The first release with Home Assistant's vector map under the radar, view presets and layer toggles. It needs a second file next to the card, and it changes what the re-centre button does when a marker is tracked. 3.13.0 is the current stable release and is included. The entries below are what changed since 3.13.0.
+
+### Added
+
+- **`map_style: MapTilesVector` (experimental)** — Home Assistant 2026.10's vector map, the one HA's own map cards show, under the radar, with its place names drawn over the radar and every weather and hazard overlay, wind arrows, fire icons and lightning included, so they stay readable through rain (warnings and fires stay clickable; your own markers stay on top) (`vector_labels: below` to turn that off): sharp at every zoom, light or dark with HA's theme, in any of the six styles HA's map cards offer (`vector_style`: Default, Colorful, Natural, Muted, Gray, Toner) or the card's own Classic, the colours of the classic OpenStreetMap map that `MapTiles` draws, with a dark version tuned by hand rather than inverted. It loads MapLibre from a separate file (about 320 KB gzipped) only when chosen, uses two WebGL contexts per card (one with `vector_labels: below`), and falls back to `MapTiles` without WebGL2, when that file or HA's style won't load, when the browser takes the map's WebGL context back, or in `low_power_mode`. Manual installs need the new file next to the card; HACS installs get it with the release.
+- **Satellite labels over the radar** — on Home Assistant 2026.10+, `Satellite` draws place and street names from HA's map tiles above the radar (the vector map's label layer, one WebGL context), so they stay readable through rain and need no CARTO key. Where that can't run, CARTO's labels with a key, under the radar, as before.
+- **`extra_labels` on the vector map and Satellite** — each label kind a zoom level earlier (street names two, from zoom 11, where the tiles start carrying them), about 15% smaller and packed tighter, so more of the names the tiles hold get drawn. The editor no longer hides the switch for `MapTilesVector`.
+- **`theme_mode: auto | light | dark`**, as on HA's map card — forces the light or dark version of `MapTilesVector`, `Auto` and `MapTiles` (dark shows it inverted). The default, `auto`, changes nothing.
+- **View presets** — `presets` turns the re-centre button into a rotation: the tracked marker (while it reports a position), Default, then each saved view, a fixed spot or an entity it follows, each with its own zoom. The tracked marker's name or *Default* shows beside the button for 5 seconds; a preset's name stays as a chip that goes back when tapped. Tracking pauses while a preset shows, and the card returns on its own after `preset_timeout` idle minutes (default 5, `0` for never). The editor's *Presets* page opens one preset at a time and shows it on the preview map, where panning and zooming sets it; presets drag to reorder, and *Add as preset* on each marker copies one in. See [View presets](docs/configuration.md#view-presets).
+- **Layer toggles** — `show_layer_toggles` adds buttons in the map's top-right corner that hide or show each overlay the card has turned on: NWS alerts, wind, wildfires and lightning. A hidden overlay stops fetching. Choices last until the page reloads, or with `viewer_layer_control` are saved per user across devices. See [Turning overlays on and off](docs/overlays.md#turning-overlays-on-and-off).
+- **Editor: Display toggles in groups** — *Map buttons*, *On the map*, *Around the map* and *Off-screen*, in a grid, with shorter labels; *Static map* moved to *Interaction*.
+- **Editor: tidier map settings** — shorter style names with Home Assistant's maps first, a line saying what the chosen style is, then only the settings it uses: vector style and map theme, *Extra labels* (moved here from Display, hidden for `MapTilesVector`), and the CARTO key only where a key does something. *Zoom level* moved to Location.
+
+### Changed
+
+- **Editor preview sized like the dashboard** — in a sections view the preview card takes the width it has there, a section spanning several columns included; in other views it fills the dialog, so widening the dialog widens the map. HA caps every preview at 500 px otherwise.
+- **Breaking: with a tracked marker, re-centre switches between it and Default** — it used to jump to the configured centre until the tracked entity next moved. Now Default holds, with tracking paused, until another press, or until `preset_timeout` idle minutes (default 5) bring the map back to the tracked marker. Cards without a tracked marker re-centre as before.
+- **The re-centre button moved to the bottom of the toolbar**, below the playback controls, so the preset name beside it sits in the map's corner.
+- **Dark tile maps are greyer** — the inverted map (`Auto` in dark mode, `MapTiles` with `theme_mode: dark`, `custom_tile_theme: invert`, and the vector map's raster fallback in dark mode) keeps less of its colour (saturation 0.15, was HA's 0.3), so green forests and pink roads no longer compete with the radar.
+
+### Fixed
+
+- **Editor dropdowns show their default** — *Zoom level* showed nothing instead of *Default (7)* when unset.
+
 ## [3.13.0] - 2026-10-13
 
 > **Stable release.** DWD wind shows the model step nearest to now, cached forecast tiles outlast a long refresh interval, zooming out stops multiplying tile requests, and thirteen fixes from a whole-project review. No breaking changes. The entries below are what changed since 3.12.0.
@@ -1102,7 +1270,25 @@ Multi-marker overhaul. **Breaking:** single-marker config fields (`show_marker`,
 
 For changes in versions prior to 2.0.4, please refer to the git commit history.
 
-[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3...HEAD
+[Unreleased]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-rc3...HEAD
+[4.0.0-rc3]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-rc2...v4.0.0-rc3
+[4.0.0-rc2]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-rc1...v4.0.0-rc2
+[4.0.0-rc1]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-alpha4...v4.0.0-rc1
+[4.0.0-alpha4]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-alpha3...v4.0.0-alpha4
+[4.0.0-alpha3]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-alpha2...v4.0.0-alpha3
+[4.0.0-alpha2]: https://github.com/jpettitt/weather-radar-card/compare/v4.0.0-alpha1...v4.0.0-alpha2
+[4.0.0-alpha1]: https://github.com/jpettitt/weather-radar-card/compare/v3.13.0...v4.0.0-alpha1
+[3.13.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.12.0...v3.13.0
+[3.12.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.11.0...v3.12.0
+[3.11.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.10.0...v3.11.0
+[3.10.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.10.0-beta1...v3.10.0
+[3.10.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.9.1-beta1...v3.10.0-beta1
+[3.9.1-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.9.0...v3.9.1-beta1
+[3.9.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.8.0...v3.9.0
+[3.8.0]: https://github.com/jpettitt/weather-radar-card/compare/v3.8.0-beta3...v3.8.0
+[3.8.0-beta3]: https://github.com/jpettitt/weather-radar-card/compare/v3.8.0-beta2...v3.8.0-beta3
+[3.8.0-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.8.0-beta1...v3.8.0-beta2
+[3.8.0-beta1]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3...v3.8.0-beta1
 [3.7.3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta3...v3.7.3
 [3.7.3-beta3]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta2...v3.7.3-beta3
 [3.7.3-beta2]: https://github.com/jpettitt/weather-radar-card/compare/v3.7.3-beta1...v3.7.3-beta2

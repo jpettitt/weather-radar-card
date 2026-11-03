@@ -22,6 +22,7 @@ import {
 import { gridPhase, recallStridePhase, rememberStridePhase } from './stride-phase';
 import { extractChannel } from './lk';
 import { createLkWorker, LkWorkerClient, estimateMotionLk } from './lk-worker';
+import { LISTING_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,45 @@ export function buildLoadOrder(frameCount: number, nowIndex: number): number[] {
   return order;
 }
 
+// After a view change Leaflet asks every attached frame layer for tiles at
+// once. The player lets this many frames fetch at a time, in playback order
+// from the shown frame, and releases the next as each completes: the shown
+// frame fills first, and a 13-frame loop can't spend a source's per-minute
+// budget on one preset switch (2026-10-14: five quick switches hit
+// RainViewer's 250/min and left 49 tiles waiting a minute while the bar
+// read "loaded").
+export const FRAME_FETCH_WINDOW = 3;
+
+// During a pinch or an animated zoom Leaflet normally creates tiles for
+// each integer zoom the gesture crosses and prunes only when it ends: a
+// fast pinch across six levels held 557 tile images in 85 composited
+// containers for 13 frames at once (phone viewport, 2026-10-16), and that
+// gesture crashed Safari on an iPhone with every overlay off. With the
+// option off the frames keep scaling their current tiles and load the new
+// zoom once it settles, as Leaflet itself does with updateWhenIdle on mobile.
+export const ZOOM_GESTURE_OPTIONS = { updateWhenZooming: false } as const;
+
+/** Frame indices in playback order from the shown slot, then frames not loaded yet. */
+export function fetchWindowOrder(loadedSlots: number[], currentSlot: number, frameCount: number): number[] {
+  const n = loadedSlots.length;
+  const start = n ? ((currentSlot % n) + n) % n : 0;
+  const order: number[] = [];
+  for (let k = 0; k < n; k++) order.push(loadedSlots[(start + k) % n]);
+  const seen = new Set(order);
+  for (let fi = 0; fi < frameCount; fi++) if (!seen.has(fi)) order.push(fi);
+  return order;
+}
+
+/** The frames that may fetch now: the first `limit` of `order` with tiles outstanding. */
+export function planFetchWindow(order: number[], pending: (fi: number) => number, limit: number): Set<number> {
+  const released = new Set<number>();
+  for (const fi of order) {
+    if (released.size >= limit) break;
+    if (pending(fi) > 0) released.add(fi);
+  }
+  return released;
+}
+
 /**
  * After the frame at order[failedIdx] fails: the order index to try next, or
  * -1 to stop. A failed past frame means the older ones are past the archive
@@ -98,6 +138,27 @@ export function pickRainViewerFrames<T extends { time: number }>(
 }
 
 /**
+ * Whether a RainViewer listing needs a loop rebuild: a skipped slot entered
+ * or left the window, which shifting (one in, one out) can't follow. Frames
+ * the list no longer reaches back to are not a gap: at a stride over 10 min
+ * the 120-min list holds the window's oldest slot only on every other
+ * publication, and the loop still has that frame.
+ */
+export function rainViewerNeedsRebuild(
+  heldCount: number, picked: { time: number }[], listStartSec: number, pastMin: number, strideMin: number,
+): boolean {
+  if (picked.length >= heldCount) return picked.length > heldCount;
+  const newest = picked[picked.length - 1]?.time;
+  if (newest === undefined) return true;
+  const strideSec = Math.max(600, Math.round(strideMin * 60));
+  let beforeList = 0;
+  for (let t = newest; newest - t <= pastMin * 60 + 60; t -= strideSec) {
+    if (t < listStartSec - 60) beforeList++;
+  }
+  return picked.length + beforeList < heldCount;
+}
+
+/**
  * "15 minutes ago", "1:00 hours ago", "1:20 hours ago", "in 25 minutes" for
  * a frame `deltaMs` from now (negative = past). Uses Intl.RelativeTimeFormat,
  * as HA does for its own relative times (its frontend has no "ago" string
@@ -121,6 +182,22 @@ export function relativeTimeText(deltaMs: number, locale: string): string {
 }
 
 /**
+ * The translate an element's computed transform applies now, in px (an
+ * animated value mid-transition, unlike style.transform). {0, 0} for none,
+ * or where the browser can't parse it.
+ */
+export function layerTranslate(el: Element): { x: number; y: number } {
+  try {
+    const t = getComputedStyle(el).transform;
+    if (!t || t === 'none' || typeof DOMMatrixReadOnly === 'undefined') return { x: 0, y: 0 };
+    const m = new DOMMatrixReadOnly(t);
+    return { x: m.m41, y: m.m42 };
+  } catch {
+    return { x: 0, y: 0 };
+  }
+}
+
+/**
  * Insert `v` into `arr` (assumed already sorted ascending) at its sorted
  * position, mutating `arr` in place. Returns the insertion index. Pure
  * function — factored out so it's unit-testable without standing up a
@@ -136,6 +213,13 @@ export function insertSorted(arr: number[], v: number): number {
   }
   arr.splice(lo, 0, v);
   return lo;
+}
+
+/** True when two motion snapshots hold the same pixels (_dedupFrames). */
+function sameSnapshot(a: Float32Array | null | undefined, b: Float32Array | null | undefined): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 export interface RadarTileSize { size: 512 | 1024 | 2048; zoomOffset: number }
@@ -200,6 +284,8 @@ const NOAA_LEGACY_LAG_MS = 15 * 60 * 1000;
 
 const DWD_WMS_URL = 'https://maps.dwd.de/geoserver/dwd/wms';
 const DWD_WMS_LAYER_DEFAULT = 'Niederschlagsradar';
+
+const LK_FALLBACK_INFO = '[weather-radar-card] LK worker unavailable; motion compensation will run on the main thread.';
 
 // Dedicated Leaflet pane for the radar tile layers. Sits between the
 // basemap (tilePane = 200) and the wind-flow canvas (wrcWindFlow = 250).
@@ -477,13 +563,16 @@ export class RadarPlayer {
   private _dwdDimRgba: [number, number, number, number] | null = null;
   private _dwdOutlineRgba: [number, number, number, number] | null = null;
 
-  private _radarImage: (FetchTileLayer | FetchWmsTileLayer)[] = [];
+  // undefined: a frame not attempted yet, or one that failed (_dropFailedLayer).
+  private _radarImage: (FetchTileLayer | FetchWmsTileLayer | undefined)[] = [];
   // Date + time stored as separate parts so the bottom row can hide the
   // date half via CSS on narrow cards (container query in card styles).
   private _radarTime: { date: string; time: string }[] = [];
   private _radarPaths: RadarFrame[] = [];
   private _nowFrameIndex = -1;
   private _loadedSlots: number[] = [];
+  // A fetch-window plan is queued for the next microtask (see _queueFetchWindow).
+  private _fetchWindowQueued = false;
   private _frameStatuses: FrameStatus[] = [];
   private _radarReady = false;
   private _frameGeneration = 0;
@@ -522,6 +611,8 @@ export class RadarPlayer {
   private _requestedFrameCount = 5;
   // Frames the source's listing gave the last init (before motion-comp dedup).
   private _listedFrameCount = 0;
+  // Oldest frame time in the last RainViewer listing (epoch s).
+  private _rainViewerListStart = 0;
   private _doRadarUpdate = false;
   // Trailing debounce for the post-view-change refresh work
   // (motion-comp resnapshot + coverage-clip rebuild). Tracked-marker
@@ -594,11 +685,13 @@ export class RadarPlayer {
   // (prev1 from earlier ticks) trust their own delayed-fade-out setup
   // from when they were the prev1 — we don't touch them again here.
   private _prev1Slot = -1;
+  // Pending visibility:hidden per frame container, armed when its fade-out starts.
+  private _hideTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
 
   // Web worker timer (used only for the periodic 5-min radar update)
   private _worker: Worker | null = null;
   private _workerBlobUrl: string | null = null;
-  private _workerCallbacks = new Map<number, () => void>();
+  private _workerCallbacks = new Map<number, { cb: () => void; due: number }>();
   private _workerNextId = 0;
 
   // Rate-limit state
@@ -751,6 +844,14 @@ export class RadarPlayer {
   // in the constructor because motion_compensation is off by default
   // and we don't want every player to spawn a worker it never uses.
   private _ensureLkClient(): void {
+    if (this._lkClient?.failed) {
+      // A blocked worker can also fail after construction (Chrome reports
+      // CSP worker-src as an async 'error'), and then never answers.
+      this._lkClient.dispose();
+      this._lkClient = null;
+      console.info(LK_FALLBACK_INFO);
+      return;
+    }
     if (this._lkClient || this._lkWorkerInitTried) return;
     this._lkWorkerInitTried = true;
     const created = createLkWorker();
@@ -761,9 +862,7 @@ export class RadarPlayer {
       // synchronous LK on the main thread. Logged once so a user
       // troubleshooting performance reports under a strict CSP has a
       // breadcrumb.
-      console.info(
-        '[weather-radar-card] LK worker unavailable; motion compensation will run on the main thread.',
-      );
+      console.info(LK_FALLBACK_INFO);
     }
   }
 
@@ -863,11 +962,14 @@ export class RadarPlayer {
     const mapRect = this._map.getContainer().getBoundingClientRect();
     const xScale = grid / mapSize.x;
     const yScale = grid / mapSize.y;
+    // Playback leaves a layer at its last slide's translate (mid-transition
+    // too) and the tile rects include it; LK needs where the frame's data is.
+    const slide = layerTranslate(container);
     for (const tileImg of Array.from(tiles)) {
       if (!tileImg.complete || tileImg.naturalWidth === 0) continue;
       const tr = tileImg.getBoundingClientRect();
-      const sx = (tr.left - mapRect.left) * xScale;
-      const sy = (tr.top - mapRect.top) * yScale;
+      const sx = (tr.left - slide.x - mapRect.left) * xScale;
+      const sy = (tr.top - slide.y - mapRect.top) * yScale;
       const sw = tr.width * xScale;
       const sh = tr.height * yScale;
       try {
@@ -935,15 +1037,29 @@ export class RadarPlayer {
     const mapSize = this._map.getSize();
     const xScale = mapSize.x / grid;
     const yScale = mapSize.y / grid;
+    const layer = this._radarImage[fi];
+    const prevLayer = this._radarImage[fi - 1];
+    // The reply's index: a shift or dedup that ran meanwhile renumbers the
+    // frames, so find the pair by its layers (-1: the pair is gone).
+    const pairIndex = (): number => {
+      const at = layer ? this._radarImage.indexOf(layer) : -1;
+      return at > 0 && this._radarImage[at - 1] === prevLayer ? at : -1;
+    };
     void estimateMotionLk(i0, i1, grid, grid, {}, this._lkClient).then((result) => {
       // Viewport changed since the call started — result is stale,
       // _invalidateSnapshots already cleared _frameMotion.
       if (genAtStart !== this._snapshotGen) return;
-      if (result.confidence < RadarPlayer.CONFIDENCE_FLOOR) {
-        this._frameMotion[fi] = null;
+      const at = pairIndex();
+      if (at < 0) return;
+      // A shift of a whole grid leaves the two snapshots no overlap, so it is
+      // not a measurement: LK past ~10 px returns such vectors with high
+      // confidence, and the slide threw the frame across the map.
+      const plausible = Math.abs(result.dx) < grid && Math.abs(result.dy) < grid;
+      if (result.confidence < RadarPlayer.CONFIDENCE_FLOOR || !plausible) {
+        this._frameMotion[at] = null;
         return;
       }
-      this._frameMotion[fi] = {
+      this._frameMotion[at] = {
         dx: result.dx * xScale,
         dy: result.dy * yScale,
         confidence: result.confidence,
@@ -952,7 +1068,8 @@ export class RadarPlayer {
       // Worker error or termination — quietly drop. The next
       // _onLayerLoaded / _resnapshotAll cycle will retry.
       if (genAtStart !== this._snapshotGen) return;
-      this._frameMotion[fi] = null;
+      const at = pairIndex();
+      if (at >= 0) this._frameMotion[at] = null;
     });
   }
 
@@ -1059,12 +1176,9 @@ export class RadarPlayer {
   // and for any grid-computed source landing on a stale slot).
   //
   // Detection criterion: consecutive snapshots with identical nz
-  // (non-zero pixel count). When two snapshots have the same number
-  // of rain pixels AND we know they were captured from the same
-  // tile set (loaded sequentially in _initRadar), they're byte-
-  // identical with overwhelming probability — coincidental nz
-  // collision on random different frames is theoretically possible
-  // but vanishingly rare for any real radar scene.
+  // (non-zero pixel count) AND identical pixels. The nz test alone is
+  // cheap but not enough: when rain covers the whole snapshot every
+  // frame has nz = 96×96, and the loop collapsed to its oldest frame.
   //
   // After compaction, _loadedSlots becomes the trivial [0, 1, …,
   // n-1] (slot index == fi), every per-frame array is sized to the
@@ -1090,7 +1204,7 @@ export class RadarPlayer {
       const fi = this._loadedSlots[i];
       const nz = this._frameSnapshotNz[fi];
       const prevNz = this._frameSnapshotNz[lastKeptFi];
-      if (nz > 0 && nz === prevNz) {
+      if (nz > 0 && nz === prevNz && sameSnapshot(this._frameSnapshot[fi], this._frameSnapshot[lastKeptFi])) {
         isDuplicate[i] = true;
       } else {
         lastKeptFi = fi;
@@ -1456,6 +1570,9 @@ export class RadarPlayer {
     this.run = !this.run;
     if (this.run) this._startLoop();
     else this._stopLoop();
+    // The toolbar flips its own icon only on its button; double_tap_action
+    // toggles from here.
+    this.toolbar?.setPlaying(this.run);
   }
 
   get frameCount(): number { return this._configFrameCount; }
@@ -1528,11 +1645,41 @@ export class RadarPlayer {
       if (!el) continue;
       el.style.transition = 'none';
       el.style.opacity = (s === current) ? '1' : '0';
+      if (s === current) this._frameVisible(el); else this._frameHidden(el);
       // Reset any mid-transition translate so a paused-then-resumed
       // playback doesn't show the current frame still offset by the
       // outgoing slide of the previous tick.
       el.style.transform = '';
     }
+  }
+
+  // Frames outside the current crossfade are `visibility: hidden`, not only
+  // opacity 0: WebKit paints a layer at opacity 0 into a device-resolution
+  // buffer all the same (37.75 MB per frame container on a 3x phone, Safari
+  // Web Inspector Layers panel, 2026-10-16: 13 frames was the page's memory
+  // limit), but paints nothing for a hidden subtree. Layout stays, so the
+  // tiles still measure for the motion snapshots, and the tiles follow:
+  // Leaflet's .leaflet-tile-loaded is `visibility: inherit`.
+  private _frameVisible(el: HTMLElement): void {
+    const t = this._hideTimers.get(el);
+    if (t) { clearTimeout(t); this._hideTimers.delete(el); }
+    el.style.visibility = '';
+  }
+
+  /** Hide now, or once a fade-out of `afterMs` has finished. */
+  private _frameHidden(el: HTMLElement, afterMs = 0): void {
+    const t = this._hideTimers.get(el);
+    if (t) { clearTimeout(t); this._hideTimers.delete(el); }
+    if (afterMs <= 0) { el.style.visibility = 'hidden'; return; }
+    this._hideTimers.set(el, setTimeout(() => {
+      this._hideTimers.delete(el);
+      el.style.visibility = 'hidden';
+    }, afterMs));
+  }
+
+  private _clearHideTimers(): void {
+    for (const t of this._hideTimers.values()) clearTimeout(t);
+    this._hideTimers.clear();
   }
 
   /** Start (or restart) the frame loop, optionally jumping to a specific slot. */
@@ -1588,6 +1735,8 @@ export class RadarPlayer {
   private _showSlot(slot: number, opts?: { snap?: boolean }): void {
     const n = this._loadedSlots.length;
     if (n === 0 || slot < 0 || slot >= n) return;
+    // The shown frame heads the fetch window.
+    this._queueFetchWindow();
     // Recompute each tick so the marker doesn't drift between 5-min refreshes.
     this._computeNowFrameIndex();
     this._applyNowMarker();
@@ -1679,6 +1828,7 @@ export class RadarPlayer {
 
       if (s === slot) {
         // New: snap to 0 at the new highest z, then fade (or snap) in.
+        this._frameVisible(el);
         el.style.zIndex = String(newZ);
         el.style.transition = 'none';
         el.style.opacity = '0';
@@ -1714,12 +1864,15 @@ export class RadarPlayer {
         el.style.transition = `opacity ${fade}ms linear ${fadeOutDelay}ms${motionTransition}`;
         el.style.opacity = '0';
         if (motion) el.style.transform = `translate(${motion.dx}px, ${motion.dy}px)`;
+        // Out of the compositor once its fade-out has finished.
+        this._frameHidden(el, fadeOutDelay + fade + 50);
       } else if (!useChain) {
         // Snap mode / fade=0: every non-current slot snaps to 0
         // immediately so we never see two layers at opacity 1.
         el.style.transition = 'none';
         el.style.opacity = '0';
         el.style.transform = '';
+        this._frameHidden(el);
       }
       // useChain && older: don't touch. Their delayed fade-out from a
       // previous tick is either still finishing or already at 0.
@@ -1777,7 +1930,11 @@ export class RadarPlayer {
   private _paintSegment(fi: number, isCurrent: boolean): void {
     const seg = this._segEls[fi];
     if (!seg) return;
-    seg.style.backgroundColor = this._segColor(this._frameStatuses[fi] ?? 'empty', isCurrent);
+    // A frame whose list entry loaded but whose tiles are still outstanding
+    // (view change, fetch window) reads as loading, as the spinner does.
+    const status = this._frameStatuses[fi] ?? 'empty';
+    const tilesOutstanding = (this._radarImage[fi]?._tilePending ?? 0) > 0;
+    seg.style.backgroundColor = this._segColor(status === 'loaded' && tilesOutstanding ? 'loading' : status, isCurrent);
     const forecast = this._nowFrameIndex >= 0 && fi > this._nowFrameIndex;
     const stripe = this._barIsDark() ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.22)';
     seg.style.backgroundImage = forecast
@@ -1824,6 +1981,47 @@ export class RadarPlayer {
     const tileLoading = this._radarImage.some(l => (l?._tilePending ?? 0) > 0);
     const isLoading = enabled && (segLoading || tileLoading);
     spinner.style.display = isLoading ? '' : 'none';
+  }
+
+  private _repaintSegmentFor(layer: FetchTileLayer | FetchWmsTileLayer): void {
+    const fi = this._radarImage.indexOf(layer);
+    if (fi >= 0) this._paintSegment(fi, fi === this._lastHighlightFi);
+  }
+
+  // A view change creates tiles for every layer in one synchronous burst,
+  // each layer firing 'loading': plan once after the burst, not per layer.
+  private _queueFetchWindow(): void {
+    if (this._fetchWindowQueued) return;
+    this._fetchWindowQueued = true;
+    queueMicrotask(() => {
+      this._fetchWindowQueued = false;
+      this._applyFetchWindow();
+      // Leaflet fires 'loading' before it creates the tiles, so the paint on
+      // that event saw nothing outstanding yet; paint again after the burst.
+      this._repaintSegments();
+      this._updateLoadingSpinner();
+    });
+  }
+
+  private _repaintSegments(): void {
+    for (let fi = 0; fi < this._segEls.length; fi++) this._paintSegment(fi, fi === this._lastHighlightFi);
+  }
+
+  // Lets FRAME_FETCH_WINDOW frames fetch, in playback order from the shown
+  // slot; every other layer holds its new tiles until a 'load' or a slot
+  // change re-plans. A held layer costs nothing while it has no tiles
+  // outstanding, so complete frames are held too and wait their turn after
+  // the next view change.
+  private _applyFetchWindow(): void {
+    const layers = this._radarImage;
+    if (!layers.length) return;
+    const order = fetchWindowOrder(this._loadedSlots, this._currentSlot, layers.length);
+    const released = planFetchWindow(order, (fi) => layers[fi]?._tilePending ?? 0, FRAME_FETCH_WINDOW);
+    layers.forEach((layer, fi) => {
+      if (!layer) return;
+      if (released.has(fi)) layer.releaseTiles?.();
+      else layer.holdTiles?.();
+    });
   }
 
   /** Pick the frame whose timestamp is closest to wall-clock now. */
@@ -2049,6 +2247,14 @@ export class RadarPlayer {
     if (el) el.style.zIndex = String(z);
   }
 
+  // A failed frame never joins the loop and nothing retries it, but while
+  // attached it fetches tiles on every pan. A forecast refresh can still
+  // fill the empty slot (_swapStagedFrames).
+  private _dropFailedLayer(fi: number): void {
+    this._radarImage[fi]?.remove();
+    this._radarImage[fi] = undefined;
+  }
+
   private _clearLayers(): void {
     this._frameGeneration++;
     this._radarReady = false;
@@ -2062,6 +2268,7 @@ export class RadarPlayer {
     // that no longer exist after a teardown + re-init.
     this._prev1Slot = -1;
     this._zCounter = 0;
+    this._clearHideTimers();
     // Reset motion-compensation state too. _snapshotGen++ invalidates
     // any LK results still in flight from the previous frame set.
     this._snapshotGen++;
@@ -2150,9 +2357,9 @@ export class RadarPlayer {
     this._ensureDwdMaskPane();
     const isoTime = new Date(frame.time * 1000).toISOString().split('.')[0] + 'Z';
     const { size: tileSize, zoomOffset } = this._radarTileSize();
-    // Same TIME, tile grid and zoom pin as the anchor frame's own layer, so
-    // the URLs are identical and tile-cache shares one download between the
-    // two (#279) — the mask only needs a different pixel filter.
+    // Same TIME, interpolation, tile grid and zoom pin as the anchor frame's
+    // own layer, so the URLs are identical and tile-cache shares one download
+    // between the two (#279) — the mask only needs a different pixel filter.
     return new FetchWmsTileLayer(DWD_WMS_URL, {
       layers: layerName,
       format: 'image/png',
@@ -2160,9 +2367,11 @@ export class RadarPlayer {
       version: '1.3.0',
       TIME: isoTime,
       ...this._dwdRunParam(frame),
+      ...this._dwdInterpParam(),
       tileSize,
       zoomOffset,
       maxNativeZoom: 8 + Math.max(0, -zoomOffset),
+      ...ZOOM_GESTURE_OPTIONS,
       rateLimiter: this._dwdLimiter,
       on429: () => this._onRateLimited(),
       on5xx: () => this._onServerError(),
@@ -2397,10 +2606,10 @@ export class RadarPlayer {
     this._pathsAbortCtrl = ctrl;
     let data: { host?: string; radar?: { past?: unknown[] } };
     try {
-      const res = await fetch('https://api.rainviewer.com/public/weather-maps.json', {
-        signal: ctrl.signal,
+      data = await withTimeout(LISTING_TIMEOUT_MS, ctrl.signal, async (signal) => {
+        const res = await fetch('https://api.rainviewer.com/public/weather-maps.json', { signal });
+        return res.json();
       });
-      data = await res.json();
     } catch (err) {
       // Aborted by a fresh _fetchPaths or by teardown — the caller's
       // generation check will discard the empty result we return below.
@@ -2414,6 +2623,7 @@ export class RadarPlayer {
       time: f.time, path: f.path, host,
     }));
     if (past.length === 0) return [];
+    this._rainViewerListStart = past[0].time;
     const phase = this._stridePhase('RainViewer', past[past.length - 1].time, range);
     return pickRainViewerFrames(past, range.pastMin, range.strideMin, phase);
   }
@@ -2436,6 +2646,15 @@ export class RadarPlayer {
   // unrecognised options into query params, so this lands on the GetMap URL.
   private _dwdRunParam(frame: RadarFrame): { DIM_REFERENCE_TIME?: string } {
     return frame.run !== undefined ? { DIM_REFERENCE_TIME: dwdIsoTime(frame.run) } : {};
+  }
+
+  // GeoServer vendor param (#326). bilinear resamples DWD's 1 km values
+  // before its colour map, so the palette (and the pixel filter) hold.
+  // Unset sends nothing, so URLs and cached tiles stay as before. Not
+  // offered: bicubic overshoots (false rain at the coverage edge), and a
+  // bare 'nearest' gets a ServiceException.
+  private _dwdInterpParam(): { interpolations?: string } {
+    return this._cfg.dwd_interpolation === 'bilinear' ? { interpolations: 'bilinear' } : {};
   }
 
   // forecast_refresh_minutes in effect: 0 unless DWD with a forecast window.
@@ -2490,7 +2709,13 @@ export class RadarPlayer {
     // snapshot whose vector then drags the motion for that frame off
     // course — visible as a jittery patch midway through the loop.
     const wireSpinner = (l: FetchTileLayer | FetchWmsTileLayer): typeof l => {
-      l.on('loading load', () => this._updateLoadingSpinner());
+      // 'tileunload' too: a layer whose outstanding tiles all leave the map
+      // (pan away) is complete without a 'load', and the window must move on.
+      l.on('loading load tileunload', () => {
+        this._updateLoadingSpinner();
+        this._repaintSegmentFor(l);
+        this._queueFetchWindow();
+      });
       l.on('load', () => this._onLayerLoaded(l));
       return l;
     };
@@ -2517,6 +2742,7 @@ export class RadarPlayer {
         // rendering is smooth past zoom 7 anyway; cap to keep the
         // upscaled appearance consistent with the legacy behaviour.
         maxNativeZoom: 7 + Math.max(0, -zoomOffset),
+        ...ZOOM_GESTURE_OPTIONS,
         rateLimiter: this._noaaLimiter,
         on429: () => this._onRateLimited(),
         on5xx: () => this._onServerError(),
@@ -2540,12 +2766,14 @@ export class RadarPlayer {
         version: '1.3.0',
         TIME: isoTime,
         ...this._dwdRunParam(frame),
+        ...this._dwdInterpParam(),
         // DWD's geoserver renders any size; bigger tiles cut request
         // count proportionally — see _radarTileSize() for the picker.
         tileSize,
         zoomOffset,
         // DWD's 1 km grid supports zoom 8; bump for larger tiles.
         maxNativeZoom: 8 + Math.max(0, -zoomOffset),
+        ...ZOOM_GESTURE_OPTIONS,
         rateLimiter: this._dwdLimiter,
         on429: () => this._onRateLimited(),
         on5xx: () => this._onServerError(),
@@ -2570,6 +2798,7 @@ export class RadarPlayer {
       // RainViewer publishes tiles up to native zoom 7 at 256px;
       // higher native zoom available with bigger tiles.
       maxNativeZoom: 7 + Math.max(0, -zoomOffset),
+      ...ZOOM_GESTURE_OPTIONS,
       rateLimiter: this._rainviewerLimiter,
       on429: () => this._onRateLimited(),
       on5xx: () => this._onServerError(),
@@ -2761,7 +2990,7 @@ export class RadarPlayer {
       layer.addTo(this._map);
       this._setLayerZ(layer, fi + 1);
       const el = (layer as any).getContainer?.() as HTMLElement | undefined;
-      if (el) el.style.opacity = '0';
+      if (el) { el.style.opacity = '0'; el.style.visibility = 'hidden'; }
 
       const status = await layerSettled(layer);
       if (myGen !== this._frameGeneration) return;
@@ -2807,7 +3036,9 @@ export class RadarPlayer {
           // visible (always on), so the preview has its coverage
           // overlay from the start.
           firstShown = true;
-          if (el) el.style.opacity = '1';
+          // Visible too: hidden above, and with one loaded frame no
+          // _startLoop ever runs to show it.
+          if (el) { el.style.opacity = '1'; this._frameVisible(el); }
           this._setTimestamp(fi);
           this._highlightSegment(fi);
           // Track this as the visible slot so _settleVisibility (called
@@ -2822,6 +3053,7 @@ export class RadarPlayer {
 
         this._afterFrameInserted(insertPos);
       } else {
+        this._dropFailedLayer(fi);
         const next = resumeIndexAfterFailure(order, idx);
         this._markRemainingFailed(order, idx + 1, next === -1 ? order.length : next);
         if (next === -1) break;
@@ -2851,9 +3083,14 @@ export class RadarPlayer {
       if (myGen !== this._frameGeneration) return;
       const wasRunning = this.run && this._radarReady && this._loadedSlots.length >= 2;
       if (wasRunning) this._stopLoop();
+      const countBefore = this._loadedSlots.length;
       this._dedupFrames();
       if (wasRunning && this._loadedSlots.length >= 2) {
         this._startLoop(this._currentSlot);
+      } else if (this._loadedSlots.length < countBefore) {
+        // Paused, or down to one frame: the frame on screen may have been
+        // dropped, and its stand-in is still hidden.
+        this._showSlot(this._currentSlot, { snap: true });
       }
     }
 
@@ -3001,8 +3238,10 @@ export class RadarPlayer {
     // RainViewer: a skipped 10-min slot entering or leaving the window
     // changes how many frames it holds, which shifting (one in, one out)
     // can't follow. Rebuild — the tiles come from the cache.
+    const { pastMin, strideMin } = getEffectiveTimeRange(this._cfg);
     const rainViewerRecount = (this._cfg.data_source ?? 'RainViewer') === 'RainViewer'
-      && this._listedFrameCount > 0 && pastFrames.length !== this._listedFrameCount;
+      && this._listedFrameCount > 0
+      && rainViewerNeedsRebuild(this._listedFrameCount, pastFrames, this._rainViewerListStart, pastMin, strideMin);
     if ((!this._noaaLegacyMode && this._radarPaths.some((f) => f.legacy)) || rainViewerRecount) {
       this._doRadarUpdate = false;
       this._clearLayers();
@@ -3093,6 +3332,7 @@ export class RadarPlayer {
     // by one — track that so _currentSlot/_prev1Slot keep pointing at
     // the same frame instead of going stale.
     const droppedOldest = this._loadedSlots[0] === 0;
+    const shownDropped = droppedOldest && this._prev1Slot === 0;
     // _radarPaths shifts alongside the others because nearestFrameIndex() reads .time off it.
     for (let i = 0; i < frameCount - 1; i++) {
       this._radarImage[i] = this._radarImage[i + 1];
@@ -3129,6 +3369,17 @@ export class RadarPlayer {
     for (let i = 0; i < frameCount - 1; i++) this._paintSegment(i, i === this._lastHighlightFi);
     this._setSegment(frameCount - 1, 'loading');
 
+    // With no loaded frame left, the new one may fill in as its tiles arrive.
+    if (this._loadedSlots.length > 0) {
+      // Hidden like init's frames: under the stopped loop its tiles showed as
+      // they arrived, and stayed there if it failed.
+      const el = (newLayer as any).getContainer?.() as HTMLElement | undefined;
+      if (el) { el.style.opacity = '0'; el.style.visibility = 'hidden'; }
+      // The frame on screen was the one dropped: show the next one, not a
+      // blank map until the new frame loads.
+      if (shownDropped) this._showSlot(this._currentSlot, { snap: true });
+    }
+
     newLayer.once('load', () => {
       if (myGen !== this._frameGeneration) return; // torn down before tiles finished
       // A later shift in the same update may have moved it down a slot.
@@ -3156,6 +3407,8 @@ export class RadarPlayer {
             this._computeMotionForFrame(fi);
           });
         }
+      } else {
+        this._dropFailedLayer(fi);
       }
       // Restart loop at newest frame so new data shows immediately.
       // Guarded on length: if the newest frame has now failed to load
@@ -3196,7 +3449,7 @@ export class RadarPlayer {
       const layer = this._createLayer(frame) as FetchWmsTileLayer;
       layer.addTo(this._map!);
       const el = (layer as any).getContainer?.() as HTMLElement | undefined;
-      if (el) el.style.opacity = '0';
+      if (el) { el.style.opacity = '0'; el.style.visibility = 'hidden'; }
       return { frame, layer };
     });
     this._forecastLoading = staged.map((s) => s.layer);
@@ -3247,6 +3500,7 @@ export class RadarPlayer {
         newEl.style.zIndex = oldEl?.style.zIndex ?? '';
         newEl.style.transform = oldEl?.style.transform ?? '';
         newEl.style.opacity = oldEl?.style.opacity ?? '0';
+        if (newEl.style.opacity === '0') this._frameHidden(newEl); else this._frameVisible(newEl);
       }
       this._radarImage[fi] = staged.layer;
       this._radarPaths[fi] = staged.frame;
@@ -3298,14 +3552,27 @@ export class RadarPlayer {
     try {
       this._workerBlobUrl = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
       this._worker = new Worker(this._workerBlobUrl);
-      this._worker.onmessage = (e) => {
-        const cb = this._workerCallbacks.get(e.data.id);
-        if (cb) { this._workerCallbacks.delete(e.data.id); cb(); }
+      this._worker.onmessage = (e) => this._fireWorkerTimer(e.data.id);
+      // Chrome reports a CSP-blocked blob: worker as an async 'error', not a
+      // throw; its armed timers would never fire, so move them to setTimeout.
+      this._worker.onerror = () => {
+        this._worker?.terminate();
+        this._worker = null;
+        if (this._workerBlobUrl) { URL.revokeObjectURL(this._workerBlobUrl); this._workerBlobUrl = null; }
+        for (const [id, { due }] of this._workerCallbacks) {
+          setTimeout(() => this._fireWorkerTimer(id), Math.max(0, due - Date.now()));
+        }
       };
     } catch {
       if (this._workerBlobUrl) { URL.revokeObjectURL(this._workerBlobUrl); this._workerBlobUrl = null; }
       this._worker = null;
     }
+  }
+
+  // Cancelled timers are no longer in the map, so this is a no-op for them.
+  private _fireWorkerTimer(id: number): void {
+    const entry = this._workerCallbacks.get(id);
+    if (entry) { this._workerCallbacks.delete(id); entry.cb(); }
   }
 
   /**
@@ -3320,7 +3587,7 @@ export class RadarPlayer {
       return () => clearTimeout(handle);
     }
     const id = this._workerNextId++;
-    this._workerCallbacks.set(id, cb);
+    this._workerCallbacks.set(id, { cb, due: Date.now() + delay });
     this._worker.postMessage({ type: 'setTimeout', id, delay });
     return () => {
       this._workerCallbacks.delete(id);

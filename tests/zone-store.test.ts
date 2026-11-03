@@ -5,9 +5,11 @@ import {
   encodeZone,
   decodeZone,
   readZone,
+  readZoneEntry,
   writeZone,
   sweepZones,
   TTL_MS,
+  ZONE_FORMAT,
   MAX_ENTRIES,
   type ZoneKV,
   type StoredZone,
@@ -95,6 +97,20 @@ describe('readZone / writeZone', () => {
   it('round-trips write → read', async () => {
     await writeZone(kv, FC, sampleGeom, Date.now());
     expect(await readZone(kv, FC, Date.now())).toEqual(sampleGeom);
+  });
+
+  it('tags new records with ZONE_FORMAT; readZoneEntry reports them current with their write time', async () => {
+    await writeZone(kv, FC, sampleGeom, 1234);
+    expect([...kv.map.values()][0].v).toBe(ZONE_FORMAT);
+    expect(await readZoneEntry(kv, FC, 5000)).toEqual({ geom: sampleGeom, ts: 1234, current: true });
+  });
+
+  it('a record without the format tag (3.x, 4.0 alphas) reads as not current', async () => {
+    const old = await encodeZone(sampleGeom, 1234);
+    delete old.v;
+    kv.map.set(zoneKeyFromUrl(FC), old);
+    expect(await readZoneEntry(kv, FC, 5000)).toEqual({ geom: sampleGeom, ts: 1234, current: false });
+    expect(await readZone(kv, FC, 5000)).toEqual(sampleGeom);
   });
 
   it('stores under the short type/id key', async () => {

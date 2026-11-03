@@ -15,6 +15,7 @@ vi.mock('leaflet', () => {
 
 import { wireAbortLifecycle, createFetchTile, type TileWithAbort } from '../src/fetch-tile-layer';
 import { RateLimiter } from '../src/rate-limiter';
+import { TILE_TIMEOUT_MS } from '../src/fetch-timeout';
 
 // Regression guards for the AbortController pattern the fetcher code
 // relies on. The actual layer integration (FetchTileLayer, WildfireLayer,
@@ -350,8 +351,11 @@ describe('createFetchTile (fetch-tile-layer)', () => {
     expect(fetchCalls.length).toBe(1);
     expect(fetchCalls[0].signal).toBeInstanceOf(AbortSignal);
     expect(tile.__wrcAbort).toBeInstanceOf(AbortController);
-    // Both should reference the same underlying controller.
-    expect(fetchCalls[0].signal).toBe(tile.__wrcAbort!.signal);
+    // fetch gets a signal linked to the tile's controller (it also carries
+    // the time limit): aborting the tile aborts the request.
+    expect(fetchCalls[0].signal!.aborted).toBe(false);
+    tile.__wrcAbort!.abort();
+    expect(fetchCalls[0].signal!.aborted).toBe(true);
     expect(layer._tilePending).toBe(1);
   });
 
@@ -662,6 +666,108 @@ describe('createFetchTile (fetch-tile-layer)', () => {
       expect(done).toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(60_000);
       expect(fetchCalls.length).toBe(3);            // and stays given up
+    });
+  });
+
+  // ── A request that never answers (2026-10-28) ─────────────────────────
+  //
+  // A dropped TCP connect to one of RainViewer's IPv4 addresses left frames
+  // blank until the OS gave up on the connection. Each attempt now stops at
+  // TILE_TIMEOUT_MS and takes the normal retry.
+
+  describe('tile time limit', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    const png = (): Blob => new Blob(['png'], { type: 'image/png' });
+
+    it('a hung request is aborted at the limit and retried, not treated as a 429', async () => {
+      const layer = makeFetchLayerStub();
+      const on429 = vi.fn();
+      layer.options = { maxRetries: 3, retryDelay: 500, rateLimiter: new RateLimiter(500), on429 };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+      await vi.advanceTimersByTimeAsync(TILE_TIMEOUT_MS - 1);
+      expect(fetchCalls[0].signal!.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchCalls[0].signal!.aborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(fetchCalls.length).toBe(2);
+      expect(on429).not.toHaveBeenCalled();
+      fetchCalls[1].resolve(png());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(layer._tileLoaded).toBe(1);
+      expect(layer._tileFailed).toBe(0);
+      expect(layer._tilePending).toBe(0);
+      expect(done).toHaveBeenCalledOnce();
+    });
+
+    it('a tile that answers just before the limit loads, and the limit does not fire later', async () => {
+      const layer = makeFetchLayerStub();
+      layer.options = { maxRetries: 3, retryDelay: 0 };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+      await vi.advanceTimersByTimeAsync(TILE_TIMEOUT_MS - 1000);
+      fetchCalls[0].resolve(png());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(layer._tileLoaded).toBe(1);
+      await vi.advanceTimersByTimeAsync(2 * TILE_TIMEOUT_MS);
+      expect(fetchCalls.length).toBe(1);
+      expect(fetchCalls[0].signal!.aborted).toBe(false);
+      expect(layer._tileFailed).toBe(0);
+      expect(done).toHaveBeenCalledOnce();
+    });
+
+    it('the browser\'s own error on a connection that timed out is not read as a 429', async () => {
+      // Live in Chrome on macOS: attempts 1 and 2 hit the limit, then Chrome
+      // failed the same hung connect with a statusless TypeError at 75 s.
+      const layer = makeFetchLayerStub();
+      const on429 = vi.fn();
+      layer.options = { maxRetries: 3, retryDelay: 0, rateLimiter: new RateLimiter(500), on429 };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+      for (let i = 0; i < 2; i++) await vi.advanceTimersByTimeAsync(TILE_TIMEOUT_MS + 10);
+      expect(fetchCalls.length).toBe(3);
+      fetchCalls[2].reject(new TypeError('Failed to fetch'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(on429).not.toHaveBeenCalled();
+      expect(layer._tileFailed).toBe(1);
+      expect(layer._tilePending).toBe(0);
+      expect(done).toHaveBeenCalledOnce();
+    });
+
+    it('a tile that always hangs fails after maxRetries attempts', async () => {
+      const layer = makeFetchLayerStub();
+      layer.options = { maxRetries: 3, retryDelay: 0 };
+      const done = vi.fn();
+      createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done);
+      for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(TILE_TIMEOUT_MS + 10);
+      expect(fetchCalls.length).toBe(3);
+      expect(layer._tileFailed).toBe(1);
+      expect(layer._tilePending).toBe(0);
+      expect(done).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(2 * TILE_TIMEOUT_MS);
+      expect(fetchCalls.length).toBe(3);
+    });
+
+    it('unloading a tile with a hung request stops it: no retry, no failure at the limit', async () => {
+      const listeners = new Map<string, (e: { tile?: HTMLElement }) => void>();
+      const layer = {
+        ...makeFetchLayerStub(),
+        on: vi.fn((event: string, fn: (e: { tile?: HTMLElement }) => void) => { listeners.set(event, fn); }),
+      };
+      layer.options = { maxRetries: 3, retryDelay: 0 };
+      wireAbortLifecycle(layer as never);
+      const done = vi.fn();
+      const tile = createFetchTile.call(layer as never, { x: 0, y: 0, z: 0 } as never, done) as TileWithAbort;
+      await vi.advanceTimersByTimeAsync(1000);
+      listeners.get('tileunload')!({ tile });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(layer._tilePending).toBe(0);
+      await vi.advanceTimersByTimeAsync(2 * TILE_TIMEOUT_MS);
+      expect(fetchCalls.length).toBe(1);
+      expect(layer._tileFailed).toBe(0);
+      expect(done).not.toHaveBeenCalled();
     });
   });
 });

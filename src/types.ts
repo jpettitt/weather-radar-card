@@ -12,6 +12,16 @@ export interface Marker {
   mobile_only?: boolean;
 }
 
+// A view the re-centre button steps through. Follows `entity` while held,
+// else shows latitude/longitude.
+export interface ViewPreset {
+  name?: string;
+  entity?: string;
+  latitude?: number;
+  longitude?: number;
+  zoom?: number;
+}
+
 // Entity coordinate configuration for dynamic location from entity attributes
 export interface EntityCoordinate {
   entity: string;
@@ -27,6 +37,8 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   show_scale: boolean;
   show_playback: boolean;
   show_recenter: boolean;
+  /** Top-right buttons that show or hide each configured overlay. */
+  show_layer_toggles?: boolean;
   static_map: boolean;
   show_zoom: boolean;
   square_map: boolean;
@@ -147,6 +159,9 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   center_latitude?: CoordinateConfig;
   zoom_level?: number;
   markers?: Marker[];
+  presets?: ViewPreset[];
+  /** Idle minutes before a held stop returns to the tracked marker or Default; 0 = never. Default 5. */
+  preset_timeout?: number;
   cluster_markers?: boolean;
   // Legacy single-marker fields — read-only; used only by _migrateConfig()
   /** @deprecated use markers[] */  show_marker?: boolean;
@@ -162,15 +177,31 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   name?: string;
   map_style?: string;
   /**
+   * `map_style: MapTilesVector` only: one of Home Assistant's vector map
+   * styles — `default`, `colorful`, `natural`, `muted`, `gray` or `toner` —
+   * or `classic`, the card's own OpenStreetMap colours.
+   * Unset or unknown is `default`. Light or dark per `theme_mode`.
+   */
+  vector_style?: string;
+  /**
+   * `map_style: MapTilesVector` only: `above` (default) draws place names
+   * over the radar, in a second WebGL context; `below` (or `false`) under it.
+   */
+  vector_labels?: string | boolean;
+  /**
+   * `auto` (default), `light` or `dark`, as on HA's map card: forces the
+   * light or dark version of MapTilesVector, Auto and MapTiles (inverted).
+   * `auto` follows HA's dark mode, except MapTiles, which stays light.
+   */
+  theme_mode?: string;
+  /**
    * Free CARTO API key (no account needed — carto.com/basemaps/apikey),
    * appended as `?key=<value>` to CARTO basemap tile requests (the
    * Light/Dark/Voyager base + label tiles, and Satellite's label
-   * overlay). CARTO's anonymous access still serves tiles without one,
-   * just stamped with a visible "API key required" watermark. Leaving
-   * this unset preserves that (watermarked but working) default — never
-   * a hard error. No effect for `map_style: OSM`, `Grey`, `GreyDark` or
-   * `Custom`, none of which use CARTO tiles, nor for `MapTiles` unless it
-   * falls back to Light (Home Assistant before 2026.10).
+   * overlay). Without one, CARTO serves a blank "API key required" tile
+   * and the card shows a banner. No effect for `map_style: OSM`, `Grey`,
+   * `GreyDark` or `Custom`, none of which use CARTO tiles, nor for
+   * `MapTiles`, which falls back to OSM before Home Assistant 2026.10.
    */
   carto_api_key?: string;
   /**
@@ -196,6 +227,8 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   dwd_time_override?: string;
   /** DWD-only: WMS layer name override. Default Niederschlagsradar; auto-switches to Radar_wn-product_1x1km_ger when forecast_minutes > 0 (both carry the +2 h nowcast). */
   dwd_layer?: string;
+  /** DWD-only: `bilinear` has DWD's server smooth its 1 km grid before colouring it (#326). Default `nearest`. */
+  dwd_interpolation?: string;
   /** @deprecated since 3.5: use forecast_minutes (source-agnostic). Auto-migrated by migrateConfig. */
   dwd_forecast_hours?: number;
   /** Wind data source for the overlay grid. Defaults to 'dwd_aicon'
@@ -293,6 +326,8 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
     rows?: number | 'auto';
     columns?: number | 'full';
   };
+  /** Pre-2024.11 form of grid_options; HA still reads it when grid_options is absent. */
+  layout_options?: { grid_rows?: number | 'auto' };
 
   // ── Per-user viewer state (3.7+) ─────────────────────────────────────────
   // See docs/viewer-state-api.md. Dormant by default — no behaviour change
@@ -302,15 +337,17 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
    * Admin opt-in for per-user, per-card state (overlay visibility, playback
    * preferences, etc.) persisted via HA's frontend storage WebSocket API.
    * When false / unset, no identity is minted and no WS calls fire.
-   * When true, the card auto-mints `_layer_state_id` on the next setConfig.
+   * When true, the editor mints `_layer_state_id` (the card cannot save
+   * config); a card without a valid id stays inactive.
    */
   viewer_layer_control?: boolean;
 
   /**
-   * Auto-managed by the card. Stable identity used as the per-card storage
-   * key for viewer state. Minted automatically when `viewer_layer_control`
-   * is on; re-minted on dashboard-path mismatch or within-dashboard
-   * copy-paste collision. **Users should not edit this by hand.**
+   * Auto-managed by the editor. Stable identity used as the per-card storage
+   * key for viewer state. The editor mints it when `viewer_layer_control`
+   * turns on, and when it opens a card whose id is missing or belongs to
+   * another dashboard. A card with an invalid or colliding id (a copy on
+   * the same dashboard) stays inactive. **Users should not edit this by hand.**
    */
   _layer_state_id?: {
     dash: string;

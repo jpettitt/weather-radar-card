@@ -31,7 +31,7 @@ vi.mock('leaflet', () => {
   const DomUtil = { create: vi.fn(() => ({ style: {} })), setPosition: vi.fn() };
   const DomEvent = { disableClickPropagation: vi.fn(), on: vi.fn() };
   // Enough of geoJSON/canvas for the alerts layer's real render path to run.
-  const geoJSON = vi.fn(() => ({ addTo: vi.fn() }));
+  const geoJSON = vi.fn(() => ({ addTo: vi.fn(), on: vi.fn(), getLayers: () => [] }));
   const canvas = vi.fn(() => ({}));
   return {
     Layer, TileLayer, Control, layerGroup, DomUtil, DomEvent, geoJSON, canvas,
@@ -296,6 +296,7 @@ describe('failure backoff ladders', () => {
     l._failureCount = 0;
     l._features = [];
     l._getConfig = () => ({});
+    l._resolveZones = vi.fn();   // this bare object has no zone state
     const realFetch = global.fetch;
     global.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as any;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -303,6 +304,7 @@ describe('failure backoff ladders', () => {
       await l._fetch();
       expect(l._failureCount).toBe(1);
       expect(l._timer).not.toBeNull();               // backoff retry armed
+      expect(l._resolveZones).toHaveBeenCalled();    // zones of the alerts kept on screen go on loading
       clearTimeout(l._timer);
     } finally {
       global.fetch = realFetch;
@@ -460,13 +462,23 @@ describe('LightningLayer buffer invalidation', () => {
     expect(l._bufferDirty).toBe(true);
   });
 
-  it('a removal dirties the buffer (strike may be baked in)', async () => {
+  it('a buffered removal waits for the age pass: no rebuild, no repaint', async () => {
     const l = await bareLightning();
     l._strikes.set('geo_location.gone', { ts: 40_000, lat: 0, lon: 0, pulseUntil: 0 });
     l._collectStrikes = () => new Map();
     l._refreshFromHass();
-    expect(l._bufferDirty).toBe(true);
+    expect(l._bufferDirty).toBe(false);
+    expect(l._scheduleRedraw).not.toHaveBeenCalled();
     expect(l._strikes.size).toBe(0);
+  });
+
+  it('a live removal repaints without a rebuild', async () => {
+    const l = await bareLightning();
+    l._strikes.set('geo_location.gone', { ts: 60_000, lat: 0, lon: 0, pulseUntil: 0 });
+    l._collectStrikes = () => new Map();
+    l._refreshFromHass();
+    expect(l._bufferDirty).toBe(false);
+    expect(l._scheduleRedraw).toHaveBeenCalled();
   });
 
   it('a no-op tick neither dirties nor schedules', async () => {
@@ -509,7 +521,18 @@ describe('NwsAlertsLayer refresh with an unchanged alert set', () => {
     l._renderDecisions = new Map();
     l._polygonLayer = null;
     l._zoneCache = new Map();
-    l._map = { getCenter: () => ({ lat: 35, lng: -97 }), removeLayer: vi.fn(), getSize: () => ({ x: 800, y: 600 }) };
+    l._zoneBounds = new Map();
+    l._featureBounds = new Map();
+    l._renderAfterPopup = false;
+    l._lastStatusKey = '';
+    l._zoneLod = new Map();
+    l._timesCache = new WeakMap();
+    const world = { getWest: () => -180, getEast: () => 180, getSouth: () => -90, getNorth: () => 90 };
+    l._map = {
+      getCenter: () => ({ lat: 35, lng: -97 }), removeLayer: vi.fn(), getSize: () => ({ x: 800, y: 600 }),
+      getBounds: () => ({ pad: () => world }), getZoom: () => 7,
+      on: vi.fn(),   // the shared canvas renderer subscribes to zoomstart/moveend
+    };
     l._getConfig = () => ({ alerts_types: ['Tornado Warning'] });
     l._resolveZones = vi.fn(async () => {});
     return l;

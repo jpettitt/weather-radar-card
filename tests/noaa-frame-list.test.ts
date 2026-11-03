@@ -87,14 +87,17 @@ describe('fetchNoaaFrameTimes', () => {
   it('requests the opengeo WMS 1.3.0 GetCapabilities URL, forwarding the abort signal', async () => {
     const fn = stubFetch({ ok: true, text: async () => dim('2026-06-12T14:00:10.000Z') });
     const ctrl = new AbortController();
-    await fetchNoaaFrameTimes(ctrl.signal);
+    const pending = fetchNoaaFrameTimes(ctrl.signal);
     expect(fn).toHaveBeenCalledTimes(1);
     const [url, init] = fn.mock.calls[0];
     expect(url).toBe(
       'https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?service=WMS&version=1.3.0&request=GetCapabilities',
     );
     // Without the signal a superseded refresh can't cancel this request.
-    expect(init?.signal).toBe(ctrl.signal);
+    expect(init?.signal?.aborted).toBe(false);
+    ctrl.abort();
+    expect(init?.signal?.aborted).toBe(true);
+    await pending;
   });
 
   it('resolves the parsed, sorted frame times on a 200', async () => {

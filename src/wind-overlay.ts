@@ -1,6 +1,7 @@
 import * as L from 'leaflet';
-import { windGridFetcher, sampleWindGridBilinear, type WindGrid } from './wind-grid-fetcher';
+import { windGridFetcher, sampleWindGridBilinear, anchorTimeIso, type WindGrid } from './wind-grid-fetcher';
 import { DEFAULT_WIND_SOURCE, type WindSource } from './wind-source-caps';
+import { hazardMarkerPane } from './hazard-marker-pane';
 
 const ICON_GRID_DEG = 0.25;
 const MAX_POINTS = 400;
@@ -49,7 +50,7 @@ export class WindOverlay {
   private _style: WindStyle;
   private _density: number;
   private _sizeMult: number;
-  private _timeIso: string | null;
+  private _timeMs: number | undefined;
   private _source: WindSource;
   private _gen = 0;
   private _moveHandler: () => void;
@@ -67,20 +68,14 @@ export class WindOverlay {
     this._density = Number.isFinite(d) && d > 0 ? Math.max(0.25, Math.min(4, d)) : 1;
     const s = Number(opts.size);
     this._sizeMult = Number.isFinite(s) && s > 0 ? Math.max(0.5, Math.min(2, s)) : 1;
-    // NaN (an unparseable dwd_time_override) would throw in toISOString and
-    // abort the host's map init; show live wind instead.
-    if (opts.timeMs != null && Number.isFinite(opts.timeMs)) {
-      // Nearest hour; effectiveTimeIso rounds again to the source's step
-      // (DWD answers an off-step time with its oldest slice).
-      const snapped = Math.round(opts.timeMs / 3_600_000) * 3_600_000;
-      this._timeIso = new Date(snapped).toISOString().split('.')[0] + 'Z';
-    } else {
-      this._timeIso = null;
-    }
+    this._timeMs = opts.timeMs;
     this._source = opts.source ?? DEFAULT_WIND_SOURCE;
     this._preloadWhileHidden = opts.preloadWhileHidden === true;
     this._layer = L.layerGroup().addTo(map);
     this._moveHandler = (): void => {
+      // A hidden card's map still pans to follow a tracked marker; resume()
+      // refreshes for the view it finds.
+      if (this._paused) return;
       if (this._debounceTimer) clearTimeout(this._debounceTimer);
       this._debounceTimer = setTimeout(() => this._refresh(), MOVE_DEBOUNCE_MS);
     };
@@ -165,7 +160,7 @@ export class WindOverlay {
     try {
       grid = await windGridFetcher.fetch({
         south, west, north, east,
-        timeIso: this._timeIso,
+        timeIso: anchorTimeIso(this._timeMs),
         source: this._source,
       });
     } catch (err) {
@@ -187,7 +182,7 @@ export class WindOverlay {
       const speed = Math.hypot(s.u, s.v);
       const icon = this._style === 'barbs' ? barbIcon(s.u, s.v, speed, size) : arrowIcon(s.u, s.v, speed, size);
       if (!icon) continue;
-      const marker = L.marker([p.lat, p.lon], { icon, interactive: false, keyboard: false });
+      const marker = L.marker([p.lat, p.lon], { icon, interactive: false, keyboard: false, pane: hazardMarkerPane(this._map) });
       this._layer.addLayer(marker);
     }
   }

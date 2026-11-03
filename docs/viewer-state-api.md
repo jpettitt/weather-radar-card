@@ -40,13 +40,9 @@ import { ViewerState } from './viewer-state';
 const state = new ViewerState({
   hass: this._hass,                     // for callWS
   getConfig: () => this._config,        // resolved at call time
-  onIdentityMinted: (id) => {
-    // Dispatch config-changed so Lovelace persists the id to YAML.
-    // The next setConfig() will carry the new id and the state
-    // becomes active.
-    fireEvent(this, 'config-changed', { config: { ...this._config, _layer_state_id: id } });
-  },
 });
+// The card never mints an id: HA saves config-changed only from the
+// editor, which mints with newLayerStateId() (see Activation gating).
 
 // In setConfig — idempotent, call on every config update
 state.ensureIdentity();
@@ -72,11 +68,11 @@ Consumers must respect the admin opt-in. The `viewer_layer_control`
 YAML field (boolean, defaults false) gates the entire framework:
 
 - **Off:** `isActive === false`. `get` returns `undefined`. `set` / `delete` are no-ops. No WS calls. No identity minted.
-- **On:** card auto-mints `_layer_state_id` on the next `setConfig`. After the round-trip (Lovelace writes the id back, `setConfig` fires again), `isActive` flips to `true` and the storage is live.
+- **On:** the editor mints `_layer_state_id` (`newLayerStateId()`) when the switch is turned on, or when it opens a card with the switch on and no id valid for this dashboard (`layerStateIdValid()`). After Save, `setConfig` carries the id, `isActive` flips to `true` and the storage is live. Until then the card stays inactive.
 
-Users don't see or touch `_layer_state_id` — it's stamped onto the
-YAML by the card on demand. They only see (and toggle) `viewer_layer_control`
-in the editor.
+Users don't touch `_layer_state_id`: the editor writes it. A YAML-mode
+dashboard needs one written by hand (`dash`: the view's URL path, `nonce`:
+any short unique string).
 
 A consumer adding the first runtime feature is responsible for:
 1. Wiring `viewer_layer_control` into the editor UI (a toggle in
@@ -197,18 +193,17 @@ behaviour the original PR description was reaching for.
 | Event | Identity | Storage impact |
 |---|---|---|
 | Card mounted, `viewer_layer_control` off | none | none |
-| Card mounted, `viewer_layer_control` on, no `_layer_state_id` | mint on first setConfig | new storage key — empty cache |
+| Card mounted, `viewer_layer_control` on, no `_layer_state_id` | inactive until the editor mints one | new storage key — empty cache |
 | Card mounted, id matches current dashboard URL | use existing nonce | cache hydrates from existing record |
-| Card moved to a different dashboard URL | re-mint | new storage key — empty cache (previous record orphaned) |
-| Card copy-pasted within the same dashboard | second card re-mints | second card gets new storage key; first card keeps original |
+| Card moved to a different dashboard URL | inactive until the editor re-mints | new storage key — empty cache (previous record orphaned) |
+| Card copy-pasted within the same dashboard | the copy stays inactive | delete the copy's `_layer_state_id`; the editor mints a new one; the original keeps its key |
 | Card dragged within the same dashboard section | unchanged | unchanged |
 | Any YAML field edited (other than `_layer_state_id` itself) | unchanged | unchanged |
-| Dashboard URL renamed | all cards re-mint | all stored state effectively reset |
+| Dashboard URL renamed | each card inactive until opened in the editor | all stored state effectively reset |
 
 The dashboard-rename case is the main "lost-state" failure mode —
-rare in practice, and recoverable by toggling the admin switch off
-+ on (which clears the orphaned identity and lets the user choose
-afresh). Worth knowing about.
+rare in practice: opening each card in the editor mints a new id.
+Worth knowing about.
 
 ## Failure modes
 
@@ -219,7 +214,7 @@ afresh). Worth knowing about.
 ## Test patterns
 
 The [test suite](../tests/viewer-state.test.ts) covers identity
-minting, dashboard-path re-mint, copy-paste collision detection,
+validation, the dashboard-path check, copy-paste collision detection,
 hydration round-trip with mocked `hass.callWS`, debounced write
 coalescing, sparse storage via `delete`, subscribe / unsubscribe,
 and graceful degradation on WS failure.
@@ -245,7 +240,6 @@ let config: WeatherRadarCardConfig = {
 const state = new ViewerState({
   hass,
   getConfig: () => config,
-  onIdentityMinted: (id) => { config = { ...config, _layer_state_id: id }; },
 });
 state.ensureIdentity();
 // Now exercise your consumer against `state`.

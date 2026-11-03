@@ -38,7 +38,10 @@ export function getCoordinateConfig(
   userDeviceTracker?: string,
 ): CoordinateConfig | undefined {
   if (isMobile && mobileConfig !== undefined) return mobileConfig;
-  if (isMobile && !baseConfig && userDeviceTracker) return userDeviceTracker;
+  // Not `!baseConfig`: 0 is a configured coordinate (the equator, the
+  // Greenwich meridian), and it handed that axis to the device tracker.
+  const unset = baseConfig === undefined || baseConfig === null || baseConfig === '';
+  if (isMobile && unset && userDeviceTracker) return userDeviceTracker;
   return baseConfig;
 }
 

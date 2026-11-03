@@ -9,16 +9,24 @@ export function isValidCssSize(value: string | undefined): value is string {
   return !!value && CSS_SIZE_RE.test(value);
 }
 
+// The rows the card's getGridOptions() gives HA when the config sets none.
+export const DEFAULT_GRID_ROWS = 7;
+
 /**
  * True when a sections-view grid cell constrains the card to a fixed pixel
- * height. HA writes `grid_options.rows` as a concrete number once the user
- * drags the resize handle (or accepts a fixed default); `'auto'` — or the
- * field being absent — means HA lets the card pick its own height, which is
- * back to the unconstrained case. Only a numeric `rows` actually pins the
- * cell, so that's the signal. (The editor uses the same test to grey out
- * controls that have no effect under the constraint — keep them in sync.)
+ * height. HA merges the card's getGridOptions() under the config's
+ * `grid_options` (or legacy `layout_options`) and fixes the cell for any
+ * numeric `rows`, so in a grid (`layout === 'grid'`, set by hui-card) a
+ * card never resized is pinned at the default 7 rows; only `'auto'` frees
+ * it. Without a grid layout only a numeric config `rows` counts, as before.
+ * (The editor uses the same test to grey out controls that have no effect
+ * under the constraint — keep them in sync.)
  */
-export function isSectionHeightPinned(config: WeatherRadarCardConfig): boolean {
+export function isSectionHeightPinned(config: WeatherRadarCardConfig, layout?: string): boolean {
+  if (layout === 'grid') {
+    const rows = config.grid_options ? config.grid_options.rows : config.layout_options?.grid_rows;
+    return typeof (rows ?? DEFAULT_GRID_ROWS) === 'number';
+  }
   return typeof config.grid_options?.rows === 'number';
 }
 
@@ -51,8 +59,8 @@ export interface CardLayout {
  *     or the 400px default, so a regular (non-section) dashboard renders at
  *     the expected baseline while still being able to grow to fill a cell.
  */
-export function resolveCardLayout(config: WeatherRadarCardConfig): CardLayout {
-  if (isSectionHeightPinned(config)) return { mode: 'flex', minHeight: null };
+export function resolveCardLayout(config: WeatherRadarCardConfig, layout?: string): CardLayout {
+  if (isSectionHeightPinned(config, layout)) return { mode: 'flex', minHeight: null };
   if (config.square_map && !config.height) return { mode: 'aspect', minHeight: null };
   return { mode: 'flex', minHeight: isValidCssSize(config.height) ? config.height : '400px' };
 }

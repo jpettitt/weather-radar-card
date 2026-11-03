@@ -29,6 +29,7 @@ vi.mock('../src/fetch-tile-layer', () => {
     on(): this { return this; }
     once(): this { return this; }
     addTo(): this { return this; }
+    remove(): this { return this; }   // a frame that does not settle 'loaded' is removed
     getContainer(): undefined { return undefined; }
   }
   return { FetchTileLayer: FakeLayer, FetchWmsTileLayer: FakeLayer, layerSettled: vi.fn() };

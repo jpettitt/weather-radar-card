@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - main
+      # Long-lived release branches such as 4.0, which take merged PRs too.
+      - '[0-9]+.[0-9]+'
+  # Every PR, whatever its base: PRs into 4.0 used to merge with no checks.
   pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 # Cancel an older run of the same workflow on the same ref when a new push
@@ -21,7 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20, 22]
+        # 24 builds the releases; 22 is the older supported LTS.
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v5
 
@@ -35,15 +37,15 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Test
-        if: matrix.node-version != 22
+        if: matrix.node-version != 24
         run: npm test
 
       - name: Test with coverage
-        if: matrix.node-version == 22
+        if: matrix.node-version == 24
         run: npm run test:coverage
 
       - name: Upload coverage report
-        if: matrix.node-version == 22
+        if: matrix.node-version == 24
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report

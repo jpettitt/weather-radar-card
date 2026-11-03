@@ -4,6 +4,24 @@ Optional overlays that stack on top of the radar. Two are US-only (Wildfires, NW
 
 For non-US instances, the card surfaces a banner reminding the user that the data is US-only when either of the US-specific overlays is enabled with `hass.config.country !== 'US'`.
 
+## Turning overlays on and off
+
+`show_layer_toggles: true` adds a row of buttons to the map's top-right corner, one for each overlay the card has turned on: NWS alerts, wind (arrows or barbs and streamlines together), wildfires and lightning. A tap hides or shows that overlay; a hidden overlay stops fetching until it's shown again. The buttons only offer what the config enables, so a viewer can't turn on an overlay the dashboard leaves off.
+
+Choices last until the page reloads. With `viewer_layer_control: true` they're saved for each user and follow them across browsers and devices, as the playback speed does.
+
+```yaml
+show_layer_toggles: true
+viewer_layer_control: true   # optional: remember each viewer's choices
+show_alerts: true
+show_wildfires: true
+dwd_wind: arrows
+```
+
+## While the map moves
+
+The overlays leave the map during a zoom gesture and come back once the map has been still for a second: the alert and wildfire outlines, the fire icons and wind barbs, and the lightning strikes. Wildfires and lightning redraw at that moment, not at every step of a pinch. The NWS alerts layer does nothing at all while the map moves (no redraw, no zone shape fetched or decoded), and it draws zone outlines at half a pixel of detail for the current zoom. Leaflet scales a canvas with a CSS transform on every touch move and animates every icon on the snap-back, which crashed Safari on an iPhone whenever one of these overlays was on.
+
 ## Wildfires
 
 When `show_wildfires: true`, the card overlays active US wildfire perimeters from the National Interagency Fire Center's [WFIGS Current Interagency Fire Perimeters](https://data-nifc.opendata.arcgis.com/datasets/nifc::wfigs-current-interagency-fire-perimeters/about) feed.
@@ -26,10 +44,10 @@ The overlay refreshes every 5 minutes when fires are visible (matching NIFC's up
 | `show_wildfires`           | `false`     | Enable the overlay                              |
 | `wildfire_min_acres`       | `10`        | Hide incidents smaller than this acreage        |
 | `wildfire_radius_km`       | unset       | Only show fires within N km of the map center   |
-| `wildfire_color`           | `'#ff3300'` | Active fire colour (stroke + icon)              |
-| `wildfire_contained_color` | `'#888888'` | 100%-contained fire colour                      |
-| `wildfire_fill_opacity`    | `0.2`       | Polygon fill opacity (`0` = perimeter only)     |
-| `wildfire_refresh_minutes` | adaptive    | Override the adaptive 5/30-min refresh interval |
+| `wildfire_color`           | `'#ff3300'` | YAML-only. Active fire colour (stroke + icon)   |
+| `wildfire_contained_color` | `'#888888'` | YAML-only. 100%-contained fire colour           |
+| `wildfire_fill_opacity`    | `0.2`       | YAML-only. Polygon fill opacity (`0` = perimeter only) |
+| `wildfire_refresh_minutes` | adaptive    | YAML-only. Override the adaptive 5/30-min refresh interval (at least 1) |
 
 ## NWS Watches & Warnings
 
@@ -41,7 +59,9 @@ Click any alert to see its event type, headline, severity / certainty / urgency,
 
 The overlay refreshes every 60 seconds when alerts are visible (alerts can have minute-scale lifespans, especially tornado warnings) and every 5 minutes when none are. Filter by category, by severity floor, or by distance from the map centre.
 
-The default filter excludes the `marine` category (most users are inland; coastal users opt back in via `alerts_categories`). Other categories: `tornado`, `thunderstorm`, `flood`, `winter`, `tropical`, `fire_weather`, `heat`, `wind`, `other`.
+The default filter excludes the `marine` category (most users are inland; coastal users opt back in via `alerts_categories`). Other categories: `tornado`, `thunderstorm`, `flood`, `winter`, `tropical`, `fire_weather`, `heat`, `wind`, `other`. Marine zones are the heaviest shapes by far: with every category on, more than half of all alert vertices are Small Craft Advisories and Gale Warnings.
+
+Alert areas are drawn from NWS zone outlines simplified to about 220 m, a difference that is invisible below zoom 11, and with about one pixel of detail at the current zoom. Only the alerts that touch the current view are built as map polygons. An alert is hidden once its expiry time has passed, even while NWS still lists it as active, because NWS keeps an alert until the hazard's end time. Where several alerts of the same event cover a zone, for example overlapping Small Craft Advisories, the zone is drawn once. A later-issued alert replaces an earlier one on that zone once it is in force, and the popup lists the alerts that remain, most severe first. While an alert popup is open, the layer does not redraw. Zone shapes are fetched 24 at a time, alerts in view first, because api.weather.gov blocks an address that sends a large burst (the limit is not published; it clears within seconds). After a block the card waits 5 s, doubling to 5 min, and resumes at half speed. If the alerts list or some zone shapes fail to load, a banner at the top of the map says so while the card retries.
 
 > [!CAUTION]
 > **NWS alert data is for informational purposes only.**
@@ -65,11 +85,11 @@ Both polygon-bearing alerts (most warnings) and zone-based alerts (most advisori
 |--------------------------|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | `show_alerts`            | `false`             | Enable the overlay                                                                                                                        |
 | `alerts_categories`      | all except `marine` | Allowlist of category keys (`tornado`, `thunderstorm`, `flood`, `winter`, `tropical`, `fire_weather`, `heat`, `wind`, `marine`, `other`). |
-| `alerts_types`           | unset               | Explicit event-string allowlist; overrides `alerts_categories` when set                                                                   |
+| `alerts_types`           | unset               | YAML-only. Explicit event-string allowlist; overrides `alerts_categories` when set                                                        |
 | `alerts_min_severity`    | `'Minor'`           | One of `Extreme`, `Severe`, `Moderate`, `Minor`, `Unknown`. Hides alerts below the chosen severity floor.                                 |
 | `alerts_radius_km`       | unset               | Only show alerts within N km of the map center                                                                                            |
-| `alerts_fill_opacity`    | `0.25`              | Alert polygon fill opacity (`0` = outline only)                                                                                           |
-| `alerts_refresh_seconds` | adaptive            | Override the adaptive 60s/300s refresh interval                                                                                           |
+| `alerts_fill_opacity`    | `0.25`              | YAML-only. Alert polygon fill opacity (`0` = outline only)                                                                                |
+| `alerts_refresh_seconds` | adaptive            | YAML-only. Override the adaptive 60s/300s refresh interval (at least 30)                                                                  |
 
 ## Lightning (Blitzortung)
 
@@ -85,7 +105,7 @@ The toggle in the editor's Hazard Overlays subpage is greyed out when the Blitzo
 |-----------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `show_lightning`            | `false` | Enable the overlay                                                                                                                                                                                             |
 | `lightning_max_age_minutes` | `30`    | Hide strikes older than this many minutes. **Card-side cap only — does NOT change the Blitzortung integration's own max-age setting**, which the integration itself controls and may differ (default 120 min). |
-| `lightning_pulse`           | `true`  | One-shot brightness flash on new-strike appearance. Honours `prefers-reduced-motion`.                                                                                                                          |
+| `lightning_pulse`           | `true`  | YAML-only. One-shot brightness flash on new-strike appearance. Honours `prefers-reduced-motion`.                                                                                                               |
 | `lightning_icon_size`       | `14`    | YAML-only. Pixel size for the + sign; the bolt renders at 1.3× this size.                                                                                                                                      |
 
 > [!NOTE]
@@ -104,7 +124,7 @@ When `dwd_wind` is set to `barbs` or `arrows`, or `dwd_wind_flow: true` is set, 
 
 Existing configs that don't set `wind_source` continue to use ICON — the field is purely additive, no migration runs.
 
-The wind overlay is **not coupled to the radar source** — both ICON and NDFD are independent of the radar tiles, so the wind layer stacks usefully on RainViewer / NOAA / DWD radars alike. (For DWD radar specifically, `dwd_time_override` and `forecast_minutes` anchor the wind to the same time as the radar playback frame; for the other sources the wind always shows live.)
+The wind overlay is **not coupled to the radar source** — both ICON and NDFD are independent of the radar tiles, so the wind layer stacks usefully on RainViewer / NOAA / DWD radars alike. The wind always shows the model time step closest to now, forward or back, also when the radar shows forecast frames. (With DWD radar, `dwd_time_override` moves "now" for the wind too.)
 
 ### Three styles
 
@@ -116,7 +136,7 @@ The wind overlay is **not coupled to the radar source** — both ICON and NDFD a
 
 ### Refresh cadence
 
-The overlay shows the model step nearest to now (ICON hourly, AICON 3-hourly, NDFD from its own time list), so what's shown is never more than half a step from the current time. A self-rescheduling timer wakes shortly after each half hour (HH:00:30 and HH:30:30): the half-hour tick is where the nearest step changes, and the top-of-hour tick also picks up a fresher run for the same step. A tick whose step hasn't changed is answered from the fetcher's cache; no fixed-interval polling.
+The overlay shows the model step nearest to now (ICON hourly, AICON 3-hourly, NDFD from its own time list), so what's shown is never more than half a step from the current time. For ICON and AICON the card asks for the newest model run that has that step; without a run, DWD answers from the oldest run it keeps, a forecast about 1.5 days old. A self-rescheduling timer wakes shortly after each half hour (HH:00:30 and HH:30:30): the half-hour tick is where the nearest step changes, and the top-of-hour tick also picks up a fresher run for the same step. A tick whose step hasn't changed is answered from the fetcher's cache; no fixed-interval polling.
 
 ### Reduced motion
 

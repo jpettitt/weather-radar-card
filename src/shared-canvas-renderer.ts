@@ -1,4 +1,5 @@
 import * as L from 'leaflet';
+import { hideElementWhileZooming } from './hide-while-zooming';
 
 // ONE canvas renderer per map, shared by every vector overlay (NWS
 // alerts, wildfire perimeters). This is load-bearing, not a memory
@@ -32,6 +33,16 @@ export function sharedCanvasRenderer(map: L.Map): L.Canvas {
   if (!r) {
     r = L.canvas({ padding: 0.5 });
     renderers.set(map, r);
+    hideWhileZooming(map, r);
   }
   return r;
+}
+
+// During a pinch or an animated zoom Leaflet scales this canvas with a CSS
+// transform on every touch move: 1560x2960 px on a phone, 16x for a
+// four-level pinch. Safari on an iPhone died on a fast pinch whenever an
+// overlay had drawn to the canvas and never without one (2026-10-16), so
+// the canvas leaves the page for the gesture; see hide-while-zooming.ts.
+export function hideWhileZooming(map: L.Map, r: L.Canvas): void {
+  hideElementWhileZooming(map, () => (r as unknown as { _container?: HTMLElement })._container);
 }

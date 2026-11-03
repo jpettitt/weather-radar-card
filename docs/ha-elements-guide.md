@@ -72,8 +72,8 @@ runtime and editor).
 | `ha-icon` | ✅ | ✅ | Works everywhere. |
 | `ha-icon-picker` | ✅ | n/a | Works in editor. |
 | `ha-card` | n/a | ✅ | Works as the card's root wrapper. |
-| `ha-input` | ✅ | n/a | Current. Replaced `ha-textfield` on 2026-04-01. |
-| `ha-textfield` | ❌ REMOVED | ❌ | Removed 2026-04-01 in HA commit "Migrate all from ha-textfield to ha-input #30349". Renders invisible. Migrate to `ha-input`. |
+| `ha-input` | ✅ | n/a | HA 2026.4+ (frontend 20260325.0). The editor's `_textField` picks it by core version. |
+| `ha-textfield` | ✅ before 2026.4 | n/a | Removed in HA 2026.5 (frontend 20260429.0, PR 30349). `_textField` uses it on cores before 2026.4 so 4.0 supports 2025.3+: `hint` is `helper` there, with `helperPersistent`. Verified on 2025.3.4 and 2026.3.4 (2026-10-27). |
 
 If you add a new `ha-*` element to this list, add an entry here
 with the date and a one-line "what we confirmed."
@@ -86,7 +86,10 @@ ones that affected us:
 - **2026-04-01:** `ha-textfield` → `ha-input`
   ([commit](https://github.com/home-assistant/frontend/pull/30349)).
   Property rename: `helper` → `hint`. Migration landed in our
-  3.6.3 (PR #166).
+  3.6.3 (PR #166). Both exist in 2026.4; `ha-textfield` is gone
+  from 2026.5. The 4.0 editor picks the tag from
+  `hass.config.version`, not `customElements`: both load lazily,
+  so neither may be registered yet at first render.
 - **2026-04-07:** `ha-button` reimplemented on top of
   `@home-assistant/webawesome` (was `mwc-button`). Same tag name
   and event surface; CSS custom property surface shifted

@@ -390,8 +390,9 @@ called:
 
 The wildfire and NWS-alerts overlay layers have their own
 `pause()` / `resume()` methods called from the same visibility hooks;
-they cancel their refresh timers and refetch on resume if paused
-longer than the visible-refresh interval.
+they cancel their refresh timers but keep when the next refresh is due.
+On resume they refetch at once if it came due while hidden, else wait
+only the time that is left.
 
 ---
 
@@ -406,12 +407,26 @@ from the tile cache while DWD's forecast can take 5–45 s, and
 forecast-first held a cached loop behind the network on every reload
 (#279).
 
+After a pan, zoom or preset change, Leaflet asks every attached frame
+layer for new tiles at once. The player lets `FRAME_FETCH_WINDOW` (3)
+frames fetch at a time, in playback order from the shown frame, and
+releases the next frame when one completes (`_applyFetchWindow`). The
+other layers hold their tiles (`holdTiles`): counted as pending, so the
+spinner and the progress bar show them as loading, but not requested.
+The shown frame fills first, and a quick run through several presets
+cannot spend a source's per-minute request budget in one burst (five
+quick switches on a 13-frame RainViewer loop hit the 250/min cap and
+left the last preset blank for a minute). Measured 2026-10-14 on a
+49-frame DWD loop at zoom 9: the shown frame complete in 2 s instead
+of 7 s, the whole loop in 31 s instead of 26 s.
+
 As each frame settles (`layerSettled`):
 
-1. Its outer container starts at `opacity: 0`.
+1. Its outer container starts at `opacity: 0` and `visibility: hidden`.
 2. The very first frame to load — always "now", per the load order
-   above — is shown as a static preview (`opacity: _activeOpacity`)
-   while the rest load in the background.
+   above — is shown as a static preview (`opacity: 1`, visible; the
+   radar pane carries `radar_opacity`) while the rest load in the
+   background. With one frame this is the whole display.
 3. Loaded frames are inserted into `_loadedSlots` at their sorted
    position (`insertSorted`), not blindly prepended — arrival order is
    no longer strictly descending. Once two frames are loaded,
@@ -427,7 +442,49 @@ As each frame settles (`layerSettled`):
    (`_markRemainingFailed`) — "not yet attempted" is no longer a
    contiguous index range once loading walks outward from "now", so
    this walks the remaining load-order entries rather than counting
-   down from the failed index.
+   down from the failed index. The failed frame's layer is removed
+   (`_dropFailedLayer`): nothing retries it, and while attached it
+   fetches tiles on every pan.
+6. With `motion_compensation`, `_dedupFrames` then drops frames whose
+   snapshot has the same pixels as the frame before. If the loop does
+   not restart after it (paused, or one frame left), the frame it
+   remapped to is shown with a snap.
+
+A periodic refresh (`_shiftInFrame`) adds its new frame hidden too,
+while a loaded frame is left to show. If the dropped oldest frame was
+on screen, the next frame is shown at once, so the map does not go
+blank while the new tiles load. A new frame that fails is removed.
+
+## Tile memory and zoom gestures on WebKit
+
+iOS ends Safari's page process at 2 GB, and a 13-frame loop on a 3x
+phone sat near it (Safari Web Inspector, Layers panel, 2026-10-16):
+
+- Leaflet positions each tile with `translate3d`, which makes every
+  tile its own compositing layer, and WebKit gives each one a
+  device-resolution buffer: 11.8 MB per 512 px radar tile, 730 MB for
+  the loop. `wireFlatTiles` (fetch-tile-layer.ts) re-positions each
+  tile with `left`/`top` on `tileloadstart`, so the tiles paint into
+  their level container's one buffer. A tile never moves inside its
+  container (Leaflet moves and scales the container), so nothing is
+  lost.
+- An opacity-0 frame container still gets a buffer (37.75 MB each).
+  Frames outside the current crossfade are `visibility: hidden`
+  (`_frameVisible` / `_frameHidden`, 50 ms after the fade-out ends).
+  Layout stays, so the motion snapshots still measure the tiles.
+- Leaflet blends tiles with `mix-blend-mode: plus-lighter` for a
+  Chromium seam bug and gives Safari an `image-rendering` hint; either
+  stops WebKit compositing an image straight from its decoded bitmap.
+  The card's styles reset both under `.leaflet-safari`.
+- During a pinch Leaflet creates tiles for every integer zoom the
+  gesture crosses and prunes them only when it ends (557 tiles in 85
+  containers for one fast pinch). Frame layers and the DWD mask use
+  `updateWhenZooming: false` (`ZOOM_GESTURE_OPTIONS`): they scale
+  their current tiles and load the new zoom once it settles.
+
+With these the compositor held 44 MB at rest and 231 MB mid-crossfade
+on the same phone (was 368 to 730 MB). The hazard overlays have their
+own rule for zoom gestures: see overlays.md, "While the map moves".
 
 ## Forecast refresh — swapping a frame's layer mid-loop
 
@@ -463,7 +520,7 @@ time-range fields by `getEffectiveTimeRange()`
 ([src/source-caps.ts](../src/source-caps.ts)):
 
 ```ts
-frameCount = max(2, floor((past_minutes + forecast_minutes) / strideMin) + 1)
+frameCount = max(1, floor((past_minutes + forecast_minutes) / strideMin) + 1)
 ```
 
 `strideMin` defaults to the source's default frame interval (10 min for

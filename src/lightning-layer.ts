@@ -14,6 +14,9 @@ import {
   formatBlitzortungUrl,
   relativeTime,
 } from './lightning-helpers';
+import { Z_LIGHTNING } from './const';
+import { onMapQuiet } from './map-quiet';
+import { hideElementWhileZooming } from './hide-while-zooming';
 
 // Lightning overlay — renders Blitzortung integration's per-strike
 // geo_location entities onto a single canvas, fill-coloured by age.
@@ -65,14 +68,34 @@ const PULSE_MS = 600;
 // Canvas margin beyond the viewport on each side, as a fraction of the
 // viewport dimension. Strikes inside the margin are already painted
 // when a pan reveals them; the moveend repaint re-centres the margin.
+// The canvas and its buffer are each (1 + 2 × pad)² viewports at the pixel
+// ratio: at 0.5 and 3x that was ~51 MB on an iPhone, and one canvas of an
+// iPad Pro 12.9 panel view was 21 Mpx, over WebKit's 16.7 Mpx per-canvas
+// limit. Touch screens get a quarter view, so a long pan shows its new
+// strikes 1 s after it stops, as the radar tiles on mobile do.
 const CANVAS_PAD_FRACTION = 0.5;
+const TOUCH_CANVAS_PAD_FRACTION = 0.25;
+// 3x phones draw the 14 px glyphs at 2x, slightly softer, for 4/9 the memory.
+const MAX_CANVAS_DPR = 2;
 
-// Custom Leaflet pane between the default overlayPane (400, radar tiles
-// + hazard polygons) and the default markerPane (600, home / person /
-// device-tracker markers): lightning is visible over an alert polygon,
-// and the home marker stays on top of any strike at the same point.
+/** @internal The canvas margin fraction; touch is navigator.maxTouchPoints > 0
+ *  (iPadOS Safari sends a desktop user agent, so the UA test would miss it). */
+export function lightningCanvasPad(touch: boolean): number {
+  return touch ? TOUCH_CANVAS_PAD_FRACTION : CANVAS_PAD_FRACTION;
+}
+
+/** @internal The canvas backing-store pixel ratio. */
+export function lightningCanvasDpr(raw: unknown): number {
+  return typeof raw === 'number' && raw > 0 ? Math.min(raw, MAX_CANVAS_DPR) : 1;
+}
+
+const isTouchScreen = (): boolean => typeof navigator !== 'undefined' && (navigator.maxTouchPoints ?? 0) > 0;
+const canvasDpr = (): number => lightningCanvasDpr(typeof devicePixelRatio === 'number' ? devicePixelRatio : undefined);
+
+// Custom Leaflet pane over the alert and fire polygons (overlayPane, 400),
+// so lightning shows over a warning, and under the place names and the
+// home / person / device-tracker markers (see const.ts).
 const LIGHTNING_PANE = 'wrc-lightning';
-const LIGHTNING_PANE_Z = 500;
 
 interface Strike {
   ts: number;        // epoch ms when the strike occurred / was first seen
@@ -130,6 +153,9 @@ export class LightningLayer {
   private _bufferMaxTs = 0;
 
   private _ageTimer: ReturnType<typeof setInterval> | null = null;
+  // Opened on the map, not bound to a layer, so removing the canvas
+  // doesn't close it: clear() must.
+  private _popup: L.Popup | null = null;
   // Set in pause(), cleared in resume(). Differs from the wildfire/alerts
   // pattern: there's no fetch to reschedule, just the age-recompute timer.
   private _pausedAt: number | null = null;
@@ -142,6 +168,11 @@ export class LightningLayer {
   // Bound handlers kept as fields so clear() can detach exactly what
   // start() attached.
   private _onViewChange = (): void => this._repositionAndRedraw();
+  // A same-zoom jump past the map size resets the pixel origin without a
+  // zoomstart; hide the old view's pixels until the quiet repaint shows them.
+  private _onViewReset = (): void => { if (this._canvas) this._canvas.style.display = 'none'; };
+  private _disposeQuiet: (() => void) | null = null;
+  private _disposeHide: (() => void) | null = null;
   private _onMapClick = (e: L.LeafletMouseEvent): void => this._handleClick(e);
   private _onMapMouseMove = (e: L.LeafletMouseEvent): void => this._handleMouseMove(e);
 
@@ -162,8 +193,12 @@ export class LightningLayer {
     // explicit zoomend listener repaints one frame earlier so the
     // glyphs snap to their post-zoom positions as soon as the zoom
     // animation lands. resize re-pads the canvas for the new viewport.
-    this._map.on('moveend', this._onViewChange);
-    this._map.on('zoomend', this._onViewChange);
+    // The repaint waits until the map has been still for a second after a
+    // move or zoom, and the canvas leaves the page while the map zooms
+    // (see map-quiet.ts and hide-while-zooming.ts).
+    this._disposeQuiet = onMapQuiet(this._map, this._onViewChange);
+    this._disposeHide = hideElementWhileZooming(this._map, () => this._canvas ?? undefined);
+    this._map.on('viewreset', this._onViewReset);
     this._map.on('resize', this._onViewChange);
     this._map.on('click', this._onMapClick);
     this._map.on('mousemove', this._onMapMouseMove);
@@ -178,7 +213,7 @@ export class LightningLayer {
   private _ensurePane(): void {
     if (this._map.getPane(LIGHTNING_PANE)) return;
     const pane = this._map.createPane(LIGHTNING_PANE);
-    pane.style.zIndex = String(LIGHTNING_PANE_Z);
+    pane.style.zIndex = String(Z_LIGHTNING);
     pane.style.pointerEvents = 'none';
   }
 
@@ -194,8 +229,12 @@ export class LightningLayer {
 
   clear(): void {
     if (this._ageTimer) { clearInterval(this._ageTimer); this._ageTimer = null; }
-    this._map.off('moveend', this._onViewChange);
-    this._map.off('zoomend', this._onViewChange);
+    if (this._popup) { this._map.closePopup(this._popup); this._popup = null; }
+    this._disposeQuiet?.();
+    this._disposeQuiet = null;
+    this._disposeHide?.();
+    this._disposeHide = null;
+    this._map.off('viewreset', this._onViewReset);
     this._map.off('resize', this._onViewChange);
     this._map.off('click', this._onMapClick);
     this._map.off('mousemove', this._onMapMouseMove);
@@ -212,11 +251,9 @@ export class LightningLayer {
   }
 
   // Stop the age timer while the host card is hidden. The painted canvas
-  // stays as-is (it'll repaint on the next visible tick). The strike-set
-  // diff still runs on hass updates because the card's
-  // IntersectionObserver doesn't gate updateHass calls — but a hidden
-  // card receives few hass-update render passes anyway, so this is not
-  // worth defensive guarding.
+  // stays as-is. The strike-set diff still runs on hass updates (a card
+  // scrolled off-screen gets every one), but it neither schedules a repaint
+  // nor starts a pulse; resume() repaints through _refreshAges.
   pause(): void {
     if (this._pausedAt != null) return;
     this._pausedAt = Date.now();
@@ -259,18 +296,18 @@ export class LightningLayer {
       if (strike.ts <= this._bufferMaxTs) this._bufferDirty = true;
     }
 
-    // Removals: strikes we tracked that hass no longer has (integration
-    // dropped them past its max-age cap). Removed strikes may be baked
-    // into the buffer, so removals always rebuild it.
-    for (const id of Array.from(this._strikes.keys())) {
-      if (!current.has(id)) {
-        this._strikes.delete(id);
-        changed = true;
-        this._bufferDirty = true;
-      }
+    // Removals: leave a buffered strike for the 30 s age pass to fold out.
+    // In a storm one goes per arrival: past the card cap, or past the
+    // integration's window when that is the shorter one. Erasing each at
+    // once rebuilt the whole buffer on nearly every tick. A live strike
+    // is drawn from _strikes, so a repaint erases it without a rebuild.
+    for (const [id, strike] of this._strikes) {
+      if (current.has(id)) continue;
+      this._strikes.delete(id);
+      if (strike.ts > this._bufferMaxTs) changed = true;
     }
 
-    if (changed) this._scheduleRedraw();
+    if (changed && this._pausedAt == null) this._scheduleRedraw();
   }
 
   // Walk hass.states once. Only entity_ids matching geo_location.* with
@@ -284,7 +321,8 @@ export class LightningLayer {
     if (!this._hass?.states) return out;
     const maxAgeSec = this._displayMaxAgeSec();
     const now = Date.now();
-    const pulseOk = this._getConfig().lightning_pulse !== false && !prefersReducedMotion();
+    const pulseOk = this._pausedAt == null
+      && this._getConfig().lightning_pulse !== false && !prefersReducedMotion();
     // for-in with an early prefix test rather than Object.entries: this
     // runs on EVERY hass tick (any state change in the whole install),
     // and Object.entries allocates a [key, value] pair array for
@@ -337,11 +375,12 @@ export class LightningLayer {
     if (!canvas) return;
     const size = this._map.getSize();
     if (size.x === 0 || size.y === 0) return;
-    this._padX = Math.round(size.x * CANVAS_PAD_FRACTION);
-    this._padY = Math.round(size.y * CANVAS_PAD_FRACTION);
+    const pad = lightningCanvasPad(isTouchScreen());
+    this._padX = Math.round(size.x * pad);
+    this._padY = Math.round(size.y * pad);
     const w = size.x + 2 * this._padX;
     const h = size.y + 2 * this._padY;
-    const dpr = (typeof devicePixelRatio === 'number' && devicePixelRatio > 0) ? devicePixelRatio : 1;
+    const dpr = canvasDpr();
     // Resizing a canvas clears it, so only touch the backing store when
     // the dimensions actually changed (repaint follows either way).
     if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
@@ -366,7 +405,7 @@ export class LightningLayer {
     if (!canvas || canvas.width === 0) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const dpr = (typeof devicePixelRatio === 'number' && devicePixelRatio > 0) ? devicePixelRatio : 1;
+    const dpr = canvasDpr();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
 
@@ -390,7 +429,7 @@ export class LightningLayer {
     if (!plusPath || !boltPath) return;   // no Path2D (ancient browser) → skip painting
 
     // Rebuild the settled-strike buffer when invalidated (add-to-
-    // backlog, removal, view change, age pass). Everything at or below
+    // backlog, view change, age pass; a removal waits for the age pass). Everything at or below
     // the cutoff is in its + phase by construction, so the buffer only
     // ever needs the two + passes.
     if (this._bufferDirty || !this._buffer
@@ -550,7 +589,7 @@ export class LightningLayer {
     // Anchored at the strike, not the click point, so the popup tail
     // points at the glyph the user hit. openOn closes any other open
     // popup (Leaflet's one-popup convention), matching marker behaviour.
-    L.popup({ autoPan: true, autoPanPadding: L.point(12, 12), maxHeight: this._popupMaxHeight() } as any)
+    this._popup = L.popup({ autoPan: true, autoPanPadding: L.point(12, 12), maxHeight: this._popupMaxHeight() } as any)
       .setLatLng([strike.lat, strike.lon])
       .setContent(this._popupHtml(strike))
       .openOn(this._map);

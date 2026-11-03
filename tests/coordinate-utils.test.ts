@@ -282,4 +282,13 @@ describe('getCoordinateConfig', () => {
   it('ignores userDeviceTracker on desktop', () => {
     expect(getCoordinateConfig(undefined, undefined, false, 'device_tracker.phone')).toBeUndefined();
   });
+
+  // 0 is a coordinate (the equator, the Greenwich meridian), not "unset".
+  it('keeps a configured 0 on mobile instead of the device tracker', () => {
+    expect(getCoordinateConfig(0, undefined, true, 'device_tracker.phone')).toBe(0);
+  });
+
+  it('treats an empty string as unset on mobile', () => {
+    expect(getCoordinateConfig('', undefined, true, 'device_tracker.phone')).toBe('device_tracker.phone');
+  });
 });

@@ -181,3 +181,114 @@ past_minutes: 90
 smooth_animation: true
 smooth_overlap: 0
 ```
+
+## 4.0: vector map in the classic style, with labels above the radar
+
+Needs Home Assistant 2026.10 or later. The vector map draws place names above the radar, so they stay readable through rain. `classic` gives the colours of the standard OpenStreetMap map. `theme_mode: auto` follows your theme and uses the hand-tuned dark version in dark mode.
+
+```yaml
+type: 'custom:weather-radar-card'
+map_style: MapTilesVector
+vector_style: classic
+theme_mode: auto
+past_minutes: 90
+show_zoom: true
+show_recenter: true
+show_playback: true
+```
+
+## 4.0: satellite imagery with labels above the radar
+
+On Home Assistant 2026.10 or later, `Satellite` draws place and street names from HA's map tiles above the radar. No CARTO key is needed.
+
+```yaml
+type: 'custom:weather-radar-card'
+map_style: Satellite
+past_minutes: 60
+show_recenter: true
+show_playback: true
+```
+
+## 4.0: more place names on the vector map
+
+`extra_labels` shows each label kind a zoom level earlier, smaller and packed tighter. On the vector map and for Satellite labels it works from the label data; on raster maps it draws the tiles a zoom level higher at half size.
+
+```yaml
+type: 'custom:weather-radar-card'
+map_style: MapTilesVector
+vector_style: classic
+extra_labels: true
+zoom_level: 11
+```
+
+## 4.0: view presets — tour the people and places you care about
+
+The re-centre button rotates through the tracked person, Default (the configured centre), and each preset. A preset is a fixed spot or an entity the map follows, each with its own zoom. The preset's name shows beside the button. After `preset_timeout` idle minutes the map returns to the tracked person on its own.
+
+```yaml
+type: 'custom:weather-radar-card'
+show_recenter: true
+zoom_level: 8
+markers:
+  - entity: person.alex
+    track: entity
+presets:
+  - name: Work
+    latitude: 48.14
+    longitude: 11.58
+    zoom: 11
+  - entity: device_tracker.car
+    zoom: 12
+  - name: Region
+    latitude: 48.5
+    longitude: 11.0
+    zoom: 7
+preset_timeout: 5
+```
+
+## 4.0: layer toggles, saved per user
+
+`show_layer_toggles` adds a button for each overlay the card has turned on. A hidden overlay stops fetching. With `viewer_layer_control`, each user's choices are saved across devices; without it they last until the page reloads.
+
+```yaml
+type: 'custom:weather-radar-card'
+data_source: NOAA
+past_minutes: 60
+show_alerts: true
+show_wildfires: true
+dwd_wind: arrows
+show_layer_toggles: true
+viewer_layer_control: true
+```
+
+## 4.0: wall tablet with the vector map, presets and toggles
+
+Everything above on one card. `low_power_mode` is off here; turn it on for an old tablet, which then shows `MapTiles` instead of the vector map.
+
+```yaml
+type: 'custom:weather-radar-card'
+map_style: MapTilesVector
+vector_style: classic
+theme_mode: dark
+data_source: DWD
+past_minutes: 120
+forecast_minutes: 60
+forecast_refresh_minutes: 15
+show_zoom: true
+show_recenter: true
+show_playback: true
+show_layer_toggles: true
+viewer_layer_control: true
+show_alerts: false
+dwd_wind_flow: true
+markers:
+  - entity: person.alex
+    track: entity
+presets:
+  - name: Home
+    entity: zone.home
+    zoom: 10
+  - entity: device_tracker.car
+    zoom: 12
+preset_timeout: 10
+```

@@ -30,6 +30,7 @@ import {
   relativeLuminance,
   formatDateTime,
   buildPopupHtml,
+  buildGroupPopupHtml,
 } from '../src/nws-alerts-layer';
 
 // ── featureKey ─────────────────────────────────────────────────────────────
@@ -377,5 +378,28 @@ describe('buildPopupHtml — link URL escaping', () => {
     const html = buildPopupHtml(minimal('https://api.weather.gov/alerts/?a=<b>&c=d'), undefined);
     expect(html).toContain('a=&lt;b&gt;&amp;c=d');
     expect(html).not.toContain('?a=<b>');
+  });
+});
+
+// ── buildGroupPopupHtml — one popup for every alert of an event on a zone ──
+describe('buildGroupPopupHtml', () => {
+  const alert = (headline: string, uri: string): any => ({ event: 'Small Craft Advisory', severity: 'Minor', headline, uri });
+
+  it('one alert gives exactly the single-alert popup', () => {
+    const a = alert('Advisory until 5 PM', 'https://api.weather.gov/alerts/1');
+    expect(buildGroupPopupHtml([a], undefined)).toBe(buildPopupHtml(a, undefined));
+  });
+
+  it('several alerts are listed in the given order with their own links, and the disclaimer once', () => {
+    const html = buildGroupPopupHtml([
+      alert('Advisory until 5 PM', 'https://api.weather.gov/alerts/1'),
+      alert('Advisory until 1 PM', 'https://api.weather.gov/alerts/2'),
+    ], undefined);
+    expect(html.indexOf('Advisory until 5 PM')).toBeLessThan(html.indexOf('Advisory until 1 PM'));
+    expect(html).toContain('href="https://api.weather.gov/alerts/1"');
+    expect(html).toContain('href="https://api.weather.gov/alerts/2"');
+    expect(html.match(/<hr /g)).toHaveLength(1);
+    const disclaimer = buildPopupHtml(alert('x', 'https://x'), undefined).match(/<div style="margin-top:6px;font-size:10px[^]*?<\/div>/)![0];
+    expect(html.split(disclaimer)).toHaveLength(2);
   });
 });
