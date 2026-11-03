@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-this-alias */
 import * as L from 'leaflet';
+import { ListingTimeoutError, TILE_TIMEOUT_MS, withTimeout } from './fetch-timeout';
 import { RateLimiter } from './rate-limiter';
 import {
   TileCachePolicy, hasInflight, isFinalRequest, memoGet, persistedGet, sharedFetch, storeTile,
@@ -288,6 +289,10 @@ export function createFetchTile(
   const shareKeyFor = (final: boolean): string => (final ? url : `${url}#provisional`);
   let attempt = 0;
   let rateLimited = 0;
+  // Chrome keeps a hung connect across our aborts and fails it later (75 s
+  // on macOS, measured 2026-10-29) with a statusless error: the same dead
+  // connection, not a rate limit.
+  let timedOut = false;
 
   layer._tilePending++;
 
@@ -358,12 +363,16 @@ export function createFetchTile(
     const ctrl = new AbortController();
     tile.__wrcAbort = ctrl;
 
+    // The limit is on the download, so a shared download times out once for
+    // every tile that joined it.
+    const download = (signal: AbortSignal): Promise<Blob> =>
+      withTimeout(TILE_TIMEOUT_MS, signal, (s) => fetchTileBlob(url, s));
     const raw = cache
-      ? sharedFetch(shareKeyFor(final), ctrl.signal, (signal) => fetchTileBlob(url, signal).then((b) => {
+      ? sharedFetch(shareKeyFor(final), ctrl.signal, (signal) => download(signal).then((b) => {
         storeTile(url, b, final ? cache : {});
         return b;
       }))
-      : fetchTileBlob(url, ctrl.signal);
+      : download(ctrl.signal);
 
     raw
       .then((b) => deliver(b, true))
@@ -377,15 +386,17 @@ export function createFetchTile(
           tile.__wrcAbort = null;
           return;
         }
+        if (err instanceof ListingTimeoutError) timedOut = true;
         if (err.missingLayer !== undefined) {
           opts.onLayerNotDefined?.(err.missingLayer);
           fail();
         } else if (err.status === 404) {
           fail();
-        } else if (err.status === 429 || (limiter && !err.status)) {
+        } else if (err.status === 429 || (limiter && !err.status && !timedOut)) {
           // 429 with CORS headers sets err.status; without CORS headers the browser
           // blocks the response entirely, leaving err.status undefined. If we have a
           // rate limiter on this source, treat any statusless error as rate-limited.
+          // A timeout is not a rate limit: it takes the attempt-capped retry below.
           on429?.();
           if (++rateLimited < maxRateLimitRetries) {
             schedule(limiter ? Math.max(limiter.msUntilSlot(), 1000) : 5000);

@@ -12,6 +12,12 @@ export const DATA_TIMEOUT_MS = 30_000;
 // A cold DWD wind request took 12.8 s for a 10° x 15° box (then ~1 s), and
 // a whole-world request is larger.
 export const WIND_TIMEOUT_MS = 60_000;
+// A tile whose TCP connect is dropped hangs until the OS gives up. Measured
+// 2026-10-29 with Chrome throttling, fetch() call to last byte: slowest tile
+// 4.6 s on Slow 4G, 17.6 s on Slow 3G with 48 tiles in flight. A limit on
+// headers alone doesn't fit: HTTP/1.1 hosts (DWD, ArcGIS) queue 6 requests per
+// host, and a queued DWD tile waited 16.7 s for its headers on Slow 3G.
+export const TILE_TIMEOUT_MS = 30_000;
 
 /** Rejection of {@link withTimeout} when the limit ran out (not an AbortError, which callers read as "superseded"). */
 export class ListingTimeoutError extends Error {
