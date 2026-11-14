@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as L from 'leaflet';
 import type { HomeAssistant } from 'custom-card-helpers';
 import {
-  LayerToggleBar, OverlayKey, OverlayVisibility, OVERLAY_KEYS, overlayConfigured,
+  LayerToggleBar, OverlayKey, OverlayVisibility, OVERLAY_KEYS, configuredOverlayKeys, overlayConfigured,
 } from '../src/layer-toggles';
 import { ViewerState, _resetLiveCardsForTests } from '../src/viewer-state';
 import type { WeatherRadarCardConfig } from '../src/types';
@@ -20,6 +20,22 @@ describe('overlayConfigured', () => {
     expect(overlayConfigured('alerts', cfg({}), undefined)).toBe(false);
     expect(overlayConfigured('wildfires', cfg({ show_wildfires: true }), undefined)).toBe(true);
     expect(overlayConfigured('wildfires', cfg({ show_wildfires: false }), undefined)).toBe(false);
+  });
+
+  it('enables a configured GeoJSON source for toggling', () => {
+    const source = { id: 'ridge_to_rivers', name: 'Trail Conditions', url: 'https://example.invalid/trails.geojson', enabled: true };
+    expect(overlayConfigured('geojson:ridge_to_rivers' as OverlayKey, cfg({ geojson_overlays: [source] }), undefined)).toBe(true);
+    expect(overlayConfigured('geojson:ridge_to_rivers' as OverlayKey, cfg({ geojson_overlays: [{ ...source, enabled: false }] }), undefined)).toBe(false);
+  });
+
+  it('lists built-in and enabled GeoJSON overlays for the runtime control', () => {
+    expect(configuredOverlayKeys(cfg({
+      show_alerts: true,
+      geojson_overlays: [
+        { id: 'ridge_to_rivers', name: 'Trail Conditions', url: 'https://example.invalid/trails.geojson', enabled: true },
+        { id: 'off', name: 'Off', url: 'https://example.invalid/off.geojson', enabled: false },
+      ],
+    }), undefined)).toEqual(['alerts', 'geojson:ridge_to_rivers']);
   });
 
   it('counts barbs, arrows or streamlines as wind', () => {
@@ -115,6 +131,23 @@ describe('LayerToggleBar', () => {
     expect(buttons.map((a) => a.title)).toEqual(['NWS alerts', 'Wind', 'Wildfires', 'Lightning']);
     expect(buttons.map((a) => a.querySelector('ha-icon')!.getAttribute('icon')))
       .toEqual(['mdi:alert', 'mdi:weather-windy', 'mdi:fire', 'mdi:flash']);
+  });
+
+  it('adds a named button for a configured GeoJSON overlay', () => {
+    const onToggle = vi.fn();
+    const bar = new LayerToggleBar({
+      layers: ['geojson:ridge_to_rivers'],
+      labels: { 'geojson:ridge_to_rivers': 'Trail Conditions' },
+      icons: { 'geojson:ridge_to_rivers': 'mdi:bike' },
+      isOn: () => true,
+      onToggle,
+    });
+    const button = bar.onAdd().querySelector<HTMLAnchorElement>('a')!;
+
+    expect(button.title).toBe('Trail Conditions');
+    expect(button.querySelector('ha-icon')?.getAttribute('icon')).toBe('mdi:bike');
+    button.click();
+    expect(onToggle).toHaveBeenCalledWith('geojson:ridge_to_rivers', false);
   });
 
   it('is a Leaflet bar of keyboard-reachable buttons', () => {

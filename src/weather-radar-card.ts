@@ -124,9 +124,11 @@ import {
 import { closestAncestor, deepQueryAll, hasAncestor } from './dom-ancestry';
 import { cardColumns, sectionCardWidth } from './section-width';
 import {
-  LayerToggleBar, OverlayKey, OverlayVisibility, OVERLAY_KEYS, overlayConfigured,
+  LayerToggleBar, OverlayKey, OverlayVisibility, OVERLAY_KEYS, configuredOverlayKeys,
+  geoJsonOverlayKey, overlayConfigured,
 } from './layer-toggles';
 import { WildfireLayer } from './wildfire-layer';
+import { GeoJsonOverlayLayer, enabledGeoJsonSources } from './geojson-overlay-layer';
 import { NwsAlertsLayer, type AlertsStatus } from './nws-alerts-layer';
 import { LightningLayer } from './lightning-layer';
 import { getRegionWarnings } from './region-warning';
@@ -263,6 +265,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // (isActive === false, all gets / sets are no-ops) unless the admin
   // has opted in via viewer_layer_control.
   private _viewerState: ViewerState | null = null;
+  private _geoJsonLayers = new Map<string, GeoJsonOverlayLayer>();
   private _wildfireLayer: WildfireLayer | null = null;
   private _alertsLayer: NwsAlertsLayer | null = null;
   private _lightningLayer: LightningLayer | null = null;
@@ -887,6 +890,25 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   // ── Overlays ──────────────────────────────────────────────────────────────
 
+  private _applyGeoJsonOverlays(): void {
+    if (!this._map) return;
+    const sources = enabledGeoJsonSources(this._config.geojson_overlays);
+    const configured = new Map(sources.map((source) => [source.id, source]));
+    for (const [id, layer] of this._geoJsonLayers) {
+      if (!configured.has(id) || !this._overlayVisibility.isOn(geoJsonOverlayKey(id))) {
+        layer.clear();
+        this._geoJsonLayers.delete(id);
+      }
+    }
+    for (const source of sources) {
+      const key = geoJsonOverlayKey(source.id);
+      if (!this._overlayVisibility.isOn(key) || this._geoJsonLayers.has(source.id)) continue;
+      const layer = new GeoJsonOverlayLayer(this._map, () => source, () => this.hass?.locale);
+      this._geoJsonLayers.set(source.id, layer);
+      void layer.start();
+    }
+  }
+
   // Starts each overlay the config turns on and the viewer hasn't hidden,
   // and stops any other. Idempotent: runs at init, on a toggle, and once a
   // viewer's saved choices load.
@@ -901,6 +923,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       if (want && !this._overlayRunning(key)) this._startOverlay(key);
       else if (!want && this._overlayRunning(key)) this._stopOverlay(key);
     }
+    this._applyGeoJsonOverlays();
   }
 
   // A failed alerts fetch used to be a console.warn and a silent backoff of
@@ -925,6 +948,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       case 'wildfires': return this._wildfireLayer !== null;
       case 'lightning': return this._lightningLayer !== null;
     }
+    return false;
   }
 
   private _startOverlay(key: OverlayKey): void {
@@ -977,10 +1001,20 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   private _setupLayerToggles(): void {
     if (!this._map || this._config.show_layer_toggles !== true) return;
-    const layers = OVERLAY_KEYS.filter((key) => overlayConfigured(key, this._config, this.hass));
+    const layers = configuredOverlayKeys(this._config, this.hass);
     if (layers.length === 0) return;
+    const labels = Object.fromEntries(
+      enabledGeoJsonSources(this._config.geojson_overlays).map((source) => [geoJsonOverlayKey(source.id), source.name]),
+    );
+    const icons = Object.fromEntries(
+      enabledGeoJsonSources(this._config.geojson_overlays)
+        .filter((source) => source.icon)
+        .map((source) => [geoJsonOverlayKey(source.id), source.icon]),
+    );
     this._layerToggles = new LayerToggleBar({
       layers,
+      labels,
+      icons,
       isOn: (key) => this._overlayVisibility.isOn(key),
       onToggle: (key, on) => {
         this._overlayVisibility.set(key, on);
@@ -1014,6 +1048,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     }
     this._player?.clear();
     this._player = null;
+    for (const layer of this._geoJsonLayers.values()) layer.clear();
+    this._geoJsonLayers.clear();
     this._wildfireLayer?.clear();
     this._wildfireLayer = null;
     this._alertsLayer?.clear();

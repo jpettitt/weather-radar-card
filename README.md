@@ -11,7 +11,7 @@ A Home Assistant rain radar card using tiled radar imagery from RainViewer, NOAA
 
 ## Description
 
-This card displays animated weather radar loops within Home Assistant. It supports multiple radar data sources and map styles, including Home Assistant's own vector map with place names drawn above the radar, and can be zoomed and panned seamlessly. Markers, view presets, hazard overlays (US wildfires + NWS watches & warnings) with per-user layer toggles, real-time lightning, a forecast nowcast (DWD), opt-in [motion-compensated playback](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#motion-compensation) (rain drifts between frames instead of teleporting), adjustable playback speed with optional per-user persistence, full sections-grid resize support, and 11 languages.
+This card displays animated weather radar loops within Home Assistant. It supports multiple radar data sources and map styles, including Home Assistant's own vector map with place names drawn above the radar, and can be zoomed and panned seamlessly. Markers, view presets, hazard overlays (US wildfires + NWS watches & warnings), opt-in external GeoJSON line overlays with per-user layer toggles, real-time lightning, a forecast nowcast (DWD), opt-in [motion-compensated playback](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#motion-compensation) (rain drifts between frames instead of teleporting), adjustable playback speed with optional per-user persistence, full sections-grid resize support, and 11 languages.
 
 ![Weather Radar card](weather-radar-card.gif)
 
@@ -56,11 +56,12 @@ Active threads, no specific version commitment. See [docs/todo.md](https://githu
 | [Upgrading to 4.0](https://github.com/jpettitt/weather-radar-card/blob/main/docs/upgrading-to-4.0.md) | What changes from 3.13, how to try 4.0, how to go back |
 | [Configuration](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md) | Full options table, Map Style choices (vector map included), Animation knobs, low power mode, View presets, Double-tap action, sections-grid behaviour |
 | [Data Sources](https://github.com/jpettitt/weather-radar-card/blob/main/docs/data-sources.md) | RainViewer / NOAA / DWD specifics, per-source caps, tile caching, NOAA & DWD notes, DWD forecast leading-edge note |
-| [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md) | Layer toggles, US wildfire perimeters, NWS watches & warnings, lightning (Blitzortung), and global wind — usage, knobs, **safety disclaimers** |
+| [Hazard & Layer Overlays](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md) | Layer toggles, external GeoJSON line feeds, US wildfire perimeters, NWS watches & warnings, lightning (Blitzortung), and global wind — usage, knobs, **safety disclaimers** |
 | [Markers](https://github.com/jpettitt/weather-radar-card/blob/main/docs/markers.md) | The `markers[]` schema, track-resolution rules, default home marker, migration from the legacy single-marker fields |
 | [Examples](https://github.com/jpettitt/weather-radar-card/blob/main/docs/examples.md) | Sample YAMLs for common setups, and the 4.0 features: vector map, satellite labels, presets, layer toggles |
 | [Animation architecture](https://github.com/jpettitt/weather-radar-card/blob/main/docs/animation.md) | Internal: layer z-stack, two-slot crossfade, opacity ownership, dynamic tile size, pause behaviour, invariants |
 | [Layer control design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/layer-control-design.md) | Internal: the per-user layer toggles and the viewer-state framework behind them |
+| [GeoJSON overlay design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/geojson-overlay-feature-design.md) | Internal: generic external line-data lifecycle, rendering, cache, refresh, controls and relevance filtering |
 | [Wildfire feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/wildfire-feature-design.md) | Internal: NIFC WFIGS feed, render decisions, InciWeb gating, refresh cadence |
 | [NWS alerts feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/nws-alerts-feature-design.md) | Internal: api.weather.gov polling, zone resolution + caching, severity sort, popup chrome |
 | [Wind feature design](https://github.com/jpettitt/weather-radar-card/blob/main/docs/wind-feature-design.md) | Internal: bulk WCS fetch + adaptive scaling, coalescing cache, zoom-aware streamlines, layering |

@@ -82,6 +82,62 @@ show_playback: true
 show_recenter: true
 ```
 
+## Ridge to Rivers trail conditions over NOAA radar
+
+This keeps the existing radar, wind and marker configuration while adding a selectable Ridge to Rivers line overlay. The source is limited to its Boise-area bounds and zoom 9+ so it does not draw or refresh while viewing distant presets. The colour mapping is a dashboard display choice, not an official Ridge to Rivers palette. See [External GeoJSON overlays](overlays.md#external-geojson-overlays) for source-field details and provider/CORS considerations.
+
+```yaml
+type: custom:weather-radar-card
+height: 600px
+data_source: NOAA
+map_style: MapTilesVector
+vector_style: natural
+wind_source: ndfd_wind
+past_minutes: 120
+zoom_level: 8
+
+show_alerts: true
+show_wildfires: true
+show_layer_toggles: true
+dwd_wind_flow: true
+cluster_markers: true
+
+markers:
+  - entity: person.chris
+    icon: entity_picture
+  - entity: person.lori
+    icon: entity_picture
+  - entity: person.tilly
+    icon: entity_picture
+
+geojson_overlays:
+  - id: ridge_to_rivers
+    name: Trail Conditions
+    icon: mdi:bike
+    url: "https://services1.arcgis.com/WHM6qC35aMtyAAlN/ArcGIS/rest/services/Ridge_to_Rivers_Trails_Assessment_Map_WFL1/FeatureServer/2/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson"
+    enabled: true
+    refresh_minutes: 60
+    bounds: [-116.3189, 43.5303, -115.9741, 43.8024]
+    min_zoom: 9
+    color_property: Condition
+    color_map:
+      "Dry / Tacky - Enjoy": "#2e7d32"
+      "Muddy – DO NOT USE": "#c62828"
+      "CLOSED": "#7f1d1d"
+      "Dry at start but could be muddy further out – turn around when you encounter mud. Don’t keep going.": "#d97706"
+      "Not Evaluated": "#6b7280"
+    fallback_color: "#6b7280"
+    popup_fields:
+      - TrailName
+      - Condition
+      - ConditionDate
+      - ConditionNotes
+      - TrailSubSystem
+    date_properties:
+      - ConditionDate
+    attribution: Ridge to Rivers
+```
+
 ## Localized map labels using OpenStreetMap
 
 ```yaml

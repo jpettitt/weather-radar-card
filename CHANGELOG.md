@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **External GeoJSON line overlays.** YAML can now add opt-in `geojson_overlays` for `LineString` and `MultiLineString` data, with property-based colours, safe popups, configurable layer-button icons, independent layer controls, refresh scheduling, shared in-memory caching, and optional bounds / minimum-zoom filtering. See [External GeoJSON overlays](docs/overlays.md#external-geojson-overlays).
+
 ## [4.0.0] - 2026-11-03
 
 > **4.0 release.** 4.0.0-rc4 with the fix below. 4.0 adds Home Assistant's vector map under the radar (`map_style: MapTilesVector`), `vector_style`, `theme_mode`, Satellite labels above the radar, view presets and layer toggles. It needs Home Assistant 2025.3 or later. The sections from 4.0.0-alpha1 to 4.0.0-rc4 below list all changes from 3.13.0. [Upgrading to 4.0](docs/upgrading-to-4.0.md) lists the breaking changes.

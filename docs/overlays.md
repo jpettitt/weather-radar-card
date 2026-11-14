@@ -18,6 +18,74 @@ show_wildfires: true
 dwd_wind: arrows
 ```
 
+## External GeoJSON overlays
+
+`geojson_overlays` is a YAML-only list of independently switchable external line-data sources. It is generic: it does not contain provider-specific assumptions. The card renders GeoJSON `LineString` and `MultiLineString` features only; it deliberately ignores point and polygon features.
+
+A source is inactive until it has `enabled: true`. That opt-in prevents a URL placed in a dashboard from creating background browser requests before the dashboard author is ready. Each source `id` must be unique within the card. With `show_layer_toggles: true`, enabled sources appear beside the built-in overlays using their configured `name`; hiding one removes its Leaflet layer and stops its requests. With `viewer_layer_control: true`, that choice is saved per viewer.
+
+The browser requests the URL directly, so the server must allow cross-origin requests from Home Assistant. Use a source whose terms allow the intended reuse and set its `attribution` exactly as required by that source.
+
+### Source fields
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `id` | yes | Stable, card-local source identifier. It is used for layer-toggle state. |
+| `name` | yes | Human-readable layer-toggle label. |
+| `icon` | no | Material Design Icon name for the source button, e.g. `mdi:bike`. Defaults to `mdi:vector-line`. |
+| `url` | yes | URL that answers with a GeoJSON FeatureCollection. |
+| `enabled` | yes | Must be `true` to permit fetching and rendering. |
+| `color` | no | Fixed CSS stroke colour when no property mapping applies. Defaults to Leaflet blue. |
+| `color_property` | no | GeoJSON feature property used to choose a colour. |
+| `color_map` | no | Mapping from exact property values to CSS colours. These are display choices, not provider-defined meanings unless the provider documents them. |
+| `fallback_color` | no | Colour for missing or unrecognised property values. It falls back to `color`, then Leaflet blue. |
+| `popup_fields` | no | Ordered feature-property names to show after a tap/click. No fields means no popup. Values are HTML-escaped. |
+| `date_properties` | no | Subset of `popup_fields` whose epoch-millisecond numeric values are formatted using the Home Assistant locale. |
+| `attribution` | no | Plain-text source credit shown in each configured popup; it is HTML-escaped. |
+| `refresh_minutes` | no | Positive interval between refresh attempts. Omit it to fetch once for a layer lifetime. A failed refresh retains the last successful linework. |
+| `bounds` | no | `[west, south, east, north]` WGS84 extent. Outside it, the layer is hidden and it neither fetches nor refreshes. |
+| `min_zoom` | no | Minimum Leaflet map zoom at which the layer may render or fetch. |
+
+Successful supported features are cached in memory by URL so toggling a layer back on, or creating another card instance, can render immediately. The cache is not persisted across a browser reload. Refreshes do not overlap, and teardown aborts a request and clears its timer.
+
+### Ridge to Rivers example
+
+The Boise Ridge to Rivers FeatureServer currently exposes polyline data as GeoJSON and allows browser cross-origin requests. Its `ConditionDate` values are epoch milliseconds. The observed condition values and this colour mapping may change; the colours below are readable card-display choices, **not an official Ridge to Rivers palette**. Check the service and its terms before relying on it in a dashboard.
+
+```yaml
+show_layer_toggles: true
+viewer_layer_control: true
+
+geojson_overlays:
+  - id: ridge_to_rivers
+    name: Trail Conditions
+    icon: mdi:bike
+    url: https://services1.arcgis.com/WHM6qC35aMtyAAlN/ArcGIS/rest/services/Ridge_to_Rivers_Trails_Assessment_Map_WFL1/FeatureServer/2/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson
+    enabled: true
+    refresh_minutes: 60
+    bounds: [-116.3189, 43.5303, -115.9741, 43.8024]
+    min_zoom: 9
+
+    color_property: Condition
+    color_map:
+      "Dry / Tacky - Enjoy": "#2e7d32"
+      "Muddy – DO NOT USE": "#c62828"
+      "CLOSED": "#7f1d1d"
+      "Dry at start but could be muddy further out – turn around when you encounter mud. Don’t keep going.": "#d97706"
+      "Not Evaluated": "#6b7280"
+    fallback_color: "#6b7280"
+
+    popup_fields:
+      - TrailName
+      - Condition
+      - ConditionDate
+      - ConditionNotes
+      - TrailSubSystem
+    date_properties:
+      - ConditionDate
+    attribution: Ridge to Rivers
+```
+
 ## While the map moves
 
 The overlays leave the map during a zoom gesture and come back once the map has been still for a second: the alert and wildfire outlines, the fire icons and wind barbs, and the lightning strikes. Wildfires and lightning redraw at that moment, not at every step of a pinch. The NWS alerts layer does nothing at all while the map moves (no redraw, no zone shape fetched or decoded), and it draws zone outlines at half a pixel of detail for the current zoom. Leaflet scales a canvas with a CSS transform on every touch move and animates every icon on the snap-back, which crashed Safari on an iPhone whenever one of these overlays was on.
