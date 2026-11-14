@@ -5,7 +5,16 @@ import { ViewerState } from './viewer-state';
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { localize } from './localize/localize';
 
-export type OverlayKey = 'alerts' | 'wind' | 'wildfires' | 'lightning';
+type BuiltInOverlayKey = 'alerts' | 'wind' | 'wildfires' | 'lightning';
+export type OverlayKey = BuiltInOverlayKey | `geojson:${string}`;
+
+export function geoJsonOverlayKey(id: string): OverlayKey {
+  return `geojson:${id}`;
+}
+
+function geoJsonOverlayId(key: OverlayKey): string | null {
+  return key.startsWith('geojson:') ? key.slice('geojson:'.length) : null;
+}
 
 // Left to right in the toggle bar.
 const OVERLAYS: { key: OverlayKey; icon: string }[] = [
@@ -17,6 +26,19 @@ const OVERLAYS: { key: OverlayKey; icon: string }[] = [
 
 export const OVERLAY_KEYS: OverlayKey[] = OVERLAYS.map((o) => o.key);
 
+/** Every overlay the dashboard made available to a viewer, in control order. */
+export function configuredOverlayKeys(
+  cfg: WeatherRadarCardConfig,
+  hass: HomeAssistant | undefined,
+): OverlayKey[] {
+  return [
+    ...OVERLAY_KEYS.filter((key) => overlayConfigured(key, cfg, hass)),
+    ...(cfg.geojson_overlays ?? [])
+      .filter((source) => source.enabled === true)
+      .map((source) => geoJsonOverlayKey(source.id)),
+  ];
+}
+
 /**
  * Whether the config turns an overlay on. Only these get a toggle: the
  * dashboard's author decides what's available, the viewer what's showing.
@@ -27,12 +49,17 @@ export function overlayConfigured(
   cfg: WeatherRadarCardConfig,
   hass: HomeAssistant | undefined,
 ): boolean {
+  const geoJsonId = geoJsonOverlayId(key);
+  if (geoJsonId !== null) {
+    return cfg.geojson_overlays?.some((source) => source.id === geoJsonId && source.enabled === true) ?? false;
+  }
   switch (key) {
     case 'alerts': return cfg.show_alerts === true;
     case 'wind': return cfg.dwd_wind === 'barbs' || cfg.dwd_wind === 'arrows' || cfg.dwd_wind_flow === true;
     case 'wildfires': return cfg.show_wildfires === true;
     case 'lightning': return cfg.show_lightning === true && isBlitzortungLoaded(hass);
   }
+  return false;
 }
 
 const storageKey = (key: OverlayKey): string => `layer_${key}`;
@@ -68,6 +95,8 @@ export class OverlayVisibility {
 
 export interface LayerToggleBarOptions {
   layers: OverlayKey[];
+  /** Display labels for dynamic configured overlays. */
+  labels?: Partial<Record<OverlayKey, string>>;
   isOn: (key: OverlayKey) => boolean;
   onToggle: (key: OverlayKey, on: boolean) => void;
 }
@@ -83,12 +112,17 @@ export class LayerToggleBar extends L.Control {
   onAdd(): HTMLElement {
     const bar = L.DomUtil.create('div', 'leaflet-bar radar-layer-toggles');
     L.DomEvent.disableClickPropagation(bar);
-    for (const { key, icon } of OVERLAYS) {
-      if (!this._opts.layers.includes(key)) continue;
+    const overlays = [
+      ...OVERLAYS.filter(({ key }) => this._opts.layers.includes(key)),
+      ...this._opts.layers
+        .filter((key) => geoJsonOverlayId(key) !== null)
+        .map((key) => ({ key, icon: 'mdi:vector-line' })),
+    ];
+    for (const { key, icon } of overlays) {
       const a = L.DomUtil.create('a', 'radar-layer-toggle', bar) as HTMLAnchorElement;
       a.href = '#';
       a.setAttribute('role', 'button');
-      const name = localize(`ui.layers.${key}`);
+      const name = this._opts.labels?.[key] ?? localize(`ui.layers.${key}`);
       a.title = name;
       a.setAttribute('aria-label', name);
       L.DomUtil.create('ha-icon', '', a).setAttribute('icon', icon);

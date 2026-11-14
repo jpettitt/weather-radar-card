@@ -124,7 +124,8 @@ import {
 import { closestAncestor, deepQueryAll, hasAncestor } from './dom-ancestry';
 import { cardColumns, sectionCardWidth } from './section-width';
 import {
-  LayerToggleBar, OverlayKey, OverlayVisibility, OVERLAY_KEYS, overlayConfigured,
+  LayerToggleBar, OverlayKey, OverlayVisibility, OVERLAY_KEYS, configuredOverlayKeys,
+  geoJsonOverlayKey, overlayConfigured,
 } from './layer-toggles';
 import { WildfireLayer } from './wildfire-layer';
 import { GeoJsonOverlayLayer, enabledGeoJsonSources } from './geojson-overlay-layer';
@@ -885,14 +886,23 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._player.start(getEffectiveTimeRange(cfg).frameCount);
 
     this._applyOverlays();
-    this._setupGeoJsonOverlays();
   }
 
   // ── Overlays ──────────────────────────────────────────────────────────────
 
-  private _setupGeoJsonOverlays(): void {
+  private _applyGeoJsonOverlays(): void {
     if (!this._map) return;
-    for (const source of enabledGeoJsonSources(this._config.geojson_overlays)) {
+    const sources = enabledGeoJsonSources(this._config.geojson_overlays);
+    const configured = new Map(sources.map((source) => [source.id, source]));
+    for (const [id, layer] of this._geoJsonLayers) {
+      if (!configured.has(id) || !this._overlayVisibility.isOn(geoJsonOverlayKey(id))) {
+        layer.clear();
+        this._geoJsonLayers.delete(id);
+      }
+    }
+    for (const source of sources) {
+      const key = geoJsonOverlayKey(source.id);
+      if (!this._overlayVisibility.isOn(key) || this._geoJsonLayers.has(source.id)) continue;
       const layer = new GeoJsonOverlayLayer(this._map, () => source, () => this.hass?.locale);
       this._geoJsonLayers.set(source.id, layer);
       void layer.start();
@@ -913,6 +923,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       if (want && !this._overlayRunning(key)) this._startOverlay(key);
       else if (!want && this._overlayRunning(key)) this._stopOverlay(key);
     }
+    this._applyGeoJsonOverlays();
   }
 
   // A failed alerts fetch used to be a console.warn and a silent backoff of
@@ -937,6 +948,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       case 'wildfires': return this._wildfireLayer !== null;
       case 'lightning': return this._lightningLayer !== null;
     }
+    return false;
   }
 
   private _startOverlay(key: OverlayKey): void {
@@ -989,10 +1001,14 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   private _setupLayerToggles(): void {
     if (!this._map || this._config.show_layer_toggles !== true) return;
-    const layers = OVERLAY_KEYS.filter((key) => overlayConfigured(key, this._config, this.hass));
+    const layers = configuredOverlayKeys(this._config, this.hass);
     if (layers.length === 0) return;
+    const labels = Object.fromEntries(
+      enabledGeoJsonSources(this._config.geojson_overlays).map((source) => [geoJsonOverlayKey(source.id), source.name]),
+    );
     this._layerToggles = new LayerToggleBar({
       layers,
+      labels,
       isOn: (key) => this._overlayVisibility.isOn(key),
       onToggle: (key, on) => {
         this._overlayVisibility.set(key, on);
