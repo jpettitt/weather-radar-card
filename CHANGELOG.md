@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **External GeoJSON line overlays.** YAML can now add opt-in `geojson_overlays` for `LineString` and `MultiLineString` data, with property-based colours, safe popups, independent layer controls, refresh scheduling, shared in-memory caching, and optional bounds / minimum-zoom filtering. See [External GeoJSON overlays](docs/overlays.md#external-geojson-overlays).
+- **External GeoJSON line overlays.** YAML can now add opt-in `geojson_overlays` for `LineString` and `MultiLineString` data, with property-based colours, safe popups, configurable layer-button icons, independent layer controls, refresh scheduling, shared in-memory caching, and optional bounds / minimum-zoom filtering. See [External GeoJSON overlays](docs/overlays.md#external-geojson-overlays).
 
 ## [4.0.0] - 2026-11-03
 

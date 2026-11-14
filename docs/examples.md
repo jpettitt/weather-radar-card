@@ -113,6 +113,7 @@ markers:
 geojson_overlays:
   - id: ridge_to_rivers
     name: Trail Conditions
+    icon: mdi:bike
     url: "https://services1.arcgis.com/WHM6qC35aMtyAAlN/ArcGIS/rest/services/Ridge_to_Rivers_Trails_Assessment_Map_WFL1/FeatureServer/2/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson"
     enabled: true
     refresh_minutes: 60

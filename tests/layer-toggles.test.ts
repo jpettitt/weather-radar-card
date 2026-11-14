@@ -138,13 +138,14 @@ describe('LayerToggleBar', () => {
     const bar = new LayerToggleBar({
       layers: ['geojson:ridge_to_rivers'],
       labels: { 'geojson:ridge_to_rivers': 'Trail Conditions' },
+      icons: { 'geojson:ridge_to_rivers': 'mdi:bike' },
       isOn: () => true,
       onToggle,
     });
     const button = bar.onAdd().querySelector<HTMLAnchorElement>('a')!;
 
     expect(button.title).toBe('Trail Conditions');
-    expect(button.querySelector('ha-icon')?.getAttribute('icon')).toBe('mdi:vector-line');
+    expect(button.querySelector('ha-icon')?.getAttribute('icon')).toBe('mdi:bike');
     button.click();
     expect(onToggle).toHaveBeenCalledWith('geojson:ridge_to_rivers', false);
   });

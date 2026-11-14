@@ -7,6 +7,8 @@ export interface GeoJsonOverlaySource {
   id: string;
   name: string;
   url: string;
+  /** Optional Material Design Icon for this source's layer-toggle button. */
+  icon?: string;
   /** External GeoJSON sources are opt-in so an added config never fetches unexpectedly. */
   enabled?: boolean;
   color?: string;

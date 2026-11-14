@@ -18,7 +18,7 @@ The first version accepts only GeoJSON `LineString` and `MultiLineString` featur
 - formats configured epoch-millisecond date properties through Home Assistant's locale helper;
 - cancels timers, map listeners and in-flight work on removal.
 
-The card creates the layers only while the corresponding `geojson:<id>` visibility key is on. `layer-toggles.ts` derives those dynamic keys from enabled config sources and sends their display names to the Leaflet control. Dynamic keys use the same viewer-state persistence path as the built-in layers.
+The card creates the layers only while the corresponding `geojson:<id>` visibility key is on. `layer-toggles.ts` derives those dynamic keys from enabled config sources and sends their display names plus optional Material Design Icons to the Leaflet control; sources without an `icon` use `mdi:vector-line`. Dynamic keys use the same viewer-state persistence path as the built-in layers.
 
 ## Fetch, cache and relevance lifecycle
 

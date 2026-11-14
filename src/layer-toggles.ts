@@ -97,6 +97,8 @@ export interface LayerToggleBarOptions {
   layers: OverlayKey[];
   /** Display labels for dynamic configured overlays. */
   labels?: Partial<Record<OverlayKey, string>>;
+  /** Material Design Icons for dynamic configured overlays. */
+  icons?: Partial<Record<OverlayKey, string>>;
   isOn: (key: OverlayKey) => boolean;
   onToggle: (key: OverlayKey, on: boolean) => void;
 }
@@ -116,7 +118,7 @@ export class LayerToggleBar extends L.Control {
       ...OVERLAYS.filter(({ key }) => this._opts.layers.includes(key)),
       ...this._opts.layers
         .filter((key) => geoJsonOverlayId(key) !== null)
-        .map((key) => ({ key, icon: 'mdi:vector-line' })),
+        .map((key) => ({ key, icon: this._opts.icons?.[key] ?? 'mdi:vector-line' })),
     ];
     for (const { key, icon } of overlays) {
       const a = L.DomUtil.create('a', 'radar-layer-toggle', bar) as HTMLAnchorElement;

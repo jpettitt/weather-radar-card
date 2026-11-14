@@ -32,6 +32,7 @@ The browser requests the URL directly, so the server must allow cross-origin req
 | --- | --- | --- |
 | `id` | yes | Stable, card-local source identifier. It is used for layer-toggle state. |
 | `name` | yes | Human-readable layer-toggle label. |
+| `icon` | no | Material Design Icon name for the source button, e.g. `mdi:bike`. Defaults to `mdi:vector-line`. |
 | `url` | yes | URL that answers with a GeoJSON FeatureCollection. |
 | `enabled` | yes | Must be `true` to permit fetching and rendering. |
 | `color` | no | Fixed CSS stroke colour when no property mapping applies. Defaults to Leaflet blue. |
@@ -58,6 +59,7 @@ viewer_layer_control: true
 geojson_overlays:
   - id: ridge_to_rivers
     name: Trail Conditions
+    icon: mdi:bike
     url: https://services1.arcgis.com/WHM6qC35aMtyAAlN/ArcGIS/rest/services/Ridge_to_Rivers_Trails_Assessment_Map_WFL1/FeatureServer/2/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson
     enabled: true
     refresh_minutes: 60

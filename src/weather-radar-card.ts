@@ -1006,9 +1006,15 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     const labels = Object.fromEntries(
       enabledGeoJsonSources(this._config.geojson_overlays).map((source) => [geoJsonOverlayKey(source.id), source.name]),
     );
+    const icons = Object.fromEntries(
+      enabledGeoJsonSources(this._config.geojson_overlays)
+        .filter((source) => source.icon)
+        .map((source) => [geoJsonOverlayKey(source.id), source.icon]),
+    );
     this._layerToggles = new LayerToggleBar({
       layers,
       labels,
+      icons,
       isOn: (key) => this._overlayVisibility.isOn(key),
       onToggle: (key, on) => {
         this._overlayVisibility.set(key, on);
