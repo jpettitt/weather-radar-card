@@ -1,5 +1,6 @@
 import { LovelaceCardConfig } from 'custom-card-helpers';
 import type { WindSource } from './wind-source-caps';
+import type { GeoJsonOverlaySource } from './geojson-overlay-layer';
 
 export interface Marker {
   entity?: string;
@@ -275,6 +276,8 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   progress_bar_now_color?: string;
   show_color_bar?: boolean;
   show_loading_spinner?: boolean;
+  /** External GeoJSON line overlays. Each source stays inactive until `enabled: true`. */
+  geojson_overlays?: GeoJsonOverlaySource[];
   // Wildfire overlay (US-only — see docs/wildfire-feature-design.md)
   show_wildfires?: boolean;
   wildfire_min_acres?: number;

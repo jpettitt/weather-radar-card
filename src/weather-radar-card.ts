@@ -127,6 +127,7 @@ import {
   LayerToggleBar, OverlayKey, OverlayVisibility, OVERLAY_KEYS, overlayConfigured,
 } from './layer-toggles';
 import { WildfireLayer } from './wildfire-layer';
+import { GeoJsonOverlayLayer, enabledGeoJsonSources } from './geojson-overlay-layer';
 import { NwsAlertsLayer, type AlertsStatus } from './nws-alerts-layer';
 import { LightningLayer } from './lightning-layer';
 import { getRegionWarnings } from './region-warning';
@@ -263,6 +264,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // (isActive === false, all gets / sets are no-ops) unless the admin
   // has opted in via viewer_layer_control.
   private _viewerState: ViewerState | null = null;
+  private _geoJsonLayers = new Map<string, GeoJsonOverlayLayer>();
   private _wildfireLayer: WildfireLayer | null = null;
   private _alertsLayer: NwsAlertsLayer | null = null;
   private _lightningLayer: LightningLayer | null = null;
@@ -883,9 +885,19 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._player.start(getEffectiveTimeRange(cfg).frameCount);
 
     this._applyOverlays();
+    this._setupGeoJsonOverlays();
   }
 
   // ── Overlays ──────────────────────────────────────────────────────────────
+
+  private _setupGeoJsonOverlays(): void {
+    if (!this._map) return;
+    for (const source of enabledGeoJsonSources(this._config.geojson_overlays)) {
+      const layer = new GeoJsonOverlayLayer(this._map, () => source);
+      this._geoJsonLayers.set(source.id, layer);
+      void layer.start();
+    }
+  }
 
   // Starts each overlay the config turns on and the viewer hasn't hidden,
   // and stops any other. Idempotent: runs at init, on a toggle, and once a
@@ -1014,6 +1026,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     }
     this._player?.clear();
     this._player = null;
+    for (const layer of this._geoJsonLayers.values()) layer.clear();
+    this._geoJsonLayers.clear();
     this._wildfireLayer?.clear();
     this._wildfireLayer = null;
     this._alertsLayer?.clear();
