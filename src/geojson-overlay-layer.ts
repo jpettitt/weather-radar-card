@@ -16,14 +16,34 @@ export interface GeoJsonOverlaySource {
   popup_fields?: string[];
   date_properties?: string[];
   attribution?: string;
+  /** Minutes between refresh attempts; omitted means fetch once per layer lifetime. */
+  refresh_minutes?: number;
+  /** [west, south, east, north] in WGS84; hide and skip requests outside it. */
+  bounds?: [number, number, number, number];
+  /** Do not render or fetch until the map reaches this Leaflet zoom level. */
+  min_zoom?: number;
 }
 
 const DEFAULT_COLOR = '#3388ff';
 const LINE_WEIGHT = 3;
+const cachedLineFeatures = new Map<string, GeoJSON.Feature[]>();
+
+/** Test-only escape hatch for the process-wide source cache. */
+export function _resetGeoJsonOverlayCacheForTests(): void {
+  cachedLineFeatures.clear();
+}
 
 /** Sources that the dashboard author deliberately enabled. */
 export function enabledGeoJsonSources(sources: GeoJsonOverlaySource[] | undefined): GeoJsonOverlaySource[] {
   return (sources ?? []).filter((source) => source.enabled === true);
+}
+
+export function isGeoJsonSourceRelevant(map: L.Map, source: GeoJsonOverlaySource): boolean {
+  if (source.min_zoom != null && map.getZoom() < source.min_zoom) return false;
+  if (!source.bounds) return true;
+  const [west, south, east, north] = source.bounds;
+  const view = map.getBounds();
+  return view.getEast() >= west && view.getWest() <= east && view.getNorth() >= south && view.getSouth() <= north;
 }
 
 export function colorForFeature(
@@ -80,6 +100,14 @@ export class GeoJsonOverlayLayer {
 
   private _generation = 0;
 
+  private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private _request: Promise<void> | null = null;
+
+  private _started = false;
+
+  private readonly _onMapChanged = (): void => { void this._updateRelevance(); };
+
   constructor(
     private readonly _map: L.Map,
     private readonly _source: () => GeoJsonOverlaySource,
@@ -87,32 +115,83 @@ export class GeoJsonOverlayLayer {
   ) {}
 
   async start(): Promise<void> {
-    const generation = ++this._generation;
-    this._abortCtrl?.abort();
-    const ctrl = new AbortController();
-    this._abortCtrl = ctrl;
-    const source = this._source();
-
-    try {
-      const response = await fetch(source.url, { cache: 'no-cache', signal: ctrl.signal });
-      if (!response.ok) throw new Error(`GeoJSON overlay fetch ${response.status}`);
-      const data = await response.json() as GeoJSON.FeatureCollection;
-      if (ctrl.signal.aborted || generation !== this._generation) return;
-      const features = (data?.features ?? []).filter(isLineFeature);
-      this._render(features, source);
-    } catch (err) {
-      if ((err as Error)?.name !== 'AbortError') console.warn(`GeoJSON overlay "${source.id}" fetch failed`, err);
-    } finally {
-      if (this._abortCtrl === ctrl) this._abortCtrl = null;
+    if (!this._started) {
+      this._started = true;
+      this._map.on('moveend zoomend', this._onMapChanged);
     }
+    await this._updateRelevance();
   }
 
-  clear(): void {
+  private async _updateRelevance(): Promise<void> {
+    const source = this._source();
+    if (!isGeoJsonSourceRelevant(this._map, source)) {
+      this._suspend();
+      return;
+    }
+    if (this._layer) return;
+    const cached = cachedLineFeatures.get(source.url);
+    if (cached) {
+      this._render(cached, source);
+      this._scheduleRefresh();
+      return;
+    }
+    await this._refresh();
+  }
+
+  private _suspend(): void {
     this._generation++;
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    this._refreshTimer = null;
     this._abortCtrl?.abort();
     this._abortCtrl = null;
     if (this._layer) this._map.removeLayer(this._layer);
     this._layer = null;
+  }
+
+  private async _refresh(): Promise<void> {
+    if (this._request) {
+      await this._request;
+      if (this._started && isGeoJsonSourceRelevant(this._map, this._source())) await this._refresh();
+      return;
+    }
+    const generation = this._generation;
+    const source = this._source();
+    const ctrl = new AbortController();
+    this._abortCtrl = ctrl;
+    this._request = (async () => {
+      try {
+        const response = await fetch(source.url, { cache: 'no-cache', signal: ctrl.signal });
+        if (!response.ok) throw new Error(`GeoJSON overlay fetch ${response.status}`);
+        const data = await response.json() as GeoJSON.FeatureCollection;
+        if (ctrl.signal.aborted || generation !== this._generation) return;
+        const features = (data?.features ?? []).filter(isLineFeature);
+        cachedLineFeatures.set(source.url, features);
+        this._render(features, source);
+      } catch (err) {
+        if ((err as Error)?.name !== 'AbortError') console.warn(`GeoJSON overlay "${source.id}" fetch failed`, err);
+      } finally {
+        if (this._abortCtrl === ctrl) this._abortCtrl = null;
+        this._request = null;
+        if (generation === this._generation) this._scheduleRefresh();
+      }
+    })();
+    return this._request;
+  }
+
+  private _scheduleRefresh(): void {
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    const minutes = this._source().refresh_minutes;
+    if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return;
+    this._refreshTimer = setTimeout(() => {
+      this._refreshTimer = null;
+      void this._refresh();
+    }, minutes * 60_000);
+  }
+
+  clear(): void {
+    this._started = false;
+    this._map.off('moveend zoomend', this._onMapChanged);
+    this._suspend();
   }
 
   private _render(features: GeoJSON.Feature[], source: GeoJsonOverlaySource): void {

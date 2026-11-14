@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as L from 'leaflet';
 import {
-  GeoJsonOverlayLayer, enabledGeoJsonSources, colorForFeature, buildPopupHtml,
+  GeoJsonOverlayLayer, enabledGeoJsonSources, colorForFeature, buildPopupHtml, isGeoJsonSourceRelevant,
+  _resetGeoJsonOverlayCacheForTests,
 } from '../src/geojson-overlay-layer';
 
 vi.mock('../src/shared-canvas-renderer', () => ({ sharedCanvasRenderer: () => undefined }));
@@ -30,7 +31,9 @@ function makeMap(): L.Map {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
+  _resetGeoJsonOverlayCacheForTests();
   document.body.replaceChildren();
 });
 
@@ -78,6 +81,77 @@ describe('GeoJsonOverlayLayer', () => {
     ])).toEqual([
       { id: 'on', name: 'On', url: 'https://example.invalid/on.geojson', enabled: true },
     ]);
+  });
+
+  it('only considers a bounded source relevant near its configured area and zoom', () => {
+    const map = makeMap();
+    const source = {
+      id: 'boise', name: 'Boise', url: 'https://example.invalid/boise.geojson',
+      bounds: [-116.32, 43.53, -115.97, 43.81] as [number, number, number, number], min_zoom: 9,
+    };
+    expect(isGeoJsonSourceRelevant(map, source)).toBe(true);
+    map.setView([45.0, -114.0], 10, { animate: false });
+    expect(isGeoJsonSourceRelevant(map, source)).toBe(false);
+    map.setView([43.7, -116.2], 8, { animate: false });
+    expect(isGeoJsonSourceRelevant(map, source)).toBe(false);
+    map.remove();
+  });
+
+  it('hides a bounded source after the map leaves its relevant area', async () => {
+    const map = makeMap();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(TRAILS), { status: 200 })));
+    const layer = new GeoJsonOverlayLayer(map, () => ({
+      id: 'bounded', name: 'Bounded', url: 'https://example.invalid/bounded.geojson',
+      bounds: [-116.32, 43.53, -115.97, 43.81], min_zoom: 9,
+    }));
+    await layer.start();
+    map.setView([45.0, -114.0], 10, { animate: false });
+    map.fire('moveend');
+
+    const mapLayers: L.Layer[] = [];
+    map.eachLayer((parent) => mapLayers.push(parent));
+    expect(mapLayers.some((parent) => parent instanceof L.GeoJSON)).toBe(false);
+    layer.clear();
+    map.remove();
+  });
+
+  it('reuses a successful source cache when an overlay is toggled back on', async () => {
+    const map = makeMap();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(TRAILS), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const source = { id: 'cached', name: 'Cached', url: 'https://example.invalid/cached.geojson' };
+
+    const first = new GeoJsonOverlayLayer(map, () => source);
+    await first.start();
+    first.clear();
+    const second = new GeoJsonOverlayLayer(map, () => source);
+    await second.start();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    second.clear();
+    map.remove();
+  });
+
+  it('refreshes at the configured interval and preserves rendered data when refresh fails', async () => {
+    vi.useFakeTimers();
+    const map = makeMap();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(TRAILS), { status: 200 }))
+      .mockRejectedValueOnce(new Error('service unavailable'));
+    vi.stubGlobal('fetch', fetchMock);
+    const layer = new GeoJsonOverlayLayer(map, () => ({
+      id: 'refreshing', name: 'Refreshing', url: 'https://example.invalid/refresh.geojson', refresh_minutes: 1,
+    }));
+
+    await layer.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const mapLayers: L.Layer[] = [];
+    map.eachLayer((parent) => mapLayers.push(parent));
+    expect(mapLayers.some((parent) => parent instanceof L.GeoJSON)).toBe(true);
+    layer.clear();
+    map.remove();
   });
 
   it('fetches GeoJSON and draws its line features in the configured fixed colour', async () => {
