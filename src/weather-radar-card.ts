@@ -893,7 +893,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   private _setupGeoJsonOverlays(): void {
     if (!this._map) return;
     for (const source of enabledGeoJsonSources(this._config.geojson_overlays)) {
-      const layer = new GeoJsonOverlayLayer(this._map, () => source);
+      const layer = new GeoJsonOverlayLayer(this._map, () => source, () => this.hass?.locale);
       this._geoJsonLayers.set(source.id, layer);
       void layer.start();
     }
