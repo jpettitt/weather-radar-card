@@ -129,17 +129,20 @@ const maplibreAdapterNotice = () => [
     .split('\n').map((l) => l.replace(/^ \* ?/, '')).join('\n').trim(),
 ];
 
+// Not 5000: macOS AirPlay Receiver holds it, and rollup-plugin-serve exits
+// the whole watch run when its port is taken.
 const serveopts = {
   contentBase: ['./dist'],
   host: '0.0.0.0',
-  port: 5000,
+  port: Number(process.env.PORT) || 5001,
   allowCrossOrigin: true,
   headers: {
     'Access-Control-Allow-Origin': '*',
   },
 };
 
-const makePlugins = (notices = []) => [
+// withServer: serve() binds its port when called, so only one bundle may start it.
+const makePlugins = (notices = [], withServer = false) => [
   // Import *.css files as raw strings (for unsafeCSS() in LitElement)
   string({ include: ['**/*.css'] }),
   nodeResolve(),
@@ -158,11 +161,11 @@ const makePlugins = (notices = []) => [
     mangle: { keep_classnames: /^WeatherRadar/ },
   }),
   thirdPartyNoticesPlugin(notices),
-  // Regenerate the .gz only on full builds — watch mode would serve
-  // the .js directly from rollup-plugin-serve and a stale .gz isn't
-  // in the way there.
-  !dev && gzipBundlePlugin(),
-  dev && serve(serveopts),
+  // Also in watch mode: HA (aiohttp) serves a .gz next to the .js
+  // whenever it exists, without comparing dates, so the testbed would
+  // serve the last full build's .gz.
+  gzipBundlePlugin(),
+  dev && withServer && serve(serveopts),
 ];
 
 export default [
@@ -186,6 +189,6 @@ export default [
       dir: 'dist',
       format: 'es',
     },
-    plugins: makePlugins(),
+    plugins: makePlugins([], true),
   },
 ];
