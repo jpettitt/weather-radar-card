@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal
+
+- **`npm start` works again.** It failed from 3.0.0: the dev configuration (`rollup.config.dev.js`) could not import the CSS files. `npm start` now runs `rollup -c --watch` on the production configuration, so it also builds the MapLibre file. The dev server uses port 5001, because macOS AirPlay Receiver uses 5000; set `PORT` to change it. Watch mode now also writes the `.gz` files, because HA serves an old `.gz` before a new `.js`.
+
 ## [4.0.0] - 2026-11-03
 
 > **4.0 release.** 4.0.0-rc4 with the fix below. 4.0 adds Home Assistant's vector map under the radar (`map_style: MapTilesVector`), `vector_style`, `theme_mode`, Satellite labels above the radar, view presets and layer toggles. It needs Home Assistant 2025.3 or later. The sections from 4.0.0-alpha1 to 4.0.0-rc4 below list all changes from 3.13.0. [Upgrading to 4.0](docs/upgrading-to-4.0.md) lists the breaking changes.

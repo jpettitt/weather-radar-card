@@ -30,7 +30,7 @@ Thank you for your interest in contributing to Weather Radar Card! This document
    ```bash
    npm start
    ```
-   This will start a development server on port 5000 with hot-reload.
+   This rebuilds `dist/` (unminified) each time you save a source file. It also serves `dist/` on port 5001; use `PORT=xxxx npm start` for a different port. There is no live reload: hard-refresh the browser after a rebuild. The Docker testbed below reads `dist/` directly, so it picks up each rebuild.
 
 5. Build for production:
    ```bash
@@ -57,7 +57,7 @@ npm run ha:up      # first run also creates .dev/ha-config from the example
 
 > If you have an existing `.dev/ha-config/` from before this resource-based loading was added, run `npm run ha:reset` once to pick it up — `ha:init` only seeds the resource file into a fresh config.
 
-After editing source and running `npm run build`, hard-refresh the browser (Cmd-Shift-R / Ctrl-Shift-F5) — HA serves the rebuilt bundle without restart.
+After editing source and running `npm run build` (or while `npm start` runs), hard-refresh the browser (Cmd-Shift-R / Ctrl-Shift-F5) — HA serves the rebuilt bundle without restart.
 
 | Command              | What it does                                            |
 | -------------------- | ------------------------------------------------------- |
