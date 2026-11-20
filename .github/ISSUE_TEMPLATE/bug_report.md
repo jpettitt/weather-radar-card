@@ -16,7 +16,7 @@ assignees: ''
 
 - [ ] I updated to the latest version available
 - [ ] I cleared the cache of my browser
-- [ ] I installed using HACS (leave unchecked for manual installs)
+- [ ] I installed using the Marketplace or HACS (leave unchecked for manual installs)
 
 **Release with the issue:**
 

@@ -81,7 +81,7 @@ been removed.) Open all PRs against `main`.
    ([`.github/workflows/build.yml`](.github/workflows/build.yml));
    [`.github/workflows/release.yml`](.github/workflows/release.yml)
    builds a fresh bundle and attaches `dist/*` to each GitHub
-   release for HACS and manual installers. Static assets in
+   release for Marketplace, HACS and manual installers. Static assets in
    `dist/` (PNGs, SVGs, JPG) **are** tracked — they're canonical
    source, not build output. Don't hand-edit them either; replace
    the file if a real change is needed.
@@ -416,7 +416,7 @@ docker-compose.yml                Local HA testbed (`npm run ha:up`)
 - [Home Assistant frontend AGENTS.md][ha-frontend-agents]
 - [Lit documentation](https://lit.dev/docs/)
 - [Leaflet API reference](https://leafletjs.com/reference.html)
-- [HACS publishing requirements](https://hacs.xyz/docs/publish/plugin)
+- [Marketplace dashboard publishing guide](https://contributors.home-assistant.io/marketplace/guides/dashboard/)
 - [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 [ha-frontend-agents]: https://github.com/home-assistant/frontend/blob/dev/AGENTS.md
