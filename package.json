@@ -42,9 +42,9 @@
     "@stryker-mutator/core": "^10.0.0",
     "@stryker-mutator/typescript-checker": "^10.0.0",
     "@stryker-mutator/vitest-runner": "^10.0.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
     "eslint": "^10.6.0",
-    "happy-dom": "^20.10.6",
+    "happy-dom": "^21.0.4",
     "prettier": "^3.9.1",
     "rollup": "^4.62.2",
     "rollup-plugin-serve": "^1.1.0",
@@ -52,14 +52,20 @@
     "rollup-plugin-typescript2": "^0.37.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.62.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "lit": "^3.3.3",
     "lit-html": "^3.3.3",
     "lit-element": "^4.2.2",
     "@lit/reactive-element": "^2.1.2",
-    "serialize-javascript": "^7.0.6"
+    "serialize-javascript": "^7.0.6",
+    "@stryker-mutator/core": {
+      "minimatch": "^11.0.9",
+      "typed-rest-client": {
+        "qs": "^6.17.1"
+      }
+    }
   },
   "scripts": {
     "start": "rollup -c --watch",
