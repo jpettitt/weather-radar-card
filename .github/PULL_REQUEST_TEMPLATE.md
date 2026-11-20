@@ -66,4 +66,5 @@ change" if no user-visible behaviour or future plans changed.
 - [ ] `docs/markers.md`
 - [ ] `docs/examples.md`
 - [ ] `docs/animation.md` or other `docs/*-feature-design.md`
+- [ ] `docs/network-access.md`
 - [ ] n/a — internal change
