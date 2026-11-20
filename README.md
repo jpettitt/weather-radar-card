@@ -2,7 +2,7 @@
 
 A Home Assistant rain radar card using tiled radar imagery from RainViewer, NOAA/NWS, and DWD (Deutscher Wetterdienst).
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
+[![marketplace_badge](https://img.shields.io/badge/Marketplace-Default-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![GitHub Release][releases-shield]][releases]
 [![License][license-shield]](LICENSE)
 ![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)
@@ -27,7 +27,7 @@ Full-screen capture with every feature enabled — radar with motion compensatio
 
 - **Home Assistant 2025.3 or later.** 3.x needs 2024.1. On older Home Assistant, use 3.x. From 3.6.3, the 3.x editor's text fields are empty on HA before 2026.4, so set those options in YAML.
 - **Re-centre with a tracked marker.** The button now switches between the tracked marker and Default, the configured centre. Default holds, with tracking paused, until the next press or until `preset_timeout` idle minutes (default 5) return the map to the tracked marker. Set `preset_timeout: 0` to hold Default until the next press. Cards without a tracked marker re-centre as before.
-- **Manual installs need a second file.** `weather-radar-card-maplibre.js` must sit next to `weather-radar-card.js`. HACS installs it. See [Install](#install).
+- **Manual installs need a second file.** `weather-radar-card-maplibre.js` must sit next to `weather-radar-card.js`. The Marketplace and HACS install it. See [Install](#install).
 
 ### Features
 
@@ -70,9 +70,16 @@ Active threads, no specific version commitment. See [docs/todo.md](https://githu
 
 ## Install
 
-### HACS
+### Marketplace or HACS
 
-The card is part of the default HACS store. To install the latest stable, search for "Weather Radar Card" in HACS → Frontend → Explore & Add Repositories. HACS installs both files.
+The card is in the default catalog.
+
+[![Open in the Marketplace](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=jpettitt&repository=weather-radar-card&category=plugin)
+
+- **Home Assistant 2026.11 and later:** go to **Settings** > **Marketplace**, search for "Weather Radar Card", and select **Install**.
+- **Home Assistant 2026.10 and earlier:** search for "Weather Radar Card" in HACS and select **Download**.
+
+Both install all files. Reload your browser after the install.
 
 ### Manual
 
@@ -110,7 +117,7 @@ resources:
     type: module
 ```
 
-Browsers keep files from `/local` for up to 31 days. After each manual upgrade, change the `?v=` value in the resource URL (for example to the new version), or reload each browser and companion app with Ctrl+F5. HACS installs do this for you.
+Browsers keep files from `/local` for up to 31 days. After each manual upgrade, change the `?v=` value in the resource URL (for example to the new version), or reload each browser and companion app with Ctrl+F5. Marketplace and HACS installs do this for you.
 
 ## Minimal config
 

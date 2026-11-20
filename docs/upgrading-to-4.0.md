@@ -33,14 +33,14 @@ The vector map, the classic style, `theme_mode`, `extra_labels` on the vector ma
 
 ## How to update
 
-1. In HACS, open the card and install the update to 4.0.
+1. In the Marketplace (Home Assistant 2026.11 and later) or in HACS, open the card and install the update to 4.0.
 2. Reload the browser with Ctrl+F5 (Cmd+Shift+R on a Mac) so the new files load.
 
 The card's sign-on line in the browser console shows the version that runs.
 
 ## How to go back
 
-In HACS, open the card, select 3.13.0 and install it. The extra file does no harm when it stays. Presets and layer toggles are ignored by 3.13, so a configuration that uses them still loads.
+In the Marketplace, open the card, select ⋮ > **Install another version**, and select 3.13.0. In HACS, open the card, select 3.13.0 and install it. The extra file does no harm when it stays. Presets and layer toggles are ignored by 3.13, so a configuration that uses them still loads.
 
 3.13 does not know `map_style: MapTilesVector`. It draws CARTO Light instead, which is a blank map with no message when the card has no `carto_api_key`. Before you go back, change `map_style` on those cards, for example to `MapTiles`.
 
