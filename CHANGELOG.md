@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Development packages: `npm audit` fixes.** vitest 4.1.12, happy-dom 21, eslint 10.15, typescript-eslint 8.73, vite 8.3.8 and their dependencies. Stryker 10.1.1 (the latest) requires a vulnerable minimatch and qs, so `overrides` give it minimatch 11 and qs 6.17; mutation results do not change. These packages are only for tests and the build, so the release files do not change.
 - **`npm start` works again.** It failed from 3.0.0: the dev configuration (`rollup.config.dev.js`) could not import the CSS files. `npm start` now runs `rollup -c --watch` on the production configuration, so it also builds the MapLibre file. The dev server uses port 5001, because macOS AirPlay Receiver uses 5000; set `PORT` to change it. Watch mode now also writes the `.gz` files, because HA serves an old `.gz` before a new `.js`.
 
 ### Documentation
