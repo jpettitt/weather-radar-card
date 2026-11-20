@@ -147,6 +147,10 @@ In other words: `rows: auto` → `height:` applies; `rows: <number>` → the cel
 
 See [CHANGELOG.md](https://github.com/jpettitt/weather-radar-card/blob/main/CHANGELOG.md) for the complete history of changes.
 
+## Network access
+
+[Network access](https://github.com/jpettitt/weather-radar-card/blob/main/docs/network-access.md) lists each server outside Home Assistant that the card contacts, why, and when.
+
 [license-shield]: https://img.shields.io/github/license/jpettitt/weather-radar-card.svg?style=for-the-badge
 [releases-shield]: https://img.shields.io/github/release/jpettitt/weather-radar-card.svg?style=for-the-badge
 [releases]: https://github.com/jpettitt/weather-radar-card/releases

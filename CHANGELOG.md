@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Network access.** [docs/network-access.md](docs/network-access.md) lists each server outside Home Assistant that the card contacts, why, and when. The README links to it.
+
 ## [4.0.1-beta1] - 2026-11-20
 
 > **Beta 1 of 4.0.1.** 4.0.0 with a MapLibre security update, install steps for the Home Assistant Marketplace, and updated development packages. The card works the same as 4.0.0. 4.0.0 is the current stable release.
