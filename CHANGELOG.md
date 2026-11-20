@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **MapLibre 5.24.0 → 5.24.1** for [GHSA-jrc7-96c5-q579](https://github.com/advisories/GHSA-jrc7-96c5-q579) (critical: an attribution string can get past the HTML sanitizer). Only MapLibre's attribution control uses that sanitizer, and the card turns that control off, so the card was not exposed. MapLibre's advisory lists 5.24.1 as patched. GitHub's advisory database still lists all versions up to 6.4.0, so `npm audit` continues to flag 5.24.1.
+
 ### Internal
 
 - **`npm start` works again.** It failed from 3.0.0: the dev configuration (`rollup.config.dev.js`) could not import the CSS files. `npm start` now runs `rollup -c --watch` on the production configuration, so it also builds the MapLibre file. The dev server uses port 5001, because macOS AirPlay Receiver uses 5000; set `PORT` to change it. Watch mode now also writes the `.gz` files, because HA serves an old `.gz` before a new `.js`.
