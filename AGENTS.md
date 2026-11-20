@@ -377,6 +377,12 @@ this; missing doc updates are a request-changes item.
   matching your change. New overlay → `overlays.md`. New marker
   resolution rule → `markers.md`. New common config pattern →
   `examples.md`.
+- **[`docs/network-access.md`](docs/network-access.md)** — when a
+  change adds or removes an outside server, or changes when the card
+  contacts one, update its table.
+  [`tests/network-access-doc.test.ts`](tests/network-access-doc.test.ts)
+  fails when a `scheme://host` in `src/` is missing from the page. A
+  host that comes from data or from the user needs a manual update.
 - **[`docs/animation.md`](docs/animation.md) and
   [`docs/*-feature-design.md`](docs/)** — update when the
   architectural approach changes, when a new constraint comes to
