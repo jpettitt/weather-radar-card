@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1-beta1] - 2026-11-20
+
+> **Beta 1 of 4.0.1.** 4.0.0 with a MapLibre security update, install steps for the Home Assistant Marketplace, and updated development packages. The card works the same as 4.0.0. 4.0.0 is the current stable release.
+
 ### Security
 
 - **MapLibre 5.24.0 → 5.24.1** for [GHSA-jrc7-96c5-q579](https://github.com/advisories/GHSA-jrc7-96c5-q579) (critical: an attribution string can get past the HTML sanitizer). Only MapLibre's attribution control uses that sanitizer, and the card turns that control off, so the card was not exposed. MapLibre's advisory lists 5.24.1 as patched. GitHub's advisory database still lists all versions up to 6.4.0, so `npm audit` continues to flag 5.24.1.
