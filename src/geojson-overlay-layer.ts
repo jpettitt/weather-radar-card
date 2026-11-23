@@ -2,6 +2,8 @@ import * as L from 'leaflet';
 import { formatDate, type FrontendLocaleData } from 'custom-card-helpers';
 import { sharedCanvasRenderer } from './shared-canvas-renderer';
 import { escapeHtml } from './string-utils';
+import { DATA_TIMEOUT_MS, withTimeout } from './fetch-timeout';
+import { refreshOverrideMs } from './refresh-override';
 
 export interface GeoJsonOverlaySource {
   id: string;
@@ -28,6 +30,7 @@ export interface GeoJsonOverlaySource {
 
 const DEFAULT_COLOR = '#3388ff';
 const LINE_WEIGHT = 3;
+const MIN_REFRESH_MS = 60_000;
 const cachedLineFeatures = new Map<string, GeoJSON.Feature[]>();
 
 /** Test-only escape hatch for the process-wide source cache. */
@@ -37,7 +40,12 @@ export function _resetGeoJsonOverlayCacheForTests(): void {
 
 /** Sources that the dashboard author deliberately enabled. */
 export function enabledGeoJsonSources(sources: GeoJsonOverlaySource[] | undefined): GeoJsonOverlaySource[] {
-  return (sources ?? []).filter((source) => source.enabled === true);
+  const ids = new Set<string>();
+  return (sources ?? []).filter((source) => {
+    if (source.enabled !== true || ids.has(source.id)) return false;
+    ids.add(source.id);
+    return true;
+  });
 }
 
 export function isGeoJsonSourceRelevant(map: L.Map, source: GeoJsonOverlaySource): boolean {
@@ -53,7 +61,9 @@ export function colorForFeature(
   source: GeoJsonOverlaySource,
 ): string {
   const value = source.color_property ? properties?.[source.color_property] : undefined;
-  const mapped = typeof value === 'string' ? source.color_map?.[value] : undefined;
+  const mapped = typeof value === 'string' && source.color_map && Object.hasOwn(source.color_map, value)
+    ? source.color_map[value]
+    : undefined;
   return mapped ?? source.fallback_color ?? source.color ?? DEFAULT_COLOR;
 }
 
@@ -108,6 +118,12 @@ export class GeoJsonOverlayLayer {
 
   private _started = false;
 
+  private _paused = false;
+
+  private _popupOpen = false;
+
+  private _pendingRender: { features: GeoJSON.Feature[]; source: GeoJsonOverlaySource } | null = null;
+
   private readonly _onMapChanged = (): void => { void this._updateRelevance(); };
 
   constructor(
@@ -125,6 +141,7 @@ export class GeoJsonOverlayLayer {
   }
 
   private async _updateRelevance(): Promise<void> {
+    if (this._paused) return;
     const source = this._source();
     if (!isGeoJsonSourceRelevant(this._map, source)) {
       this._suspend();
@@ -140,17 +157,35 @@ export class GeoJsonOverlayLayer {
     await this._refresh();
   }
 
-  private _suspend(): void {
+  private _stopRefreshWork(): void {
     this._generation++;
     if (this._refreshTimer) clearTimeout(this._refreshTimer);
     this._refreshTimer = null;
     this._abortCtrl?.abort();
     this._abortCtrl = null;
+  }
+
+  pause(): void {
+    if (this._paused) return;
+    this._paused = true;
+    this._stopRefreshWork();
+  }
+
+  resume(): void {
+    if (!this._paused) return;
+    this._paused = false;
+    if (this._layer) this._scheduleRefresh();
+    else void this._updateRelevance();
+  }
+
+  private _suspend(): void {
+    this._stopRefreshWork();
     if (this._layer) this._map.removeLayer(this._layer);
     this._layer = null;
   }
 
   private async _refresh(): Promise<void> {
+    if (this._paused) return;
     if (this._request) {
       await this._request;
       if (this._started && isGeoJsonSourceRelevant(this._map, this._source())) await this._refresh();
@@ -162,9 +197,11 @@ export class GeoJsonOverlayLayer {
     this._abortCtrl = ctrl;
     this._request = (async () => {
       try {
-        const response = await fetch(source.url, { cache: 'no-cache', signal: ctrl.signal });
-        if (!response.ok) throw new Error(`GeoJSON overlay fetch ${response.status}`);
-        const data = await response.json() as GeoJSON.FeatureCollection;
+        const data = await withTimeout(DATA_TIMEOUT_MS, ctrl.signal, async (signal) => {
+          const response = await fetch(source.url, { cache: 'no-cache', signal });
+          if (!response.ok) throw new Error(`GeoJSON overlay fetch ${response.status}`);
+          return response.json() as Promise<GeoJSON.FeatureCollection>;
+        });
         if (ctrl.signal.aborted || generation !== this._generation) return;
         const features = (data?.features ?? []).filter(isLineFeature);
         cachedLineFeatures.set(source.url, features);
@@ -181,28 +218,42 @@ export class GeoJsonOverlayLayer {
   }
 
   private _scheduleRefresh(): void {
+    if (this._paused) return;
     if (this._refreshTimer) clearTimeout(this._refreshTimer);
-    const minutes = this._source().refresh_minutes;
-    if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return;
+    const refreshMs = refreshOverrideMs(this._source().refresh_minutes, 60_000, MIN_REFRESH_MS);
+    if (refreshMs === null) return;
     this._refreshTimer = setTimeout(() => {
       this._refreshTimer = null;
       void this._refresh();
-    }, minutes * 60_000);
+    }, refreshMs);
   }
 
   clear(): void {
     this._started = false;
+    this._popupOpen = false;
+    this._pendingRender = null;
     this._map.off('moveend zoomend', this._onMapChanged);
     this._suspend();
   }
 
   private _render(features: GeoJSON.Feature[], source: GeoJsonOverlaySource): void {
+    if (this._popupOpen) {
+      this._pendingRender = { features, source };
+      return;
+    }
     if (this._layer) this._map.removeLayer(this._layer);
     this._layer = L.geoJSON(features, {
       renderer: sharedCanvasRenderer(this._map),
       style: (feature) => ({ color: colorForFeature(feature?.properties, source), weight: LINE_WEIGHT }),
       onEachFeature: (feature, layer) => {
         if ((source.popup_fields?.length ?? 0) === 0) return;
+        layer.on('popupopen', () => { this._popupOpen = true; });
+        layer.on('popupclose', () => {
+          this._popupOpen = false;
+          const pending = this._pendingRender;
+          this._pendingRender = null;
+          if (pending) this._render(pending.features, pending.source);
+        });
         layer.bindPopup(() => buildPopupHtml(feature.properties, source, this._getLocale?.()), {
           autoPan: true,
           autoPanPadding: [12, 12],

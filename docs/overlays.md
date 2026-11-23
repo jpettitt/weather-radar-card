@@ -71,7 +71,7 @@ geojson_overlays:
       "Dry / Tacky - Enjoy": "#2e7d32"
       "Muddy – DO NOT USE": "#c62828"
       "CLOSED": "#7f1d1d"
-      "Dry at start but could be muddy further out – turn around when you encounter mud. Don’t keep going.": "#d97706"
+      "Dry at start but could be muddy further out – turn around when you encounter mud.  Don’t keep going.": "#d97706"
       "Not Evaluated": "#6b7280"
     fallback_color: "#6b7280"
 

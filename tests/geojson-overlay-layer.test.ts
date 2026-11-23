@@ -56,6 +56,7 @@ describe('GeoJsonOverlayLayer', () => {
   it('uses a mapped property colour and a neutral fallback', () => {
     expect(colorForFeature({ Condition: 'Dry / Tacky - Enjoy' }, ridgeSource)).toBe('#2e7d32');
     expect(colorForFeature({ Condition: 'Unknown' }, ridgeSource)).toBe('#6b7280');
+    expect(colorForFeature({ Condition: 'constructor' }, ridgeSource)).toBe('#6b7280');
     expect(colorForFeature({}, ridgeSource)).toBe('#6b7280');
   });
 
@@ -80,6 +81,15 @@ describe('GeoJsonOverlayLayer', () => {
       { id: 'on', name: 'On', url: 'https://example.invalid/on.geojson', enabled: true },
     ])).toEqual([
       { id: 'on', name: 'On', url: 'https://example.invalid/on.geojson', enabled: true },
+    ]);
+  });
+
+  it('keeps only the first enabled source for each configured id', () => {
+    expect(enabledGeoJsonSources([
+      { id: 'duplicate', name: 'First', url: 'https://example.invalid/first.geojson', enabled: true },
+      { id: 'duplicate', name: 'Second', url: 'https://example.invalid/second.geojson', enabled: true },
+    ])).toEqual([
+      { id: 'duplicate', name: 'First', url: 'https://example.invalid/first.geojson', enabled: true },
     ]);
   });
 
@@ -132,6 +142,66 @@ describe('GeoJsonOverlayLayer', () => {
     map.remove();
   });
 
+  it('holds a positive refresh override to one minute', async () => {
+    vi.useFakeTimers();
+    const map = makeMap();
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify(TRAILS), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const layer = new GeoJsonOverlayLayer(map, () => ({
+      id: 'floor', name: 'Floor', url: 'https://example.invalid/floor.geojson', refresh_minutes: 0.001,
+    }));
+
+    await layer.start();
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    layer.clear();
+    map.remove();
+  });
+
+  it('continues scheduled refreshes after a request times out', async () => {
+    vi.useFakeTimers();
+    const map = makeMap();
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>(() => {}))
+      .mockResolvedValueOnce(new Response(JSON.stringify(TRAILS), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const layer = new GeoJsonOverlayLayer(map, () => ({
+      id: 'timeout', name: 'Timeout', url: 'https://example.invalid/timeout.geojson', refresh_minutes: 1,
+    }));
+
+    const started = layer.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await started;
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    layer.clear();
+    map.remove();
+  });
+
+  it('pauses refreshes while hidden and resumes them when visible', async () => {
+    vi.useFakeTimers();
+    const map = makeMap();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(TRAILS), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const layer = new GeoJsonOverlayLayer(map, () => ({
+      id: 'pausable', name: 'Pausable', url: 'https://example.invalid/pausable.geojson', refresh_minutes: 1,
+    }));
+
+    await layer.start();
+    layer.pause();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    layer.resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    layer.clear();
+    map.remove();
+  });
+
   it('refreshes at the configured interval and preserves rendered data when refresh fails', async () => {
     vi.useFakeTimers();
     const map = makeMap();
@@ -150,6 +220,29 @@ describe('GeoJsonOverlayLayer', () => {
     const mapLayers: L.Layer[] = [];
     map.eachLayer((parent) => mapLayers.push(parent));
     expect(mapLayers.some((parent) => parent instanceof L.GeoJSON)).toBe(true);
+    layer.clear();
+    map.remove();
+  });
+
+  it('defers a refresh redraw until an open feature popup closes', async () => {
+    vi.useFakeTimers();
+    const map = makeMap();
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify(TRAILS), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const layer = new GeoJsonOverlayLayer(map, () => ({
+      id: 'popup', name: 'Popup', url: 'https://example.invalid/popup.geojson', refresh_minutes: 1,
+      popup_fields: ['TrailName'],
+    }));
+    await layer.start();
+    const parents: L.Layer[] = [];
+    map.eachLayer((parent) => parents.push(parent));
+    const first = parents.find((parent) => parent instanceof L.GeoJSON) as L.GeoJSON;
+    (first.getLayers()[0] as L.Path).openPopup();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(map.hasLayer(first)).toBe(true);
+    (first.getLayers()[0] as L.Path).closePopup();
+    expect(map.hasLayer(first)).toBe(false);
     layer.clear();
     map.remove();
   });

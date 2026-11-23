@@ -1800,6 +1800,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._lightningLayer?.resume();
       this._windOverlay?.resume();
       this._windFlow?.resume();
+      for (const layer of this._geoJsonLayers.values()) layer.resume();
     };
     // A map built in a tab that is already hidden gets no visibilitychange,
     // and the observer's first entry is intersecting: pause it here.
@@ -1827,6 +1828,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     // running at full rate into an invisible canvas indefinitely.
     this._windOverlay?.pause();
     this._windFlow?.pause();
+    for (const layer of this._geoJsonLayers.values()) layer.pause();
   }
 
   // ⚠️  Do not "simplify" by removing the requestAnimationFrame defer or
