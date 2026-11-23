@@ -224,7 +224,7 @@ describe('GeoJsonOverlayLayer', () => {
     map.remove();
   });
 
-  it('defers a refresh redraw until an open feature popup closes', async () => {
+  it('keeps an identified feature popup open across a refresh', async () => {
     vi.useFakeTimers();
     const map = makeMap();
     const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify(TRAILS), { status: 200 })));
@@ -240,9 +240,12 @@ describe('GeoJsonOverlayLayer', () => {
     (first.getLayers()[0] as L.Path).openPopup();
 
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(map.hasLayer(first)).toBe(true);
-    (first.getLayers()[0] as L.Path).closePopup();
+
     expect(map.hasLayer(first)).toBe(false);
+    const refreshedParents: L.Layer[] = [];
+    map.eachLayer((parent) => refreshedParents.push(parent));
+    const refreshed = refreshedParents.find((parent) => parent instanceof L.GeoJSON) as L.GeoJSON;
+    expect((refreshed.getLayers()[0] as L.Path).isPopupOpen()).toBe(true);
     layer.clear();
     map.remove();
   });

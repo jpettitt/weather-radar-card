@@ -39,7 +39,7 @@ The browser requests the URL directly, so the server must allow cross-origin req
 | `color_property` | no | GeoJSON feature property used to choose a colour. |
 | `color_map` | no | Mapping from exact property values to CSS colours. These are display choices, not provider-defined meanings unless the provider documents them. |
 | `fallback_color` | no | Colour for missing or unrecognised property values. It falls back to `color`, then Leaflet blue. |
-| `popup_fields` | no | Ordered feature-property names to show after a tap/click. No fields means no popup. Values are HTML-escaped. |
+| `popup_fields` | no | Ordered feature-property names to show after a tap/click. No fields means no popup. Values are HTML-escaped. A popup remains open across a refresh only when its GeoJSON feature has a stable `feature.id`. |
 | `date_properties` | no | Subset of `popup_fields` whose epoch-millisecond numeric values are formatted using the Home Assistant locale. |
 | `attribution` | no | Plain-text source credit shown in each configured popup; it is HTML-escaped. |
 | `refresh_minutes` | no | Positive interval between refresh attempts. Omit it to fetch once for a layer lifetime. A failed refresh retains the last successful linework. |

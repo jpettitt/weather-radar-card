@@ -120,9 +120,9 @@ export class GeoJsonOverlayLayer {
 
   private _paused = false;
 
-  private _popupOpen = false;
+  private _openFeatureId: string | number | null = null;
 
-  private _pendingRender: { features: GeoJSON.Feature[]; source: GeoJsonOverlaySource } | null = null;
+  private _restoringPopup = false;
 
   private readonly _onMapChanged = (): void => { void this._updateRelevance(); };
 
@@ -230,38 +230,42 @@ export class GeoJsonOverlayLayer {
 
   clear(): void {
     this._started = false;
-    this._popupOpen = false;
-    this._pendingRender = null;
+    this._openFeatureId = null;
     this._map.off('moveend zoomend', this._onMapChanged);
     this._suspend();
   }
 
   private _render(features: GeoJSON.Feature[], source: GeoJsonOverlaySource): void {
-    if (this._popupOpen) {
-      this._pendingRender = { features, source };
-      return;
-    }
+    const popupId = this._openFeatureId;
+    const popupLayers: L.Layer[] = [];
+    this._restoringPopup = popupId !== null;
     if (this._layer) this._map.removeLayer(this._layer);
     this._layer = L.geoJSON(features, {
       renderer: sharedCanvasRenderer(this._map),
       style: (feature) => ({ color: colorForFeature(feature?.properties, source), weight: LINE_WEIGHT }),
       onEachFeature: (feature, layer) => {
         if ((source.popup_fields?.length ?? 0) === 0) return;
-        layer.on('popupopen', () => { this._popupOpen = true; });
+        const featureId = stableFeatureId(feature);
+        layer.on('popupopen', () => { this._openFeatureId = featureId; });
         layer.on('popupclose', () => {
-          this._popupOpen = false;
-          const pending = this._pendingRender;
-          this._pendingRender = null;
-          if (pending) this._render(pending.features, pending.source);
+          if (!this._restoringPopup) this._openFeatureId = null;
         });
         layer.bindPopup(() => buildPopupHtml(feature.properties, source, this._getLocale?.()), {
           autoPan: true,
           autoPanPadding: [12, 12],
         });
+        if (featureId !== null && featureId === popupId) popupLayers.push(layer);
       },
     } as L.GeoJSONOptions);
     this._layer.addTo(this._map);
+    this._restoringPopup = false;
+    if (popupLayers.length > 0) (popupLayers[0] as L.Path).openPopup();
+    else if (popupId !== null) this._openFeatureId = null;
   }
+}
+
+function stableFeatureId(feature: GeoJSON.Feature): string | number | null {
+  return typeof feature.id === 'string' || typeof feature.id === 'number' ? feature.id : null;
 }
 
 function isLineFeature(feature: GeoJSON.Feature): boolean {
