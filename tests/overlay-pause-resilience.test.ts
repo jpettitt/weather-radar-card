@@ -338,7 +338,9 @@ describe('LightningLayer canvas hit-test', () => {
     const l = Object.create(LightningLayer.prototype);
     l._strikes = new Map();
     // Identity projection: strikes store container px directly in lat/lon.
-    l._map = { latLngToContainerPoint: ([lat, lon]: [number, number]) => ({ x: lon, y: lat }) };
+    // getCenter: the layer moves each lon to its copy nearest the centre
+    // (lngNear); 60 is within 180 of every lon here, so nothing moves.
+    l._map = { latLngToContainerPoint: ([lat, lon]: [number, number]) => ({ x: lon, y: lat }), getCenter: () => ({ lat: 0, lng: 60 }) };
     l._padX = 0;
     l._padY = 0;
     return l;
@@ -385,7 +387,7 @@ describe('LightningLayer canvas draw order', () => {
     const { LightningLayer } = await import('../src/lightning-layer');
     const l = Object.create(LightningLayer.prototype);
     l._strikes = new Map();
-    l._map = { latLngToLayerPoint: ([lat, lon]: [number, number]) => ({ x: lon, y: lat }) };
+    l._map = { latLngToLayerPoint: ([lat, lon]: [number, number]) => ({ x: lon, y: lat }), getCenter: () => ({ lat: 0, lng: 60 }) };
     l._originLayerPoint = { x: 0, y: 0 };
     return l;
   }
@@ -405,7 +407,7 @@ describe('LightningLayer canvas draw order', () => {
     const l = await bareLightning();
     const now = 100_000_000;
     l._strikes.set('visible', { ts: now - 1_000, lat: 50, lon: 50, pulseUntil: 0 });
-    l._strikes.set('offcanvas', { ts: now - 1_000, lat: 50, lon: 500, pulseUntil: 0 });
+    l._strikes.set('offcanvas', { ts: now - 1_000, lat: 500, lon: 50, pulseUntil: 0 });
     l._strikes.set('expired', { ts: now - 2_000_000, lat: 60, lon: 60, pulseUntil: 0 });
     const order = l._drawOrder(now, 1800, 200, 200, 20);
     expect(order).toHaveLength(1);

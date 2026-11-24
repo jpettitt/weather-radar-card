@@ -38,6 +38,7 @@ function fakeMap(size = { x: 400, y: 300 }): any {
     containerPointToLayerPoint: ([x, y]: [number, number]) => ({ x, y }),
     latLngToLayerPoint: ([lat, lon]: [number, number]) => ({ x: lon * size.x, y: lat * size.y }),
     latLngToContainerPoint: ([lat, lon]: [number, number]) => ({ x: lon * size.x, y: lat * size.y }),
+    getCenter: () => ({ lat: 0.5, lng: 0.5 }),   // lons stay in [0, 1]: nothing wraps
     getContainer: () => document.createElement('div'),
     closePopup: () => undefined,
   };

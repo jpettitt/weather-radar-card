@@ -163,7 +163,9 @@ opacity code. Each overlay has a design doc in [docs/](../docs/).
   `clear()` must not remove the shared renderer. Earthquakes and lightning
   draw on their own canvas in their own pane with `pointer-events: none` and
   hit-test map clicks. Never give them a second Leaflet canvas renderer: it
-  takes the clicks meant for the shared one.
+  takes the clicks meant for the shared one. They draw, hit-test and open popups at
+  `lngNear(lon, map centre)`: after a pan across the antimeridian the map's
+  longitudes run past ±180.
 
 ### Layer stack
 
