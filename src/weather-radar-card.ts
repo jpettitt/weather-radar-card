@@ -127,6 +127,7 @@ import {
   LayerToggleBar, OverlayKey, OverlayVisibility, OVERLAY_KEYS, overlayConfigured,
 } from './layer-toggles';
 import { WildfireLayer } from './wildfire-layer';
+import { EarthquakeLayer } from './earthquake-layer';
 import { NwsAlertsLayer, type AlertsStatus } from './nws-alerts-layer';
 import { LightningLayer } from './lightning-layer';
 import { getRegionWarnings } from './region-warning';
@@ -264,6 +265,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
   // has opted in via viewer_layer_control.
   private _viewerState: ViewerState | null = null;
   private _wildfireLayer: WildfireLayer | null = null;
+  private _earthquakeLayer: EarthquakeLayer | null = null;
   private _alertsLayer: NwsAlertsLayer | null = null;
   private _lightningLayer: LightningLayer | null = null;
   private _popupPanRestore = new PopupPanRestore<L.LatLng>();
@@ -923,6 +925,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       case 'alerts': return this._alertsLayer !== null;
       case 'wind': return this._windOverlay !== null || this._windFlow !== null;
       case 'wildfires': return this._wildfireLayer !== null;
+      case 'earthquakes': return this._earthquakeLayer !== null;
       case 'lightning': return this._lightningLayer !== null;
     }
   }
@@ -941,6 +944,13 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       case 'wildfires':
         this._wildfireLayer = new WildfireLayer(this._map, () => this._config, this.hass);
         this._wildfireLayer.start();
+        break;
+      case 'earthquakes':
+        // A dark-mode flip that changes the map style rebuilds the map, so
+        // the layer only reads the style.
+        this._earthquakeLayer = new EarthquakeLayer(this._map, () => this._config, () => this.hass,
+          () => isDarkBasemapStyle(this._effectiveMapStyle(), this._config.custom_tile_theme));
+        this._earthquakeLayer.start();
         break;
       case 'lightning':
         this._lightningLayer = new LightningLayer(this._map, () => this._config, this.hass);
@@ -967,6 +977,10 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       case 'wildfires':
         this._wildfireLayer?.clear();
         this._wildfireLayer = null;
+        break;
+      case 'earthquakes':
+        this._earthquakeLayer?.clear();
+        this._earthquakeLayer = null;
         break;
       case 'lightning':
         this._lightningLayer?.clear();
@@ -1016,6 +1030,8 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
     this._player = null;
     this._wildfireLayer?.clear();
     this._wildfireLayer = null;
+    this._earthquakeLayer?.clear();
+    this._earthquakeLayer = null;
     this._alertsLayer?.clear();
     this._alertsLayer = null;
     this._lightningLayer?.clear();
@@ -1760,6 +1776,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
       this._viewHidden = false;
       this._player?.onVisibilityVisible();
       this._wildfireLayer?.resume();
+      this._earthquakeLayer?.resume();
       this._alertsLayer?.resume();
       this._lightningLayer?.resume();
       this._windOverlay?.resume();
@@ -1782,6 +1799,7 @@ export class WeatherRadarCard extends LitElement implements LovelaceCard {
 
   private _pauseOverlays(): void {
     this._wildfireLayer?.pause();
+    this._earthquakeLayer?.pause();
     this._alertsLayer?.pause();
     this._lightningLayer?.pause();
     // Wind overlays were missing from this roster — and it matters

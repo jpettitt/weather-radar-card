@@ -114,6 +114,7 @@ describe('number fields (_valueChangedNumber)', () => {
   const keys = [
     'frame_delay', 'restart_delay', 'transition_time', 'wildfire_min_acres',
     'wildfire_radius_km', 'alerts_radius_km', 'lightning_max_age_minutes',
+    'earthquake_min_magnitude', 'earthquake_radius_km',
   ];
 
   it('text that is not a number keeps the saved value instead of saving NaN', async () => {

@@ -1,0 +1,414 @@
+{
+  "_note": "Ten features as sent by the USGS summary feeds all_week and 2.5_week (2026-11-24 01:42Z), chosen to cover the conditional fields: PAGER alert, tsunami flag, felt reports, non-earthquake types, negative magnitude and depth, automatic status, and a 2.46 that USGS lists in the 2.5 feed. metadata is all_week's.",
+  "type": "FeatureCollection",
+  "metadata": {
+    "generated": 1795484558000,
+    "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson",
+    "title": "USGS All Earthquakes, Past Week",
+    "status": 200,
+    "api": "2.8.2",
+    "count": 1890
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 5.9,
+        "place": "238 km SW of Yanglong, China",
+        "time": 1795257933230,
+        "updated": 1795344769837,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000ucly",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/us6000ucly.geojson",
+        "felt": null,
+        "cdi": null,
+        "mmi": 7.497,
+        "alert": "yellow",
+        "status": "reviewed",
+        "tsunami": 0,
+        "sig": 650,
+        "net": "us",
+        "code": "6000ucly",
+        "ids": ",us6000ucly,",
+        "sources": ",us,",
+        "types": ",ground-failure,losspager,origin,phase-data,shakemap,",
+        "nst": 99,
+        "dmin": 5.815,
+        "rms": 0.63,
+        "gap": 36,
+        "magType": "mb",
+        "type": "earthquake",
+        "title": "M 5.9 - 238 km SW of Yanglong, China"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          96.6398,
+          37.1958,
+          10
+        ]
+      },
+      "id": "us6000ucly"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 6.5,
+        "place": "Vanuatu region",
+        "time": 1795401658052,
+        "updated": 1795409212169,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000ucvm",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/us6000ucvm.geojson",
+        "felt": null,
+        "cdi": null,
+        "mmi": 0,
+        "alert": "green",
+        "status": "reviewed",
+        "tsunami": 1,
+        "sig": 650,
+        "net": "us",
+        "code": "6000ucvm",
+        "ids": ",attoxos9,us6000ucvm,pt26327000,",
+        "sources": ",at,us,pt,",
+        "types": ",impact-link,losspager,moment-tensor,origin,phase-data,shakemap,",
+        "nst": 194,
+        "dmin": 6.937,
+        "rms": 0.91,
+        "gap": 14,
+        "magType": "mww",
+        "type": "earthquake",
+        "title": "M 6.5 - Vanuatu region"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          172.2672,
+          -13.5846,
+          598
+        ]
+      },
+      "id": "us6000ucvm"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 5.4,
+        "place": "181 km NE of Lospalos, Timor Leste",
+        "time": 1795419381052,
+        "updated": 1795426892253,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000ucx6",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/us6000ucx6.geojson",
+        "felt": 1,
+        "cdi": 2,
+        "mmi": 3.719,
+        "alert": "green",
+        "status": "reviewed",
+        "tsunami": 0,
+        "sig": 449,
+        "net": "us",
+        "code": "6000ucx6",
+        "ids": ",us6000ucx6,",
+        "sources": ",us,",
+        "types": ",dyfi,losspager,moment-tensor,origin,phase-data,shakemap,",
+        "nst": 79,
+        "dmin": 6.075,
+        "rms": 0.8,
+        "gap": 72,
+        "magType": "mww",
+        "type": "earthquake",
+        "title": "M 5.4 - 181 km NE of Lospalos, Timor Leste"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          128.2414,
+          -7.4408,
+          119.267
+        ]
+      },
+      "id": "us6000ucx6"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 1.37,
+        "place": "5 km SSE of Home Gardens, CA",
+        "time": 1795459757440,
+        "updated": 1795467659521,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/ci41579608",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/ci41579608.geojson",
+        "felt": null,
+        "cdi": null,
+        "mmi": null,
+        "alert": null,
+        "status": "reviewed",
+        "tsunami": 0,
+        "sig": 29,
+        "net": "ci",
+        "code": "41579608",
+        "ids": ",ci41579608,",
+        "sources": ",ci,",
+        "types": ",nearby-cities,origin,phase-data,scitech-link,",
+        "nst": 55,
+        "dmin": 0.04526,
+        "rms": 0.23,
+        "gap": 43,
+        "magType": "ml",
+        "type": "quarry blast",
+        "title": "M 1.4 Quarry Blast - 5 km SSE of Home Gardens, CA"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -117.49367,
+          33.83767,
+          -0.51
+        ]
+      },
+      "id": "ci41579608"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 1.81,
+        "place": "59 km S of Kingston, Nevada",
+        "time": 1795213314816,
+        "updated": 1795214112828,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/nn00927224",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/nn00927224.geojson",
+        "felt": null,
+        "cdi": null,
+        "mmi": null,
+        "alert": null,
+        "status": "reviewed",
+        "tsunami": 0,
+        "sig": 50,
+        "net": "nn",
+        "code": "00927224",
+        "ids": ",nn00927224,",
+        "sources": ",nn,",
+        "types": ",origin,phase-data,",
+        "nst": 8,
+        "dmin": 0.603,
+        "rms": 0.3196,
+        "gap": 225,
+        "magType": "ml",
+        "type": "explosion",
+        "title": "M 1.8 Explosion - 59 km S of Kingston, Nevada"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -117.1138,
+          38.6723,
+          4.4383
+        ]
+      },
+      "id": "nn00927224"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 1.5,
+        "place": "56 km S of Glacier View, Alaska",
+        "time": 1794995934064,
+        "updated": 1795210460473,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/aka2026wvqzqd",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/aka2026wvqzqd.geojson",
+        "felt": null,
+        "cdi": null,
+        "mmi": null,
+        "alert": null,
+        "status": "reviewed",
+        "tsunami": 0,
+        "sig": 35,
+        "net": "ak",
+        "code": "a2026wvqzqd",
+        "ids": ",aka2026wvqzqd,",
+        "sources": ",ak,",
+        "types": ",origin,phase-data,",
+        "nst": 13,
+        "dmin": 0.3,
+        "rms": 0.7,
+        "gap": 86,
+        "magType": "ml",
+        "type": "ice quake",
+        "title": "M 1.5 Ice Quake - 56 km S of Glacier View, Alaska"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -147.662,
+          61.3,
+          0
+        ]
+      },
+      "id": "aka2026wvqzqd"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": -0.07,
+        "place": "14 km E of Hebgen Lake Estates, Montana",
+        "time": 1795469269430,
+        "updated": 1795470457920,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/uu80165782",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/uu80165782.geojson",
+        "felt": null,
+        "cdi": null,
+        "mmi": null,
+        "alert": null,
+        "status": "reviewed",
+        "tsunami": 0,
+        "sig": 0,
+        "net": "uu",
+        "code": "80165782",
+        "ids": ",uu80165782,",
+        "sources": ",uu,",
+        "types": ",origin,phase-data,",
+        "nst": 11,
+        "dmin": 0.0161,
+        "rms": 0.11,
+        "gap": 142,
+        "magType": "md",
+        "type": "earthquake",
+        "title": "M -0.1 - 14 km E of Hebgen Lake Estates, Montana"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -111.003666666667,
+          44.7753333333333,
+          8.25
+        ]
+      },
+      "id": "uu80165782"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 1.61,
+        "place": "5 km NNW of Boron, CA",
+        "time": 1795480178760,
+        "updated": 1795480388598,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/ci41579672",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/ci41579672.geojson",
+        "felt": null,
+        "cdi": null,
+        "mmi": null,
+        "alert": null,
+        "status": "automatic",
+        "tsunami": 0,
+        "sig": 40,
+        "net": "ci",
+        "code": "41579672",
+        "ids": ",ci41579672,",
+        "sources": ",ci,",
+        "types": ",nearby-cities,origin,phase-data,scitech-link,",
+        "nst": 46,
+        "dmin": 0.1935,
+        "rms": 0.23,
+        "gap": 59,
+        "magType": "ml",
+        "type": "earthquake",
+        "title": "M 1.6 - 5 km NNW of Boron, CA"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -117.66883,
+          35.04133,
+          -0.66
+        ]
+      },
+      "id": "ci41579672"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 1.6,
+        "place": "4 km SE of Marina del Rey, CA",
+        "time": 1795484277600,
+        "updated": 1795484490941,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/ci41579696",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/ci41579696.geojson",
+        "felt": null,
+        "cdi": null,
+        "mmi": null,
+        "alert": null,
+        "status": "automatic",
+        "tsunami": 0,
+        "sig": 39,
+        "net": "ci",
+        "code": "41579696",
+        "ids": ",ci41579696,",
+        "sources": ",ci,",
+        "types": ",nearby-cities,origin,phase-data,scitech-link,",
+        "nst": 21,
+        "dmin": 0.05777,
+        "rms": 0.12,
+        "gap": 281,
+        "magType": "ml",
+        "type": "earthquake",
+        "title": "M 1.6 - 4 km SE of Marina del Rey, CA"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -118.42117,
+          33.9605,
+          4.08
+        ]
+      },
+      "id": "ci41579696"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "mag": 2.46,
+        "place": "8 km NW of Pinnacles, CA",
+        "time": 1795157903890,
+        "updated": 1795170350552,
+        "tz": null,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/nc75468742",
+        "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/nc75468742.geojson",
+        "felt": 20,
+        "cdi": 3.1,
+        "mmi": null,
+        "alert": null,
+        "status": "automatic",
+        "tsunami": 0,
+        "sig": 99,
+        "net": "nc",
+        "code": "75468742",
+        "ids": ",nc75468742,",
+        "sources": ",nc,",
+        "types": ",dyfi,focal-mechanism,nearby-cities,origin,phase-data,scitech-link,",
+        "nst": 40,
+        "dmin": 0.02434,
+        "rms": 0.22,
+        "gap": 57,
+        "magType": "md",
+        "type": "earthquake",
+        "title": "M 2.5 - 8 km NW of Pinnacles, CA"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.21516418457,
+          36.576000213623,
+          5.44999980926514
+        ]
+      },
+      "id": "nc75468742"
+    }
+  ]
+}

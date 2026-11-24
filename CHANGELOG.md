@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Earthquake overlay.** `show_earthquakes` shows recent earthquakes worldwide from the USGS real-time feeds, in the style of the USGS map: the size shows the magnitude, the colour shows the age, and a diamond is a different event, for example a quarry blast. `earthquake_min_magnitude` (default 2.5) and `earthquake_period` (`hour`, `day`, `week` or `month`; default `day`) select the events. `earthquake_radius_km` shows only the events near the map centre. A popup gives the magnitude, place, time, depth and review status. When USGS has the data, it also gives the felt reports, the PAGER alert level and a tsunami.gov link. The overlay has a layer toggle and a section in the editor.
+
 ### Documentation
 
 - **Network access.** [docs/network-access.md](docs/network-access.md) lists each server outside Home Assistant that the card contacts, why, and when. The README links to it.

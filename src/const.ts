@@ -18,6 +18,7 @@ export const Z_RADAR_BASE = 100;       // current radar frame floor; +1 each cro
 // high. The vector map's place names go over every weather and hazard layer
 // so they stay readable; the user's own markers (Leaflet's markerPane, 600)
 // and popups stay above the names.
+export const Z_EARTHQUAKES = 405;      // under lightning: a fresh strike is the more urgent mark
 export const Z_LIGHTNING = 410;
 export const Z_HAZARD_MARKERS = 420;   // wind arrows/barbs, fire icons
 export const Z_PLACE_LABELS = 450;

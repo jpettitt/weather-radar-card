@@ -88,6 +88,13 @@ preserving pinch-to-zoom, so mobile users can scroll past the card.
 
 ### Open
 
+- **Earthquakes in step with the radar loop.** The earthquake overlay
+  shows every event of the chosen period at all times. Owner decision
+  (2026-11-23): first ship it static, then consider showing each event
+  when the loop reaches its time. Start from
+  [earthquake-feature-design.md](earthquake-feature-design.md); the
+  loop time comes from `RadarPlayer`. Effort: moderate.
+
 - **Open-Meteo as an alternate wind source for global coverage.**
   The wind overlay landing in 3.6 (PR #133) is DWD-only — Germany +
   immediate neighbours via the ICON-D2 model. To extend the feature

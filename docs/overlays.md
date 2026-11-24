@@ -1,12 +1,12 @@
 # Hazard & Layer Overlays
 
-Optional overlays that stack on top of the radar. Two are US-only (Wildfires, NWS Alerts); those and Lightning carry strong life-safety disclaimers. Lightning (from the Blitzortung integration) and Wind are global.
+Optional overlays that stack on top of the radar. Two are US-only (Wildfires, NWS Alerts); those, Earthquakes and Lightning carry strong life-safety disclaimers. Earthquakes (from the USGS), Lightning (from the Blitzortung integration) and Wind are global.
 
 For non-US instances, the card surfaces a banner reminding the user that the data is US-only when either of the US-specific overlays is enabled with `hass.config.country !== 'US'`.
 
 ## Turning overlays on and off
 
-`show_layer_toggles: true` adds a row of buttons to the map's top-right corner, one for each overlay the card has turned on: NWS alerts, wind (arrows or barbs and streamlines together), wildfires and lightning. A tap hides or shows that overlay; a hidden overlay stops fetching until it's shown again. The buttons only offer what the config enables, so a viewer can't turn on an overlay the dashboard leaves off.
+`show_layer_toggles: true` adds a row of buttons to the map's top-right corner, one for each overlay the card has turned on: NWS alerts, wind (arrows or barbs and streamlines together), wildfires, earthquakes and lightning. A tap hides or shows that overlay; a hidden overlay stops fetching until it's shown again. The buttons only offer what the config enables, so a viewer can't turn on an overlay the dashboard leaves off.
 
 Choices last until the page reloads. With `viewer_layer_control: true` they're saved for each user and follow them across browsers and devices, as the playback speed does.
 
@@ -20,7 +20,7 @@ dwd_wind: arrows
 
 ## While the map moves
 
-The overlays leave the map during a zoom gesture and come back once the map has been still for a second: the alert and wildfire outlines, the fire icons and wind barbs, and the lightning strikes. Wildfires and lightning redraw at that moment, not at every step of a pinch. The NWS alerts layer does nothing at all while the map moves (no redraw, no zone shape fetched or decoded), and it draws zone outlines at half a pixel of detail for the current zoom. Leaflet scales a canvas with a CSS transform on every touch move and animates every icon on the snap-back, which crashed Safari on an iPhone whenever one of these overlays was on.
+The overlays leave the map during a zoom gesture and come back once the map has been still for a second: the alert and wildfire outlines, the fire icons and wind barbs, the earthquakes and the lightning strikes. Wildfires, earthquakes and lightning redraw at that moment, not at every step of a pinch. The NWS alerts layer does nothing at all while the map moves (no redraw, no zone shape fetched or decoded), and it draws zone outlines at half a pixel of detail for the current zoom. Leaflet scales a canvas with a CSS transform on every touch move and animates every icon on the snap-back, which crashed Safari on an iPhone whenever one of these overlays was on.
 
 ## Wildfires
 
@@ -48,6 +48,41 @@ The overlay refreshes every 5 minutes when fires are visible (matching NIFC's up
 | `wildfire_contained_color` | `'#888888'` | YAML-only. 100%-contained fire colour           |
 | `wildfire_fill_opacity`    | `0.2`       | YAML-only. Polygon fill opacity (`0` = perimeter only) |
 | `wildfire_refresh_minutes` | adaptive    | YAML-only. Override the adaptive 5/30-min refresh interval (at least 1) |
+
+## Earthquakes
+
+When `show_earthquakes: true`, the card shows recent earthquakes worldwide from the [USGS real-time feeds](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php). The markers use the style of the USGS map:
+
+- Size shows the magnitude, from 0 to 7 and more.
+- Colour shows the age: red for the past hour, orange for the past day, yellow for the past week, white for the past month, and grey for older events.
+- A circle is an earthquake. A diamond is a different event, for example a quarry blast, an explosion or an ice quake.
+
+On a dark map, the markers have a light outline.
+
+Click a marker to see the magnitude, the place, the time, the depth, and if a person at USGS has reviewed the event. Where markers overlap, a click opens the largest event. To get a smaller event below it, zoom in. When USGS has the data, the popup also shows the number of "Did You Feel It?" reports, the PAGER alert level and a link to tsunami.gov. USGS links some events to tsunami information, also events on land. This link does not tell you that a tsunami occurred. The popup links to the USGS event page.
+
+`earthquake_min_magnitude` and `earthquake_period` select the events. The card downloads the smallest USGS feed that has them: M2.5 and more for the past day is approximately 5 KB, and all magnitudes for the past 30 days is approximately 840 KB. Outside the US, USGS lists few events below M2.5. The overlay shows the events in the map view. `earthquake_radius_km` shows only the events in a circle around the map centre. USGS updates the feeds each minute. The card downloads the feed every 5 minutes, and stops while the card is hidden.
+
+```yaml
+show_earthquakes: true
+earthquake_min_magnitude: 4.5
+earthquake_period: week
+```
+
+> [!WARNING]
+> **Earthquake data is for informational purposes only.** The first location and magnitude of an event are automatic, and they can change when USGS reviews the event. An event can come into the feed some minutes after it occurs.
+>
+> **Do not use this overlay for life-safety decisions.** For tsunami warnings, see [tsunami.gov](https://www.tsunami.gov). For earthquake warnings and emergencies, obey your local authorities.
+
+### Earthquake knobs
+
+| Field                        | Default | Description                                                      |
+|------------------------------|---------|------------------------------------------------------------------|
+| `show_earthquakes`           | `false` | Enable the overlay                                               |
+| `earthquake_min_magnitude`   | `2.5`   | Hide events below this magnitude                                 |
+| `earthquake_period`          | `day`   | `hour`, `day`, `week` (7 days) or `month` (30 days)              |
+| `earthquake_radius_km`       | unset   | Only show events within N km of the map center                   |
+| `earthquake_refresh_minutes` | `5`     | YAML-only. Refresh interval in minutes (at least 1)              |
 
 ## NWS Watches & Warnings
 

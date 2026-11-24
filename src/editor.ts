@@ -791,6 +791,7 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
     const parts: string[] = [];
     if (config.show_wildfires === true) parts.push(localize('ui.region_warning.label.wildfires'));
     if (config.show_alerts === true) parts.push(localize('ui.region_warning.label.alerts'));
+    if (config.show_earthquakes === true) parts.push(localize('ui.layers.earthquakes'));
     if (config.show_lightning === true) parts.push(localize('editor.overlays.lightning_label'));
     if (parts.length === 0) return localize('editor.overlays.none_enabled');
     return parts.join(', ');
@@ -958,6 +959,47 @@ export class WeatherRadarCardEditor extends LitElement implements LovelaceCardEd
           })}
           <p class="section-description" style="margin-top:12px">${localize('editor.overlays.alerts_categories_label')}</p>
           ${this._renderAlertCategoryToggles(config)}
+        ` : ''}
+
+        <!-- EARTHQUAKES -->
+        <h3 class="section-header">${localize('editor.overlays.earthquakes_header')}</h3>
+        <p class="section-description">${localize('editor.overlays.earthquakes_description')}</p>
+        <label>
+          <ha-switch .checked=${config.show_earthquakes === true} .configValue=${'show_earthquakes'} @change=${this._valueChangedSwitch}></ha-switch>
+          <span>${localize('editor.display.show_earthquakes')}</span>
+        </label>
+        ${config.show_earthquakes === true ? html`
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{
+              select: {
+                mode: 'dropdown',
+                options: (['hour', 'day', 'week', 'month'] as const).map((p) => ({
+                  value: p, label: localize(`editor.overlays.earthquake_period_${p}`),
+                })),
+              },
+            }}
+            .value=${config.earthquake_period ?? 'day'}
+            .label=${localize('editor.overlays.earthquake_period')}
+            .configValue=${'earthquake_period'}
+            @value-changed=${this._handleSelectorChanged}
+          ></ha-selector>
+          <div class="side-by-side">
+            ${this._textField({
+              label: localize('editor.overlays.earthquake_min_magnitude'),
+              value: this._numberText('earthquake_min_magnitude', config.earthquake_min_magnitude),
+              hint: localize('editor.overlays.earthquake_min_magnitude_helper'),
+              configValue: 'earthquake_min_magnitude',
+              onInput: this._valueChangedNumber,
+            })}
+            ${this._textField({
+              label: localize('editor.overlays.earthquake_radius_km'),
+              value: this._numberText('earthquake_radius_km', config.earthquake_radius_km),
+              hint: localize('editor.overlays.earthquake_radius_km_helper'),
+              configValue: 'earthquake_radius_km',
+              onInput: this._valueChangedNumber,
+            })}
+          </div>
         ` : ''}
 
         <!-- LIGHTNING -->

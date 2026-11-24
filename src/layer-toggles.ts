@@ -5,13 +5,14 @@ import { ViewerState } from './viewer-state';
 import { isBlitzortungLoaded } from './lightning-helpers';
 import { localize } from './localize/localize';
 
-export type OverlayKey = 'alerts' | 'wind' | 'wildfires' | 'lightning';
+export type OverlayKey = 'alerts' | 'wind' | 'wildfires' | 'earthquakes' | 'lightning';
 
 // Left to right in the toggle bar.
 const OVERLAYS: { key: OverlayKey; icon: string }[] = [
   { key: 'alerts', icon: 'mdi:alert' },
   { key: 'wind', icon: 'mdi:weather-windy' },
   { key: 'wildfires', icon: 'mdi:fire' },
+  { key: 'earthquakes', icon: 'mdi:pulse' },
   { key: 'lightning', icon: 'mdi:flash' },
 ];
 
@@ -31,6 +32,7 @@ export function overlayConfigured(
     case 'alerts': return cfg.show_alerts === true;
     case 'wind': return cfg.dwd_wind === 'barbs' || cfg.dwd_wind === 'arrows' || cfg.dwd_wind_flow === true;
     case 'wildfires': return cfg.show_wildfires === true;
+    case 'earthquakes': return cfg.show_earthquakes === true;
     case 'lightning': return cfg.show_lightning === true && isBlitzortungLoaded(hass);
   }
 }

@@ -97,6 +97,14 @@ export function boundsCentreLngLat(b: ReturnType<typeof geometryLngLatBounds>): 
   return [lng, (b.minLat + b.maxLat) / 2];
 }
 
+// The copy of `lng` (± k·360) nearest `refLng`. Once a map pans across the
+// antimeridian, Leaflet keeps the unwrapped longitudes: a view of Asia
+// reached by panning west from the US ran from -320 to -202, and a point
+// drawn at its data longitude (88 for India) landed a world away.
+export function lngNear(lng: number, refLng: number): number {
+  return lng + 360 * Math.round((refLng - lng) / 360);
+}
+
 // Great-circle distance between two lat/lon points in kilometres.
 // Standard haversine; mean Earth radius 6371 km. Accurate to ~0.5%
 // over typical map distances — plenty for "is this fire within N km".

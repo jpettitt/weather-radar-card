@@ -30,12 +30,13 @@ afterEach(() => {
 
 describe('card built in a hidden tab', () => {
   it('pauses the radar player and the overlays', async () => {
-    const el = await mountCard({ show_wildfires: true, show_alerts: true }, cardHass());
+    const el = await mountCard({ show_wildfires: true, show_alerts: true, show_earthquakes: true }, cardHass());
     await tick(5);
     expect(el._viewHidden).toBe(true);
     expect(el._player.viewPaused).toBe(true);
     expect(el._wildfireLayer._pausedAt).not.toBeNull();
     expect(el._alertsLayer._pausedAt).not.toBeNull();
+    expect(el._earthquakeLayer._pausedAt).not.toBeNull();
   });
 
   it('resumes when the tab is shown', async () => {
