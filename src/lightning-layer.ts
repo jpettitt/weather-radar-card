@@ -4,7 +4,7 @@ import { HomeAssistant } from 'custom-card-helpers';
 import { WeatherRadarCardConfig } from './types';
 import { LIGHTNING_BOLT_PATH, LIGHTNING_PLUS_PATH } from './marker-icon';
 import { localize } from './localize/localize';
-import { haversineKm, formatDistance } from './geo-utils';
+import { haversineKm, formatDistance, lngNear } from './geo-utils';
 import { escapeHtml } from './string-utils';
 import {
   BOLT_DURATION_SEC,
@@ -521,10 +521,13 @@ export class LightningLayer {
   _drawOrder(now: number, maxAgeSec: number, wCss: number, hCss: number, cullMarginPx: number):
     Array<{ x: number; y: number; ts: number; ageSec: number; isBolt: boolean; pulseUntil: number }> {
     const out: Array<{ x: number; y: number; ts: number; ageSec: number; isBolt: boolean; pulseUntil: number }> = [];
+    const centreLng = this._map.getCenter().lng;
     for (const s of this._strikes.values()) {
       const ageSec = Math.max(0, (now - s.ts) / 1000);
       if (ageSec > maxAgeSec) continue;
-      const lp = this._map.latLngToLayerPoint([s.lat, s.lon]);
+      // The world copy in view: after a pan across the antimeridian the
+      // map's longitudes run past ±180 (see lngNear).
+      const lp = this._map.latLngToLayerPoint([s.lat, lngNear(s.lon, centreLng)]);
       const x = lp.x - this._originLayerPoint.x;
       const y = lp.y - this._originLayerPoint.y;
       // Guard against a non-finite projection (bad integration lat/lon
@@ -571,8 +574,9 @@ export class LightningLayer {
     const tol2 = tolerancePx * tolerancePx;
     let bestId: string | null = null;
     let bestTs = -Infinity;
+    const centreLng = this._map.getCenter().lng;
     for (const [id, s] of this._strikes) {
-      const p = this._map.latLngToContainerPoint([s.lat, s.lon]);
+      const p = this._map.latLngToContainerPoint([s.lat, lngNear(s.lon, centreLng)]);
       const dx = p.x - pt.x;
       const dy = p.y - pt.y;
       if (dx * dx + dy * dy > tol2) continue;
@@ -590,7 +594,7 @@ export class LightningLayer {
     // points at the glyph the user hit. openOn closes any other open
     // popup (Leaflet's one-popup convention), matching marker behaviour.
     this._popup = L.popup({ autoPan: true, autoPanPadding: L.point(12, 12), maxHeight: this._popupMaxHeight() } as any)
-      .setLatLng([strike.lat, strike.lon])
+      .setLatLng([strike.lat, lngNear(strike.lon, this._map.getCenter().lng)])
       .setContent(this._popupHtml(strike))
       .openOn(this._map);
   }

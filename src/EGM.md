@@ -14,7 +14,7 @@ bundles from here (see [rollup.config.js](../rollup.config.js)):
 
 The card element owns one Leaflet map. Onto it, it adds a `RadarPlayer`
 (radar frame fetch and crossfade), a `RadarToolbar`, markers, `ViewPresets`
-and the optional overlays (NWS alerts, wind, wildfires, lightning). For the
+and the optional overlays (NWS alerts, wind, wildfires, earthquakes, lightning). For the
 layer stack and crossfade design, read
 [docs/animation.md](../docs/animation.md) before you change playback, fetch or
 opacity code. Each overlay has a design doc in [docs/](../docs/).
@@ -71,6 +71,7 @@ opacity code. Each overlay has a design doc in [docs/](../docs/).
   (`wind-grid-fetcher.ts`), `WIND_SOURCE_CAPS` (`wind-source-caps.ts`).
 - `LightningLayer` (`lightning-layer.ts`, `lightning-helpers.ts`).
 - `WildfireLayer` (`wildfire-layer.ts`) and `findInciwebPage` (`inciweb.ts`).
+- `EarthquakeLayer` (`earthquake-layer.ts`): USGS feeds on its own canvas.
 - `LayerToggleBar`, `OverlayVisibility` (`layer-toggles.ts`): the viewer's
   overlay toggles.
 - `getBasemapTiles`, `effectiveBasemapStyle`, `basemapCredits`
@@ -133,12 +134,12 @@ opacity code. Each overlay has a design doc in [docs/](../docs/).
 - Do not set `User-Agent` in a browser `fetch()`. It is a forbidden header,
   and the browser rejects the request.
 - Each fetching overlay increments a generation counter on each fetch and
-  drops responses from an older generation. NWS alerts and wildfires also
-  abort the previous `AbortController`. The wind overlays do not abort: they
+  drops responses from an older generation. NWS alerts, wildfires and
+  earthquakes also abort the previous `AbortController`. The wind overlays do not abort: they
   share the `windGridFetcher` cache, and only its 60 s timeout aborts a
   request. Lightning does not fetch.
 - Pause and resume differ per layer:
-  - NWS alerts and wildfires: `pause()` keeps only the due time, and nothing
+  - NWS alerts, wildfires and earthquakes: `pause()` keeps only the due time, and nothing
     re-arms a timer while the layer is paused. `resume()` waits only for the
     remaining time. `preload_while_hidden` disables both.
   - `WindOverlay` and `WindFlowOverlay`: `resume()` refreshes at once and
@@ -159,7 +160,12 @@ opacity code. Each overlay has a design doc in [docs/](../docs/).
   service worker does not serve an old file. The vector basemap needs WebGL2
   and falls back to raster on any failure.
 - Alert and fire polygons draw through `sharedCanvasRenderer(map)`.
-  `clear()` must not remove the shared renderer.
+  `clear()` must not remove the shared renderer. Earthquakes and lightning
+  draw on their own canvas in their own pane with `pointer-events: none` and
+  hit-test map clicks. Never give them a second Leaflet canvas renderer: it
+  takes the clicks meant for the shared one. They draw, hit-test and open popups at
+  `lngNear(lon, map centre)`: after a pan across the antimeridian the map's
+  longitudes run past ±180.
 
 ### Layer stack
 
@@ -172,6 +178,7 @@ Map panes, by z-index from low to high:
 | `wrcWindFlow`         | 250     | Wind streamlines                                                           |
 | `dwd-coverage-mask`   | 350     | DWD coverage mask                                                          |
 | Leaflet `overlayPane` | 400     | Alert and fire polygons                                                    |
+| `wrc-earthquakes`     | 405     | Earthquake canvas                                                          |
 | `wrc-lightning`       | 410     | Lightning canvas                                                           |
 | `wrcHazardMarkers`    | 420     | Wind arrows and barbs, fire icons                                          |
 | `wrcVectorLabels`     | 450     | Vector place labels (no pointer events)                                    |
@@ -186,7 +193,7 @@ Map panes, by z-index from low to high:
   `maps.dwd.de` (DWD WMS).
 - **Network (overlays):** `api.weather.gov` (alerts and zones),
   `services3.arcgis.com` (WFIGS fires), `inciweb.wildfire.gov` (page
-  probes), `maps.dwd.de` and `mapservices.weather.noaa.gov` WCS (wind).
+  probes), `earthquake.usgs.gov` (USGS earthquake feeds), `maps.dwd.de` and `mapservices.weather.noaa.gov` WCS (wind).
   Basemap tiles come from CARTO, OSM, Esri, HA's `/api/map_tiles/` proxy or
   `custom_tile_url`.
 - **Network (HA instance):** the vector basemap fetches

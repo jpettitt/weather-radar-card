@@ -26,6 +26,7 @@
     "layers": {
       "alerts": "NWS alerts",
       "wind": "Wind",
+      "earthquakes": "Earthquakes",
       "wildfires": "Wildfires",
       "lightning": "Lightning"
     },
@@ -41,6 +42,23 @@
         "noaa": "NOAA radar"
       },
       "dwd_de_only": "DWD radar covers Germany and its immediate neighbours. Your Home Assistant location is outside this region — the map may show only no-data."
+    },
+    "earthquake": {
+      "time": "Time",
+      "depth": "Depth",
+      "status": "Status",
+      "status_automatic": "Automatic, not yet reviewed",
+      "status_reviewed": "Reviewed",
+      "felt": "Felt reports",
+      "alert": "PAGER alert",
+      "alert_green": "Green",
+      "alert_yellow": "Yellow",
+      "alert_orange": "Orange",
+      "alert_red": "Red",
+      "tsunami": "USGS links this event to tsunami information. This does not mean that a tsunami occurred. See",
+      "more_info": "More info → USGS",
+      "disclaimer": "Informational only — not a substitute for official alerts.",
+      "see_readme": "See README"
     },
     "wildfire": {
       "area": "Area",
@@ -238,6 +256,7 @@
       "show_loading_spinner": "Loading Spinner",
       "preload_while_hidden": "Preload while hidden",
       "preload_while_hidden_helper": "Keep fetching fresh radar and hazard-overlay data while the card is off-screen, inside a closed popup, or on a backgrounded tab, so it resumes instantly instead of reloading. Animation stays paused while hidden either way. Uses network/bandwidth in the background — off by default.",
+      "show_earthquakes": "Show Earthquakes",
       "show_wildfires": "Show Wildfires (US only)",
       "show_alerts": "Show NWS Alerts (US only)",
       "alerts_min_severity": "Alerts: minimum severity",
@@ -302,6 +321,17 @@
       "wildfires_description": "Active US wildfire perimeters from NIFC's WFIGS feed.",
       "alerts_header": "NWS Watches & Warnings (US only)",
       "alerts_description": "Active US National Weather Service watches and warnings.",
+      "earthquakes_header": "Earthquakes (USGS)",
+      "earthquakes_description": "Recent earthquakes worldwide from the USGS. Size shows the magnitude and colour shows the age, as on the USGS map. Diamonds are other events, such as quarry blasts.",
+      "earthquake_period": "Time period",
+      "earthquake_period_hour": "Past hour",
+      "earthquake_period_day": "Past day",
+      "earthquake_period_week": "Past 7 days",
+      "earthquake_period_month": "Past 30 days",
+      "earthquake_min_magnitude": "Minimum magnitude",
+      "earthquake_min_magnitude_helper": "Default 2.5. Outside the US, few events below 2.5 are listed.",
+      "earthquake_radius_km": "Radius (km)",
+      "earthquake_radius_km_helper": "Only show events within N km of map centre",
       "wildfire_min_acres": "Minimum acreage",
       "wildfire_min_acres_helper": "Hide fires below this size (default 10)",
       "wildfire_radius_km": "Radius (km)",

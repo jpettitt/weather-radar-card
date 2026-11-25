@@ -283,6 +283,16 @@ export interface WeatherRadarCardConfig extends LovelaceCardConfig {
   wildfire_contained_color?: string;
   wildfire_fill_opacity?: number;
   wildfire_refresh_minutes?: number;
+  // Earthquake overlay (USGS feeds — see docs/earthquake-feature-design.md)
+  show_earthquakes?: boolean;
+  /** Hide events below this magnitude. Default 2.5. Also picks the USGS feed. */
+  earthquake_min_magnitude?: number;
+  /** How far back events go. Default 'day'. */
+  earthquake_period?: 'hour' | 'day' | 'week' | 'month';
+  /** Only show events within this many km of the map centre. Default: all. */
+  earthquake_radius_km?: number;
+  /** YAML-only: refresh interval in minutes. Default 5, floor 1. */
+  earthquake_refresh_minutes?: number;
   // Lightning overlay (Blitzortung integration — see docs/lightning-feature-design.md)
   show_lightning?: boolean;
   /**

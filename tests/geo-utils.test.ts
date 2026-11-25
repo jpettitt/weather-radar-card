@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { geometryLngLatBounds, centroidLngLat, boundsCentreLngLat, haversineKm, formatDistance, formatArea } from '../src/geo-utils';
+import { geometryLngLatBounds, centroidLngLat, boundsCentreLngLat, haversineKm, formatDistance, formatArea, lngNear } from '../src/geo-utils';
 
 // A simple unit-square Polygon centred on the origin — easy to reason about
 // for bounds and centroid tests.
@@ -321,5 +321,24 @@ describe('boundsCentreLngLat', () => {
     expect(boundsCentreLngLat({ minLng: 170, minLat: 50, maxLng: 190, maxLat: 52 })).toEqual([180, 51]);
     expect(boundsCentreLngLat({ minLng: 175, minLat: 50, maxLng: 190, maxLat: 52 })).toEqual([-177.5, 51]);
     expect(boundsCentreLngLat(null)).toBeNull();
+  });
+});
+
+describe('lngNear', () => {
+  it('gives the same place on Earth, within 180 degrees of the reference', () => {
+    for (let lng = -180; lng <= 180; lng += 7.3) {
+      for (let ref = -720; ref <= 720; ref += 11.1) {
+        const out = lngNear(lng, ref);
+        expect(Math.abs(out - ref), `${lng} near ${ref}`).toBeLessThanOrEqual(180);
+        const shift = out - lng;   // a whole number of turns
+        expect(Math.abs(shift - 360 * Math.round(shift / 360)), `${lng} near ${ref}`).toBeLessThan(1e-9);
+      }
+    }
+  });
+
+  it('moves India into a view of Asia reached by panning west (-320 to -202)', () => {
+    expect(lngNear(87.95, -261)).toBeCloseTo(-272.05, 9);
+    expect(lngNear(-177.5, 180)).toBeCloseTo(182.5, 9);
+    expect(lngNear(10, 0)).toBe(10);
   });
 });

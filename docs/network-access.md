@@ -16,6 +16,7 @@ The card runs in your browser. This page lists each server outside Home Assistan
 | `api.weather.gov` | Active NWS alerts, and the outlines of their zones | `show_alerts: true` |
 | `services3.arcgis.com` | US wildfire perimeters (NIFC WFIGS) | `show_wildfires: true` |
 | `inciweb.wildfire.gov` | Finds the fire's InciWeb page for the link in its popup | `show_wildfires: true`, when you open a fire popup |
+| `earthquake.usgs.gov` | USGS earthquake feed | `show_earthquakes: true` |
 | `a`–`d.basemaps.cartocdn.com` | CARTO map tiles and labels | `map_style: Light`, `Dark` or `Voyager`. `Satellite` labels with a `carto_api_key`, only where Home Assistant's map tiles can't draw them |
 | `server.arcgisonline.com` | Esri map tiles | `map_style: Satellite`, `Grey` or `GreyDark` |
 | `a`–`c.tile.openstreetmap.org` | OpenStreetMap tiles | `map_style: OSM`. `MapTiles` and `MapTilesVector` when Home Assistant has no `map_tiles` integration (before 2026.10). `Custom` without a usable `custom_tile_url` |
@@ -41,4 +42,4 @@ These requests go to your Home Assistant, not to an outside server:
 
 ## Links
 
-Links in the map credits, the popups and the editor open these sites only when you select them: `rainviewer.com`, `weather.gov` (credits and alert pages), `dwd.de`, `openstreetmap.org`, `carto.com`, `esri.com`, `arcgis.com`, `leafletjs.com`, `inciweb.wildfire.gov`, `map.blitzortung.org` and `github.com`.
+Links in the map credits, the popups and the editor open these sites only when you select them: `rainviewer.com`, `weather.gov` (credits and alert pages), `dwd.de`, `openstreetmap.org`, `carto.com`, `esri.com`, `arcgis.com`, `leafletjs.com`, `inciweb.wildfire.gov`, `earthquake.usgs.gov` (earthquake pages), `tsunami.gov`, `map.blitzortung.org` and `github.com`.

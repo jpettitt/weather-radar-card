@@ -2,7 +2,7 @@
   "name": "weather-radar-card",
   "version": "4.0.1-beta1",
   "type": "module",
-  "description": "A rain radar card using data from RainViewer",
+  "description": "Animated weather radar for Home Assistant: RainViewer, NOAA and DWD radar, with wind, lightning, earthquake, NWS alert and wildfire overlays.",
   "keywords": [
     "home-assistant",
     "homeassistant",
