@@ -152,7 +152,7 @@ console.info(
 (window as any).customCards.push({
   type: 'weather-radar-card',
   name: 'Weather Radar Card',
-  description: 'A rain radar card using tiled imagery from RainViewer, NOAA/NWS, and DWD',
+  description: 'Animated RainViewer, NOAA and DWD radar, with wind, lightning, earthquake, NWS alert and wildfire overlays',
   // Tell HA's card picker to render a live preview (defaults to false on
   // unknown custom cards, so without this we get just the name +
   // description tile — no map. The card uses getStubConfig() below to

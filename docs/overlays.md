@@ -51,6 +51,12 @@ The overlay refreshes every 5 minutes when fires are visible (matching NIFC's up
 
 ## Earthquakes
 
+> [!NOTE]
+> **Beta.** The earthquake overlay ships in 4.1.0. It is in the pre-release 4.1.0-beta1 now. To install a pre-release:
+>
+> - **Marketplace (Home Assistant 2026.11 and later):** go to **Settings** > **Devices & services** > **Marketplace** and open the card's device. Enable its **Pre-release** entity, then turn on the switch.
+> - **HACS (Home Assistant 2026.10 and earlier):** open the card and turn on *Show beta versions*.
+
 When `show_earthquakes: true`, the card shows recent earthquakes worldwide from the [USGS real-time feeds](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php). The markers use the style of the USGS map:
 
 - Size shows the magnitude, from 0 to 7 and more.

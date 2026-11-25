@@ -11,7 +11,7 @@ A Home Assistant rain radar card using tiled radar imagery from RainViewer, NOAA
 
 ## Description
 
-This card displays animated weather radar loops within Home Assistant. It supports multiple radar data sources and map styles, including Home Assistant's own vector map with place names drawn above the radar, and can be zoomed and panned seamlessly. Markers, view presets, hazard overlays (US wildfires, NWS watches & warnings, worldwide earthquakes) with per-user layer toggles, real-time lightning, a forecast nowcast (DWD), opt-in [motion-compensated playback](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#motion-compensation) (rain drifts between frames instead of teleporting), adjustable playback speed with optional per-user persistence, full sections-grid resize support, and 11 languages.
+This card displays animated weather radar loops within Home Assistant. It supports multiple radar data sources and map styles, including Home Assistant's own vector map with place names drawn above the radar, and can be zoomed and panned seamlessly. Markers, view presets, hazard overlays (US wildfires, NWS watches & warnings, worldwide earthquakes ([beta](https://github.com/jpettitt/weather-radar-card/blob/main/docs/overlays.md#earthquakes))) with per-user layer toggles, real-time lightning, a forecast nowcast (DWD), opt-in [motion-compensated playback](https://github.com/jpettitt/weather-radar-card/blob/main/docs/configuration.md#motion-compensation) (rain drifts between frames instead of teleporting), adjustable playback speed with optional per-user persistence, full sections-grid resize support, and 11 languages.
 
 ![Weather Radar card](weather-radar-card.gif)
 
